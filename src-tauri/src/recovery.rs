@@ -22,16 +22,24 @@ pub fn keep(folder: &Path, label: &str, bytes: &[u8]) -> Result<(), String> {
     {
         return Ok(());
     }
-    let stamp = SystemTime::now()
+    let mut stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    paths::write_private_bytes(&folder.join(format!("{label}-{stamp:013}.json")), bytes)?;
+    // A later copy never takes the name of an earlier one, even within the same millisecond.
+    while folder.join(name(label, stamp)).exists() {
+        stamp += 1;
+    }
+    paths::write_private_bytes(&folder.join(name(label, stamp)), bytes)?;
     // With the new copy, only the newest KEEP remain.
     for old in copies.iter().rev().skip(KEEP - 1) {
         let _ = std::fs::remove_file(old);
     }
     Ok(())
+}
+
+fn name(label: &str, stamp: u128) -> String {
+    format!("{label}-{stamp:013}.json")
 }
 
 /// Existing copies of one label, oldest first. Stamps have a fixed width, so names sort by time.
@@ -84,10 +92,9 @@ mod tests {
     #[test]
     fn only_the_newest_distinct_copies_remain() {
         let folder = temporary_folder();
+        // Copies written within the same millisecond keep distinct names, in order.
         for n in 0..KEEP + 2 {
             keep(&folder, "board", format!("{{broken {n}").as_bytes()).unwrap();
-            // Distinct millisecond stamps keep the order of the copies.
-            std::thread::sleep(std::time::Duration::from_millis(2));
         }
         let kept: Vec<String> = copies(&folder, "board")
             .iter()

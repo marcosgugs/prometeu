@@ -25,15 +25,18 @@ joining again replaced it.
 
 ## Decision
 
-Prometeu never replaces bytes it could not read. At load, every board file that
-exists but does not deserialize is copied byte for byte into the private
-`<root>/recovery/` folder. Identical copies are written once, and the newest
-five distinct copies of each file are kept. While a copy fails, or when a file
-cannot be read at all, the board store returns an error for every save, so
-nothing on disk changes. The interface tells the person at startup that the
-board came from the backup or started empty, shows the recovery folder and any
-copy error, and can open the folder. `team.json` is copied the same way before
-joining or leaving replaces or removes it.
+Prometeu never replaces bytes it could not read. An unreadable `board.json` is
+copied byte for byte into the private `<root>/recovery/` folder at load. While
+that copy fails, or when the file cannot be read at all, the board store returns
+an error for every save, so nothing on disk changes. An unreadable backup is
+copied at load when the board falls back to it, and otherwise before the first
+save of the session would refresh it; without a copy, saves skip the refresh and
+leave it untouched. Identical copies are written once, a new copy never takes an
+existing name, and the newest five distinct copies of each file are kept. The
+interface tells the person at startup that the board came from the backup or
+started empty, shows the recovery folder and any copy error, and can open the
+folder. `team.json` is copied the same way before joining or leaving replaces or
+removes it.
 
 ## Consequences
 

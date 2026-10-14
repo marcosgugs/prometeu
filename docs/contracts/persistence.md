@@ -262,13 +262,18 @@ requires a test with JSON from the previous version.
 
 Prometeu never replaces bytes it could not read. When `board.json` does not
 deserialize, the board comes from `board.json.bak`; when the backup does not
-either, it starts empty. Before any save, each unreadable file is copied byte
-for byte into the private `<root>/recovery/` folder as `board-<millis>.json` or
-`board-backup-<millis>.json`. A copy identical to one already there is not
-written again, and only the newest five distinct copies of each file remain.
-Copying happens at load, so the originals stay in place until a save replaces
-them. While a copy fails, or when the file could not be read at all, every save
-returns an error and the files on disk stay untouched.
+either, it starts empty. Before anything replaces an unreadable file, its bytes
+are copied into the private `<root>/recovery/` folder as `board-<millis>.json`
+or `board-backup-<millis>.json`. A copy identical to one already there is not
+written again, a new copy never takes an existing name, and only the newest five
+distinct copies of each file remain.
+
+An unreadable `board.json` is copied at load, so the original stays in place
+until a save replaces it. While that copy fails, or when the file could not be
+read at all, every save returns an error and the files on disk stay untouched.
+An unreadable backup is copied at load when the board falls back, and otherwise
+before the first save of the session refreshes it. While that copy fails, saves
+still write `board.json` but leave the backup as it is.
 
 At startup the interface asks `board_recovery` and, when the board came from
 the backup or started empty, shows a dialog with the recovery folder and any

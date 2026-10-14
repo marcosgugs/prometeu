@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 pub struct FileBoardStore {
     path: PathBuf,
-    recovery: Mutex<Option<Recovery>>,
+    state: Mutex<State>,
 }
 
 /// How the last load fell back, for the notice shown at startup.
@@ -17,14 +17,22 @@ pub struct BoardRecovery {
     pub source: &'static str,
     /// Holds byte-for-byte copies of the files that could not be read, once there are any.
     pub folder: Option<String>,
-    /// Why those copies could not be kept; saving stays blocked while it is set.
+    /// Why the unreadable board.json could not be kept; saving stays blocked while it is set.
     pub error: Option<String>,
+}
+
+#[derive(Default)]
+struct State {
+    recovery: Option<Recovery>,
+    /// The backup on disk is missing, readable or kept in the recovery folder, so a save may
+    /// replace it. Only this store writes it afterwards, always from a board that parses.
+    backup_kept: bool,
 }
 
 struct Recovery {
     source: &'static str,
-    /// Unreadable files not copied yet.
-    pending: Vec<Unreadable>,
+    /// The unreadable board.json, until it is kept. No save may replace it before that.
+    pending: Option<Unreadable>,
     kept: bool,
     error: Option<String>,
 }
@@ -37,19 +45,24 @@ struct Unreadable {
     error: String,
 }
 
+impl Unreadable {
+    fn keep(&self, folder: &Path) -> Result<(), String> {
+        match &self.bytes {
+            Some(bytes) => recovery::keep(folder, self.label, bytes),
+            None => Err(self.error.clone()),
+        }
+    }
+}
+
 impl Recovery {
-    /// Copy every unreadable file before a save may replace it. A failure blocks the save.
+    /// Copy the unreadable board.json before a save may replace it. A failure blocks the save.
     fn preserve(&mut self, folder: &Path) -> Result<(), String> {
-        while let Some(file) = self.pending.first() {
-            let kept = match &file.bytes {
-                Some(bytes) => recovery::keep(folder, file.label, bytes),
-                None => Err(file.error.clone()),
-            };
-            if let Err(error) = kept {
+        if let Some(file) = &self.pending {
+            if let Err(error) = file.keep(folder) {
                 self.error = Some(error.clone());
                 return Err(error);
             }
-            self.pending.remove(0);
+            self.pending = None;
             self.kept = true;
         }
         self.error = None;
@@ -83,7 +96,7 @@ impl FileBoardStore {
     pub fn new(root: PathBuf) -> Self {
         Self {
             path: root.join("board.json"),
-            recovery: Mutex::new(None),
+            state: Mutex::default(),
         }
     }
 
@@ -91,67 +104,91 @@ impl FileBoardStore {
         recovery::folder(self.path.parent().unwrap_or(Path::new(".")))
     }
 
+    fn backup(&self) -> PathBuf {
+        self.path.with_extension("json.bak")
+    }
+
     /// Present when the last load did not come from a readable board.json.
     pub fn recovery(&self) -> Option<BoardRecovery> {
-        lock(&self.recovery).as_ref().map(|recovery| BoardRecovery {
-            source: recovery.source,
-            folder: recovery
-                .kept
-                .then(|| self.recovery_folder().display().to_string()),
-            error: recovery.error.clone(),
-        })
+        lock(&self.state)
+            .recovery
+            .as_ref()
+            .map(|recovery| BoardRecovery {
+                source: recovery.source,
+                folder: recovery
+                    .kept
+                    .then(|| self.recovery_folder().display().to_string()),
+                error: recovery.error.clone(),
+            })
     }
 }
 
 impl BoardStore for FileBoardStore {
     fn load(&self) -> Board {
-        let backup = self.path.with_extension("json.bak");
-        let mut unreadable = Vec::new();
-        match read(&self.path, "board") {
+        let backup = self.backup();
+        let current = match read(&self.path, "board") {
+            // The backup is checked before the first save that would replace it.
             Ok(Some(board)) => return board,
-            Ok(None) => {}
+            Ok(None) => None,
             Err(file) => {
                 eprintln!(
                     "invalid board.json ({}); trying backup {}",
                     file.error,
                     backup.display()
                 );
-                unreadable.push(file);
+                Some(file)
             }
-        }
+        };
+        let folder = self.recovery_folder();
+        let mut state = lock(&self.state);
+        let mut kept = false;
         let (board, source) = match read(&backup, "board-backup") {
-            Ok(Some(board)) => (board, "backup"),
-            Ok(None) if unreadable.is_empty() => return Board::default(),
-            Ok(None) => (Board::default(), "reset"),
+            Ok(Some(board)) => {
+                state.backup_kept = true;
+                (board, "backup")
+            }
+            Ok(None) if current.is_none() => return Board::default(),
+            Ok(None) => {
+                state.backup_kept = true;
+                (Board::default(), "reset")
+            }
             Err(file) => {
                 eprintln!("invalid board.json backup ({})", file.error);
-                unreadable.push(file);
+                // Kept now so the notice can point at it. Without a copy, saves leave it alone.
+                state.backup_kept = file.keep(&folder).is_ok();
+                kept = state.backup_kept;
                 (Board::default(), "reset")
             }
         };
         let mut recovery = Recovery {
             source,
-            pending: unreadable,
-            kept: false,
+            pending: current,
+            kept,
             error: None,
         };
-        // Copy right away so the notice can point at the copies; a failure is retried before
-        // every save, which stays blocked until it succeeds.
-        let _ = recovery.preserve(&self.recovery_folder());
-        *lock(&self.recovery) = Some(recovery);
+        // A failure is retried before every save, which stays blocked until it succeeds.
+        let _ = recovery.preserve(&folder);
+        state.recovery = Some(recovery);
         board
     }
     fn save(&self, board: &Board) -> Result<(), String> {
-        if let Some(recovery) = lock(&self.recovery).as_mut() {
+        let mut state = lock(&self.state);
+        if let Some(recovery) = state.recovery.as_mut() {
             recovery.preserve(&self.recovery_folder())?;
+        }
+        if !state.backup_kept {
+            state.backup_kept = match read(&self.backup(), "board-backup") {
+                Ok(_) => true,
+                Err(file) => file.keep(&self.recovery_folder()).is_ok(),
+            };
         }
         let path = &self.path;
         let json = serde_json::to_string_pretty(board).map_err(|error| error.to_string())?;
-        // Only back up a board that still deserializes. Replacing the last valid backup with
-        // external corruption would remove the recovery path.
+        // Only back up a board that still deserializes, over a backup whose bytes are safe.
+        // Replacing the last valid backup with external corruption would remove the recovery path.
         if let Ok(previous) = std::fs::read_to_string(path) {
-            if serde_json::from_str::<Board>(&previous).is_ok() {
-                paths::write_private(&path.with_extension("json.bak"), &previous)?;
+            if state.backup_kept && serde_json::from_str::<Board>(&previous).is_ok() {
+                paths::write_private(&self.backup(), &previous)?;
             }
         }
         paths::write_private(path, &json)
@@ -363,6 +400,36 @@ mod tests {
                 folder: None,
                 error: None
             })
+        );
+        std::fs::remove_dir_all(current.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_backup_is_kept_before_a_save_replaces_it() {
+        let current = temporary_board_path();
+        std::fs::create_dir_all(current.parent().unwrap()).unwrap();
+        std::fs::write(&current, serde_json::to_string(&board_json("")).unwrap()).unwrap();
+        let backup = current.with_extension("json.bak");
+        std::fs::write(&backup, "{truncated").unwrap();
+        let store = store(&current);
+        // Without a place for the copy, saves still write the board but leave the backup alone.
+        std::fs::write(store.recovery_folder(), "").unwrap();
+
+        let board = store.load();
+        assert_eq!(store.recovery(), None);
+        store.save(&board).unwrap();
+        assert_eq!(std::fs::read(&backup).unwrap(), b"{truncated");
+
+        std::fs::remove_file(store.recovery_folder()).unwrap();
+        store.save(&board).unwrap();
+        store.save(&board).unwrap();
+        assert_eq!(copies(&store, "board-backup"), vec![b"{truncated".to_vec()]);
+        assert_eq!(
+            serde_json::from_slice::<Board>(&std::fs::read(&backup).unwrap())
+                .unwrap()
+                .workspaces
+                .len(),
+            1
         );
         std::fs::remove_dir_all(current.parent().unwrap()).unwrap();
     }
