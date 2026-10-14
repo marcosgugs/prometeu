@@ -79,7 +79,7 @@ fn integrate(data: &Path, launcher: &Launcher) -> io::Result<()> {
 }
 
 fn integrated_elsewhere(applications: &Path, own: &Path, appimage: &Path) -> bool {
-    let (Some(appimage), Ok(entries)) = (appimage.to_str(), fs::read_dir(applications)) else {
+    let Ok(entries) = fs::read_dir(applications) else {
         return false;
     };
     entries.flatten().map(|entry| entry.path()).any(|path| {
@@ -87,7 +87,15 @@ fn integrated_elsewhere(applications: &Path, own: &Path, appimage: &Path) -> boo
             && path
                 .extension()
                 .is_some_and(|extension| extension == "desktop")
-            && fs::read_to_string(&path).is_ok_and(|text| text.contains(appimage))
+            && fs::read_to_string(&path).is_ok_and(|text| starts(&text, appimage))
+    })
+}
+
+/// Whether an Exec line of the entry, including its actions', starts exactly this file.
+fn starts(entry: &str, file: &Path) -> bool {
+    entry.lines().any(|line| {
+        line.split_once('=')
+            .is_some_and(|(key, value)| key.trim() == "Exec" && Path::new(&program(value)) == file)
     })
 }
 
@@ -156,6 +164,63 @@ fn exec_arg(path: &str) -> String {
     }
     quoted.push('"');
     escape(&quoted)
+}
+
+/// The program an Exec value starts, read like GLib: the string escape first, then the first word
+/// with shell quoting. AppImageLauncher writes double quotes; Gear Lever writes `shlex` single
+/// quotes.
+fn program(exec: &str) -> String {
+    let exec = unescape(exec);
+    let mut chars = exec.trim_start().chars();
+    let mut word = String::new();
+    while let Some(c) = chars.next() {
+        match c {
+            c if c.is_whitespace() => break,
+            '\'' => word.extend(chars.by_ref().take_while(|&c| c != '\'')),
+            '"' => {
+                while let Some(c) = chars.next() {
+                    match c {
+                        '"' => break,
+                        '\\' => match chars.next() {
+                            Some(next @ ('"' | '`' | '$' | '\\')) => word.push(next),
+                            next => {
+                                word.push('\\');
+                                word.extend(next);
+                            }
+                        },
+                        c => word.push(c),
+                    }
+                }
+            }
+            '\\' => word.extend(chars.next()),
+            c => word.push(c),
+        }
+    }
+    word
+}
+
+/// Undoes `\s`, `\n`, `\t`, `\r` and `\\`; other backslashes stay for the quoting to read.
+fn unescape(value: &str) -> String {
+    let mut chars = value.chars();
+    let mut text = String::new();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            text.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('s') => text.push(' '),
+            Some('n') => text.push('\n'),
+            Some('t') => text.push('\t'),
+            Some('r') => text.push('\r'),
+            Some('\\') => text.push('\\'),
+            next => {
+                text.push('\\');
+                text.extend(next);
+            }
+        }
+    }
+    text
 }
 
 #[cfg(test)]
@@ -231,6 +296,39 @@ mod tests {
         // Later launches find nothing left to remove.
         integrate(&data, &launcher(&appimage)).unwrap();
         fs::remove_dir_all(data).unwrap();
+    }
+
+    #[test]
+    fn a_launcher_for_a_similar_name_keeps_the_entry() {
+        let data = temp();
+        let appimage = data.join("Prometeu.AppImage");
+        let own = data.join("applications/co.prometeu.desktop.desktop");
+        integrate(&data, &launcher(&appimage)).unwrap();
+        let old = data.join("applications/appimagekit_0123-Prometeu.desktop");
+        fs::write(
+            &old,
+            format!("[Desktop Entry]\nExec={}.old\n", appimage.display()),
+        )
+        .unwrap();
+
+        integrate(&data, &launcher(&appimage)).unwrap();
+        assert!(own.exists());
+        fs::remove_dir_all(data).unwrap();
+    }
+
+    #[test]
+    fn program_reads_the_first_exec_word_like_glib() {
+        let path = r#"/a b/$x "q" `b` back\slash;&.AppImage"#;
+        assert_eq!(program(&exec_arg(path)), path);
+        // AppImageLauncher, then Gear Lever's shlex quoting.
+        assert_eq!(
+            program(r#""/a b/Prometeu.AppImage" %U"#),
+            "/a b/Prometeu.AppImage"
+        );
+        assert_eq!(
+            program(r#"'/a b/it'"'"'s.AppImage' --no-sandbox"#),
+            "/a b/it's.AppImage"
+        );
     }
 
     #[test]
