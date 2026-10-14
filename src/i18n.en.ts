@@ -1695,6 +1695,7 @@ export const EN: Record<keyof typeof pt.PT, string> = {
   "err.cleanup.isRepo": "this workspace works in the clone itself, not in a worktree",
   "err.cleanup.badRoot": "this workspace folder isn't a multi-repo root created by Prometeu",
   "err.cleanup.dirty": "there are {n} files with uncommitted changes",
+  "err.cleanup.unverified": "couldn't confirm the worktree has no uncommitted changes: {cause}",
   "err.cleanup.unmerged": "'{branch}' has work that did not land on the target",
   "err.session.outside": "path outside the worktree",
   "err.files.name": "invalid name",

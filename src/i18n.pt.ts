@@ -1741,6 +1741,7 @@ export const PT = {
   "err.cleanup.isRepo": "este workspace mexe no próprio clone, e não num worktree",
   "err.cleanup.badRoot": "a pasta deste workspace não é uma raiz multi-repo criada pelo Prometeu",
   "err.cleanup.dirty": "há {n} arquivos com mudanças fora de commit",
+  "err.cleanup.unverified": "não deu para confirmar que o worktree não tem mudanças fora de commit: {cause}",
   "err.cleanup.unmerged": "'{branch}' tem trabalho que não entrou no alvo",
   "err.session.outside": "caminho fora do worktree",
   "err.files.name": "nome inválido",
