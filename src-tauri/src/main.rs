@@ -389,14 +389,22 @@ fn main() {
         .on_window_event(|window, _event| background::refresh_window(window))
         .build(tauri::generate_context!())
         .expect("erro ao subir o Prometeu")
-        .run(|app, event| {
+        .run(|app, event| match event {
+            // Tauri exits when the last window closes, but the island overlay is only ever hidden
+            // and nothing could bring the main window back. Closing it quits, as without the island.
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } if label == "main" => app.exit(0),
             // Flush deferred board writes during shutdown, when no later save can be assumed.
-            if matches!(event, tauri::RunEvent::Exit) {
+            tauri::RunEvent::Exit => {
                 awake::shutdown();
                 embedded_mcp::shutdown();
                 notifications::shutdown();
                 accounts::shutdown();
                 state::save_now(app);
             }
+            _ => {}
         });
 }

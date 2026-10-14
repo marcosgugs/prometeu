@@ -56,6 +56,11 @@ blocks on it. There are no global shortcuts for allow, deny or options. A
 second local window can now send `chat_control`; it is app-owned content with
 no remote input, and the command keeps its existing session checks.
 
+The hidden overlay would keep the process alive after the main window closed,
+with no way back to it, so closing the main window quits the app explicitly.
+Keeping the app running and reopening the main window from the Dock is a
+separate window policy, not part of this decision.
+
 The notice payload, queue and timing rules from
 [ADR 0054](0054-local-notifications.md) are unchanged. The complete contract is
 in [local notifications](../contracts/notifications.md).
