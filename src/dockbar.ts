@@ -4,7 +4,7 @@ import { icon, wave } from "./icons";
 import { fromBack, t } from "./i18n";
 import { keys } from "./platform";
 import * as menu from "./menu";
-import { isTerm, termKind, termNumber, type DockKind, type DockState, type Scripts } from "./types";
+import { dockLabel, isTerm, termKind, termNumber, type DockKind, type DockState, type Scripts } from "./types";
 import { $ } from "./util";
 
 /// Coordinate repository scripts in the side panel and shell tabs in the center. dock.ts owns terminal rendering; this module owns declared scripts, observed process state, and actions. workspace.ts renders center tabs from tabs().
@@ -59,13 +59,6 @@ function terminals(): DockKind[] {
 
 /// Only repository scripts appear in the side-panel tab strip.
 const order = (): DockKind[] => ["setup", "run"];
-
-const label = (kind: DockKind) => {
-  if (kind === "setup") return t("dock.setup");
-  if (kind === "run") return t("dock.run");
-  const n = termNumber(kind);
-  return n === 1 ? t("dock.terminal") : t("dock.terminalN", { n });
-};
 
 /// Reuse the lowest available shell number instead of accumulating gaps.
 function nextTerm(): DockKind {
@@ -204,7 +197,7 @@ async function setShell(kind: DockKind) {
 export type DockTab = { kind: DockKind; label: string; on: boolean };
 
 export const tabs = (): DockTab[] =>
-  terminals().map((kind) => ({ kind, label: label(kind), on: shell === kind }));
+  terminals().map((kind) => ({ kind, label: dockLabel(kind), on: shell === kind }));
 
 /// Identify the active shell so conversation tabs are not incorrectly highlighted.
 export const front = () => shell;
@@ -301,7 +294,7 @@ function drawStrip() {
     // Animate the live indicator even when a different script tab is selected.
     if (isUp(kind)) b.insertAdjacentHTML("beforeend", wave());
     const name = document.createElement("span");
-    name.textContent = label(kind);
+    name.textContent = dockLabel(kind);
     b.append(name);
     // Clicking the selected script tab hides output without stopping its process.
     b.addEventListener("click", () => setDock(open && pane === kind ? null : kind));
