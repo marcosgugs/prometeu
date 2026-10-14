@@ -145,6 +145,16 @@ the delegation execution holds `running` with its outcome already recorded. An
 interruption settles everything at once, since it ends the children too. See
 [ADR 0056](../decisions/0056-background-tasks-hold-completion.md).
 
+A question or approval holds the tab in `Querendo` from `request.opened` until
+the person answers. Answering produces `request.closed`, which moves the tab
+back to `Rodando` at once, unless another request of the same conversation is
+still open; output streamed meanwhile does not hide the wait. `Work` keeps the
+open requests and drops them when the conversation settles, since an ended turn
+can no longer receive the answer, so a late answer does not start a settled tab
+again. The desktop's `SessionReactions` and the WSL runtime derive status from
+the same `next_status` rule in `prometeu-core`, so the sidebar, desk, island and
+the delegation MCP's `conversation_status` agree on every host.
+
 `alert.ts` tracks executions per tab from the live local `chat` events,
 separate from the unread state. `chat.rs` publishes `session.state` `starting`
 on spawn and `busy` after accepting `message.send`, before the local message
