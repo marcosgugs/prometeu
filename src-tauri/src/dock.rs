@@ -45,13 +45,7 @@ pub fn open_dock(
     // variables.
     if is_terminal(&kind) {
         let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
-        let shell = crate::platform::shell();
-        let mut cmd = CommandBuilder::new(shell);
-        cmd.cwd(&root);
-        cmd.env("TERM", "xterm-256color");
-        for (key, value) in found.as_ref().map(script_env).unwrap_or_default() {
-            cmd.env(key, value);
-        }
+        let cmd = shell_command(&crate::platform::shell(), &root, found.as_ref());
         let handle = pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())?;
         lock(&state.ptys).insert(key.clone(), handle);
         crate::machine::publish_counts(&app);
@@ -221,17 +215,7 @@ fn start_script(
         header,
     } = script;
     let key = format!("{}:{kind}", ws.id);
-    // Use a login shell so nvm, rbenv, mise, and similar setup tools see profile exports even when
-    // the app starts from Finder.
-    let mut cmd = CommandBuilder::new("/bin/sh");
-    cmd.args(["-lc", command]);
-    // Run the primary repository's script in its worktree, not the multi-repository grouping
-    // directory.
-    cmd.cwd(&ws.primary().worktree);
-    cmd.env("TERM", "xterm-256color");
-    for (key, value) in script_env(ws) {
-        cmd.env(key, value);
-    }
+    let cmd = script_command(ws, command);
     // Only setup completion releases pending initial agent messages.
     let on_exit: Option<pty::OnExit> = (kind == "setup").then(|| {
         let app = app.clone();
@@ -307,6 +291,31 @@ fn script_name(ws: &Workspace) -> String {
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| ws.branch.replace('/', "-"))
+}
+
+/// A workspace shell gets the script variables; a registered project's shell has only its folder.
+fn shell_command(shell: &str, root: &Path, ws: Option<&Workspace>) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(shell);
+    cmd.cwd(root);
+    prometeu_process::terminal::own_terminal(&mut cmd, Some(env!("CARGO_PKG_VERSION")));
+    for (key, value) in ws.map(script_env).unwrap_or_default() {
+        cmd.env(key, value);
+    }
+    cmd
+}
+
+/// Use a login shell so nvm, rbenv, mise, and similar setup tools see profile exports even when the
+/// app starts from Finder. Run the primary repository's script in its worktree, not the
+/// multi-repository grouping directory.
+fn script_command(ws: &Workspace, command: &str) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new("/bin/sh");
+    cmd.args(["-lc", command]);
+    cmd.cwd(&ws.primary().worktree);
+    prometeu_process::terminal::own_terminal(&mut cmd, Some(env!("CARGO_PKG_VERSION")));
+    for (key, value) in script_env(ws) {
+        cmd.env(key, value);
+    }
+    cmd
 }
 
 /// Run and archive use the primary repository's environment.
@@ -480,6 +489,43 @@ mod tests {
             }))
             .unwrap(),
         )
+    }
+
+    #[test]
+    fn dock_shells_and_scripts_present_prometeu_and_keep_workspace_variables() {
+        let ws = board(Some(4100)).into_inner().unwrap().workspaces.remove(0);
+        let expected = script_env(&ws);
+        assert!(expected
+            .iter()
+            .any(|(key, value)| key == "PORT" && value == "4100"));
+        for cmd in [
+            shell_command("/bin/sh", Path::new("/workspace"), Some(&ws)),
+            script_command(&ws, "npm run dev"),
+        ] {
+            let value = |key: &str| cmd.get_env(key).map(|v| v.to_string_lossy().into_owned());
+            assert_eq!(value("TERM").as_deref(), Some("xterm-256color"));
+            assert_eq!(value("TERM_PROGRAM").as_deref(), Some("Prometeu"));
+            assert_eq!(
+                value("TERM_PROGRAM_VERSION").as_deref(),
+                Some(env!("CARGO_PKG_VERSION"))
+            );
+            // Whatever ran these tests, its terminal and agent markers stay behind.
+            for key in ["CLAUDECODE", "CODEX_THREAD_ID", "TMUX", "ITERM_SESSION_ID"] {
+                assert_eq!(value(key), None, "{key}");
+            }
+            for (key, expected) in &expected {
+                assert_eq!(value(key).as_deref(), Some(expected.as_str()), "{key}");
+            }
+        }
+        // A registered project's shell has its folder but no workspace variables.
+        let project = shell_command("/bin/sh", Path::new("/project"), None);
+        assert!(expected
+            .iter()
+            .all(|(key, _)| project.get_env(key).is_none()));
+        assert_eq!(
+            project.get_env("TERM_PROGRAM").and_then(|v| v.to_str()),
+            Some("Prometeu")
+        );
     }
 
     #[test]
