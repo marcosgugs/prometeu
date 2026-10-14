@@ -219,10 +219,14 @@ starting a process and with `busy` after the `message.send` write is accepted.
 That `busy` precedes `user.message`, local echoes and concurrent responses,
 under the same publication lock; a failed write does not emit it. Answers to
 requests and provider echoes do not represent another accepted message. The
-snapshot may synthesize `busy` or `ready` to present the current state, but it
-does not start a new execution in the Dock's pending tracking. These events stay
-ephemeral, with no change to the envelope, the persisted format or the
-contract's version.
+snapshot may synthesize `busy`, `ready` or `stopped` to present the current
+state, but it does not start a new execution in the Dock's pending tracking.
+`stopped` means no process is behind the conversation, including after a
+restart: replay keeps a turn the transcript left unfinished visibly cut off,
+with the partial reply marked incomplete, open requests closed without an
+answer and an `interrupted` notice, while `ready` still settles them as before.
+Older readers treat `stopped` like `ready`. These events stay ephemeral, with no
+change to the envelope, the persisted format or the contract's version.
 Optional local notifications use these same live events without changing V1.
 Notifications and sound start disabled; see the
 [notification contract](notifications.md) and

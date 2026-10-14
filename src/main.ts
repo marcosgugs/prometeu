@@ -760,6 +760,7 @@ const infoOf = (w: Workspace | undefined, tab: Tab | undefined): Info => ({
   plugins: tab?.task ? null : (w?.plugins ?? null),
   skills: tab?.task ? null : (w?.skills ?? null),
   pending: tab?.pending_prompt ?? null,
+  interrupted: !!tab?.interrupted && !w?.remote,
   worktree: w?.worktree ?? null,
   remote: w?.remote ? { name: team.nameOf(w.remote.owner), online: w.remote.online, ...team.rightsIn(w.id) } : null,
   team: !!team.status().config && !!w && (team.sharedHere(w) || !!w.remote),

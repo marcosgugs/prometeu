@@ -145,6 +145,17 @@ the delegation execution holds `running` with its outcome already recorded. An
 interruption settles everything at once, since it ends the children too. See
 [ADR 0056](../decisions/0056-background-tasks-hold-completion.md).
 
+Quitting or restarting for an update does not stop a turn in an orderly way:
+the app ends and the agent with it. On the next start `Board::revive` marks the
+tabs that were working or waiting as `interrupted`. A conversation without a
+process is presented with a snapshot that ends in `session.state: stopped`, and
+the timeline keeps an unfinished turn cut off instead of settling it: the
+partial reply has no completion footer, open requests read as closed without an
+answer, and an `interrupted` notice marks the place. The composer of an
+interrupted tab offers **Continue**, an ordinary message; any accepted message
+clears the marker through the core reactions. The WSL runtime keeps its
+conversations across interface restarts, so only its snapshot changes.
+
 A question or approval holds the tab in `Querendo` from `request.opened` until
 the person answers. Answering produces `request.closed`, which moves the tab
 back to `Rodando` at once, unless another request of the same conversation is

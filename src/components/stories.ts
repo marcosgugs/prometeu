@@ -169,7 +169,7 @@ export const stories: Record<string, Factory> = {
   "chat-error": state => wrap(errorCard(state === "short" ? "Example operation failed" : "Example operation failed\nProcess exited with code 1\nThe original input remains available.")),
   "chat-notice": state => wrap(noticeCard(state === "short" ? 'Agent "explore" finished' : "## Findings\n\nThe renderer lives in `src/chat.ts` and the styles in `src/components/chat/chat.css`.\n\n- Short notices stay on one line.\n- Long reports fold behind their first line.", t("chat.notice.background"))),
   "chat-request"(state, report) {
-    const ask: Ask = { kind: "ask", id: "story-request", ts: 0, toolUseId: null, answered: state === "answered",
+    const ask: Ask = { kind: "ask", id: "story-request", ts: 0, toolUseId: null, answered: state === "answered", closed: state === "closed",
       requestKind: state === "plan" ? "plan" : state === "permission" ? "approval" : "question", tool: "Example tool",
       input: { questions: [{ question: "Which files should be reviewed?", header: "Files", options: [
         { label: "Changed files", description: "Review the current changes" }, { label: "All files", description: "Review the entire project" },

@@ -61,6 +61,8 @@ export type Info = {
   pending: string | null;
   /// Remote owner name and online state, and what the owner's announcement lets this member do (ADR 0090).
   remote: { name: string; online: boolean; send: boolean; control: boolean } | null;
+  /// The app ended while this local conversation was working, so its last turn was cut off.
+  interrupted?: boolean;
   /// Agent working directory and default file-picker location; internal attachments use relative paths.
   worktree: string | null;
   /// Comments require an active local or remote share, not merely configured team membership.
@@ -628,6 +630,11 @@ export class ChatView {
           const el = template("details", "think summary", `<summary></summary><div class="md"></div>`);
           el.querySelector("summary")!.textContent = t("chat.summary");
           (el.lastElementChild as HTMLElement).innerHTML = md(item.text);
+          return el;
+        }
+        if (item.what === "interrupted") {
+          const el = template("div", "sys cut", `${icon("square", 12)}<span></span>`);
+          el.querySelector("span")!.textContent = t("chat.interrupted");
           return el;
         }
         if (item.error) return errorCard(item.text);
@@ -1323,10 +1330,11 @@ export class ChatView {
     const rights = local && !!info.rightsNotice;
     const viewOnly = this.key && info.remote && !info.remote.send ? info.remote.name : null;
     const waiting = local ? team.pendingIn(this.key!) : [];
-    const signature = JSON.stringify([paused, rights, viewOnly, waiting.map(message => message.id)]);
+    const cut = local && !!info.interrupted;
+    const signature = JSON.stringify([paused, rights, viewOnly, waiting.map(message => message.id), cut]);
     if (this.notices.dataset.shown === signature) return;
     this.notices.dataset.shown = signature;
-    this.notices.hidden = !paused.length && !rights && viewOnly === null && !waiting.length;
+    this.notices.hidden = !paused.length && !rights && viewOnly === null && !waiting.length && !cut;
     const fail = (error: unknown) => this.ctx.say(fromBack(error), true);
     const rows = paused.map(({ person, name, own }) => {
       const row = h("div", "chat-notice");
@@ -1343,6 +1351,15 @@ export class ChatView {
       rows.push(row);
     }
     if (viewOnly !== null) rows.push(h("p", "ui-hint chat-viewonly", t("chat.viewOnly", { name: viewOnly })));
+    if (cut) {
+      // Continue is an ordinary message, so sending it, or anything else, clears the marker.
+      const key = this.key!;
+      const row = h("div", "chat-notice");
+      const resume = ui.button(t("chat.interrupted.continue"), () =>
+        void invoke("chat_send", { session: key, text: t("chat.interrupted.prompt") }).catch(fail), "pri");
+      row.append(ui.notice(t("chat.interrupted.notice"), "warning"), resume);
+      rows.push(row);
+    }
     for (const message of waiting) rows.push(pendingCard(message, {
       send: () => void team.sendPending(message.id).catch(fail),
       edit: () => this.adopt(message.id),

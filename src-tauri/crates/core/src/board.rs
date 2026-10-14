@@ -124,6 +124,10 @@ pub struct Tab {
     /// boards and in every other conversation (ADR 0057).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kickoff: Option<String>,
+    /// The app ended while this conversation was working or waiting, so its last turn was cut
+    /// off. Set on revival, cleared by the next accepted message; absent while false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub interrupted: bool,
 }
 
 impl Tab {
@@ -545,11 +549,13 @@ impl Board {
                     context_window: None,
                     choice: None,
                     kickoff: None,
+                    interrupted: false,
                 });
             }
             // Processes do not survive app restarts. Remove generated placeholder titles so the UI
-            // can display the model.
+            // can display the model. A tab still working or waiting lost its turn with the app.
             for tab in &mut ws.tabs {
+                tab.interrupted |= matches!(tab.status, Status::Rodando | Status::Querendo);
                 tab.status = Status::Desligada;
                 // Tasks from versions with the removed PR monitor carry a start time and may wait
                 // for PR updates that no longer arrive. Settle them once so the command can start
@@ -760,6 +766,44 @@ mod tests {
         board.revive();
         assert!(board.workspaces[0].tabs.is_empty());
         assert!(board.workspaces[0].active.is_none());
+    }
+
+    /// A turn cut off by the app ending stays visible after restart, and a board from before the
+    /// marker loads and saves without it.
+    #[test]
+    fn tabs_working_when_the_app_ended_are_marked_interrupted() {
+        let mut board = board_json(
+            r#","tabs":[
+              {"id":"working","title":"","status":"rodando","note":null,"pending_prompt":null},
+              {"id":"waiting","title":"","status":"querendo","note":null,"pending_prompt":null},
+              {"id":"ready","title":"","status":"pronta","note":null,"pending_prompt":null},
+              {"id":"stopped","title":"","status":"desligada","note":null,"pending_prompt":null},
+              {"id":"again","title":"","status":"desligada","note":null,"pending_prompt":null,"interrupted":true}]"#,
+        );
+        board.revive();
+        let marked: Vec<(&str, bool)> = board.workspaces[0]
+            .tabs
+            .iter()
+            .map(|t| (t.id.as_str(), t.interrupted))
+            .collect();
+        assert_eq!(
+            marked,
+            [
+                ("working", true),
+                ("waiting", true),
+                ("ready", false),
+                ("stopped", false),
+                // Restarting again before the next message keeps the marker.
+                ("again", true)
+            ]
+        );
+        let saved = serde_json::to_value(&board).unwrap();
+        assert_eq!(saved["workspaces"][0]["tabs"][0]["interrupted"], true);
+        assert!(saved["workspaces"][0]["tabs"][2]
+            .as_object()
+            .unwrap()
+            .get("interrupted")
+            .is_none());
     }
 
     /// Existing legacy sessions still receive their migrated tab.

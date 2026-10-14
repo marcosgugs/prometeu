@@ -146,7 +146,7 @@ fn accepted_input_precedes_concurrent_output_and_snapshot() {
             );
             let mut lines = lock(lines);
             lines.record(&frame.to_string(), &frame, store, events);
-            lines.snapshot(true, &FixedClock)
+            lines.snapshot(Presence::Busy, &FixedClock)
         });
         lock(lines)
             .command(
@@ -235,7 +235,7 @@ fn failed_storage_and_delivery_still_advance_memory_without_retry() {
     assert_eq!(*lock(&store.0), 1);
     assert_eq!(*lock(&sent), [(text.clone(), 1)]);
     assert_eq!(lines.text, text + "\n");
-    assert_eq!(lines.snapshot(false, &FixedClock).seq, 1);
+    assert_eq!(lines.snapshot(Presence::Ready, &FixedClock).seq, 1);
 }
 
 #[test]
@@ -282,7 +282,7 @@ fn restored_mixed_history_preserves_bytes_and_resets_transport_sequence() {
     let lines = Lines::seeded(&store).unwrap();
     assert_eq!(lines.text, original.to_string() + "\n");
     assert_eq!(store.load().unwrap(), original);
-    let snapshot = lines.snapshot(false, &FixedClock);
+    let snapshot = lines.snapshot(Presence::Ready, &FixedClock);
     assert_eq!(snapshot.seq, 0);
     assert_eq!(
         serde_json::to_value(&snapshot).unwrap(),
@@ -379,4 +379,24 @@ fn disconnected_delivery_does_not_resend_accepted_input_or_lose_its_history() {
         serde_json::from_str::<Value>(lines.text.trim()).unwrap()["content"][0]["text"],
         "accepted once"
     );
+}
+
+#[test]
+fn a_snapshot_names_the_process_presence_last() {
+    let mut lines = Lines::default();
+    lines.absorb(r#"{"v":1,"type":"user.message","at":1,"content":[]}"#);
+    for (presence, state) in [
+        (Presence::Busy, "busy"),
+        (Presence::Ready, "ready"),
+        (Presence::Stopped, "stopped"),
+    ] {
+        let snapshot = lines.snapshot(presence, &FixedClock);
+        let last: Value = serde_json::from_str(snapshot.text.lines().last().unwrap()).unwrap();
+        assert_eq!(last["type"], "session.state");
+        assert_eq!(last["state"], state);
+        assert_eq!(
+            snapshot.seq, 1,
+            "synthetic state does not consume a sequence"
+        );
+    }
 }

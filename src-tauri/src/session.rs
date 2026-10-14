@@ -1507,6 +1507,7 @@ fn spawn_tab_with_id(
         context_window: None,
         choice,
         kickoff: None,
+        interrupted: false,
     })
 }
 
@@ -2369,6 +2370,7 @@ mod tests {
             context_window: None,
             choice,
             kickoff: None,
+            interrupted: false,
         }
     }
 

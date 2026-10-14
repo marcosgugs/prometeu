@@ -13,7 +13,7 @@ pub mod workspaces;
 pub mod worktrees;
 use prometeu_core::{
     conversation::{
-        stream::{ConversationEvents, Lines, Snapshot},
+        stream::{ConversationEvents, Lines, Presence, Snapshot},
         Clock,
     },
     lock::lock,
@@ -340,15 +340,25 @@ impl Runtime {
     }
 
     pub fn snapshot(&self) -> Result<Value, String> {
+        // Without a running process, replay shows a turn the transcript left unfinished as cut off.
         let (generation, snapshot): (Option<&str>, Snapshot) = match &self.active {
-            Some(active) => (
-                Some(&active.effects.generation),
-                lock(&active.pump.output.lines)
-                    .snapshot(active.effects.busy.load(Ordering::Acquire), &SystemClock),
-            ),
+            Some(active) => {
+                let presence = match (
+                    active.process.control.running(),
+                    active.effects.busy.load(Ordering::Acquire),
+                ) {
+                    (false, _) => Presence::Stopped,
+                    (true, true) => Presence::Busy,
+                    (true, false) => Presence::Ready,
+                };
+                (
+                    Some(&active.effects.generation),
+                    lock(&active.pump.output.lines).snapshot(presence, &SystemClock),
+                )
+            }
             None => (
                 None,
-                Lines::seeded(self.store.as_ref())?.snapshot(false, &SystemClock),
+                Lines::seeded(self.store.as_ref())?.snapshot(Presence::Stopped, &SystemClock),
             ),
         };
         Ok(

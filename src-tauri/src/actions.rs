@@ -226,6 +226,7 @@ pub fn action_start(
                 checked_at: 0,
                 error: None,
             }),
+            interrupted: false,
         };
         // Mutation phase: re-validate against the live board, since another action may have
         // started or finished a tab while this one resolved off the lock.

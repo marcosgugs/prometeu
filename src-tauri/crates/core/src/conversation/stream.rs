@@ -143,24 +143,31 @@ impl Lines {
     }
 
     /// Synthetic runtime state participates in replay, but does not consume a live sequence.
-    pub fn snapshot(&self, busy: bool, clock: &dyn Clock) -> Snapshot {
+    pub fn snapshot(&self, presence: Presence, clock: &dyn Clock) -> Snapshot {
+        let state = match presence {
+            Presence::Busy => "busy",
+            Presence::Ready => "ready",
+            Presence::Stopped => "stopped",
+        };
         let mut text = self.text.clone();
-        text.push_str(
-            &event(
-                "session.state",
-                clock.now(),
-                json!({
-                    "state": if busy { "busy" } else { "ready" }
-                }),
-            )
-            .to_string(),
-        );
+        text.push_str(&event("session.state", clock.now(), json!({ "state": state })).to_string());
         text.push('\n');
         Snapshot {
             text,
             seq: self.seq,
         }
     }
+}
+
+/// The process behind a snapshot, which replay presents as the conversation's last state.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Presence {
+    /// A turn is running.
+    Busy,
+    /// The process waits for the next message.
+    Ready,
+    /// No process: a turn the transcript left unfinished was cut off with it.
+    Stopped,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]

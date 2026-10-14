@@ -13,7 +13,7 @@ use crate::transcript_store::ProviderTranscriptStore;
 use crate::{accounts, conversation, paths, AppState};
 use prometeu_core::session::output::SessionOutput;
 mod host;
-use prometeu_core::conversation::stream::{ConversationEvents, ConversationInput};
+use prometeu_core::conversation::stream::{ConversationEvents, ConversationInput, Presence};
 pub use prometeu_core::conversation::stream::{Lines, Snapshot};
 #[cfg(test)]
 pub use prometeu_core::conversation::work::Work;
@@ -528,19 +528,24 @@ fn answers_for(input: &Value, updated: &Value) -> Option<Value> {
 }
 
 /// Append runtime turn state to the snapshot so replay can settle or resume streaming correctly.
+/// Without a process, including after a restart, replay shows a turn it left unfinished as cut off.
 pub(crate) fn snapshot(state: &AppState, session: &str) -> Snapshot {
     match lock(&state.sessions.conversations).get(session) {
-        Some(chat) => lock(&chat.buffer).snapshot(
-            chat.alive() && chat.pump.output.turn.load(Ordering::Relaxed),
-            chat.pump.clock.as_ref(),
-        ),
+        Some(chat) => {
+            let presence = match (chat.alive(), chat.pump.output.turn.load(Ordering::Relaxed)) {
+                (false, _) => Presence::Stopped,
+                (true, true) => Presence::Busy,
+                (true, false) => Presence::Ready,
+            };
+            lock(&chat.buffer).snapshot(presence, chat.pump.clock.as_ref())
+        }
         None => {
             let lines = lock(&state.board)
                 .workspace_of(session)
                 .map(|workspace| ProviderTranscriptStore::new(transcript_of(workspace, session)))
                 .and_then(|store| Lines::seeded(&store).ok())
                 .unwrap_or_default();
-            lines.snapshot(false, &SystemClock)
+            lines.snapshot(Presence::Stopped, &SystemClock)
         }
     }
 }

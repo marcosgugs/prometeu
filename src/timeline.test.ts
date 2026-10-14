@@ -498,3 +498,55 @@ describe("pieces", () => {
     expect(pieces(t.items).map((x) => x.key).slice(0, before.length)).toEqual(before);
   });
 });
+
+describe("a conversation whose process is gone", () => {
+  const unfinished = () => {
+    const timeline = new Timeline();
+    timeline.push(j({ v: 1, type: "user.message", at: 100, content: [{ kind: "text", text: "Run the migrations" }] }));
+    timeline.push(j({ v: 1, type: "assistant.started", at: 110, messageId: "m" }));
+    timeline.push(j({ v: 1, type: "assistant.block", at: 120, messageId: "m", index: 0, block: { kind: "text", text: "Two finished; the third" } }));
+    timeline.push(j({ v: 1, type: "request.opened", at: 130, requestId: "q", kind: "question", toolId: null, tool: "AskUserQuestion",
+      input: { questions: [{ question: "Keep going?", header: "Next", options: [] }] } }));
+    return timeline;
+  };
+  const state = (value: string) => j({ v: 1, type: "session.state", at: 9000, state: value });
+
+  it("keeps a turn it left unfinished visibly cut off", () => {
+    const timeline = unfinished();
+    timeline.push(state("stopped"));
+    expect(timeline.items.find(item => item.kind === "assistant")).toMatchObject({ streaming: false, cut: true });
+    expect(timeline.items.find(item => item.kind === "ask")).toMatchObject({ answered: false, closed: true });
+    expect(timeline.pending).toEqual([]);
+    expect(timeline.items[timeline.items.length - 1]).toEqual({ kind: "system", ts: 130, text: "", error: false, what: "interrupted" });
+    expect(timeline.working).toBe(false);
+    // The partial reply is not measured as a finished turn, and the question can no longer be answered.
+    const speech = pieces(timeline.items).filter(piece => piece.kind === "say");
+    expect(turnMetadata(timeline.items, speech[0])).toBeNull();
+    expect(timeline.answer("q")).toEqual([]);
+  });
+
+  it("marks a turn cut before the agent replied", () => {
+    const timeline = new Timeline();
+    timeline.push(j({ v: 1, type: "user.message", at: 100, content: [{ kind: "text", text: "Run the migrations" }] }));
+    timeline.push(state("stopped"));
+    expect(timeline.items.map(item => item.kind === "system" ? item.what : item.kind)).toEqual(["user", "interrupted"]);
+  });
+
+  it("leaves a settled conversation as it was", () => {
+    const timeline = new Timeline();
+    timeline.push(j({ v: 1, type: "user.message", at: 100, content: [{ kind: "text", text: "Hi" }] }));
+    timeline.push(j({ v: 1, type: "assistant.block", at: 110, messageId: "m", index: 0, block: { kind: "text", text: "Hello" } }));
+    timeline.push(j({ v: 1, type: "turn.completed", at: 120, outcome: "ok", message: "", durationMs: 20, costUsd: null, messageId: "m" }));
+    const settled = structuredClone(timeline.items);
+    expect(timeline.push(state("stopped"))).toEqual([]);
+    expect(timeline.items).toEqual(settled);
+  });
+
+  it("still settles a process that is ready for the next message", () => {
+    const timeline = unfinished();
+    timeline.push(state("ready"));
+    expect(timeline.items.find(item => item.kind === "assistant")).toMatchObject({ streaming: false });
+    expect(timeline.items.find(item => item.kind === "ask")).toMatchObject({ answered: true });
+    expect(timeline.items.some(item => item.kind === "system")).toBe(false);
+  });
+});
