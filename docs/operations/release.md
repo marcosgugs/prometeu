@@ -141,8 +141,9 @@ Between the build and the publication there is a human check:
 
 1. download the `.dmg`, `.AppImage` and `.exe` from the draft;
 2. install and open the DMG on an Apple Silicon Mac; make the AppImage executable
-   and open it on a Linux x86_64 desktop; install the NSIS package on Windows
-   x64 with WSL, Git and authenticated Codex already installed;
+   and open it on a Linux x86_64 desktop, whose dock must show the Prometeu icon;
+   install the NSIS package on Windows x64 with WSL, Git and authenticated Codex
+   already installed;
 3. validate the affected flows on all three systems, including starting an agent,
    opening a terminal and links, and notifications when affected; when an older
    installation is available, also verify update download and restart;

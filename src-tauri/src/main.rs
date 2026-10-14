@@ -22,6 +22,8 @@ mod cloud;
 mod codex;
 mod conversation;
 mod delegation;
+#[cfg(any(target_os = "linux", test))]
+mod desktop_entry;
 mod dock;
 mod domain;
 mod embedded_mcp;
@@ -379,6 +381,8 @@ fn main() {
                 background::refresh_window(&window);
             }
             background::watch(app.handle().clone());
+            #[cfg(target_os = "linux")]
+            desktop_entry::install(app.handle());
             notifications::install(app.handle());
             embedded_mcp::start(app.handle().clone())?;
             // The account connectors are part of the inherited MCP base; fetch them before the

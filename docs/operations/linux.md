@@ -23,6 +23,15 @@ guarantee compatibility with every Linux distribution. If FUSE is unavailable,
 run `./Prometeu_x86_64.AppImage --appimage-extract-and-run`. The optional system
 programs listed below are still needed for desktop integrations.
 
+Each launch adds Prometeu to your application menu so the dock shows its icon
+and can pin it: `~/.local/share/applications/co.prometeu.desktop.desktop` starts
+this AppImage, and
+`~/.local/share/icons/hicolor/256x256/apps/co.prometeu.desktop.png` holds the
+icon (`$XDG_DATA_HOME` replaces `~/.local/share` when set). Moving the file
+updates the entry on the next launch; deleting it hides the entry. If
+AppImageLauncher or Gear Lever already lists the file, Prometeu removes its own
+entry. Launches with `--appimage-extract-and-run` register nothing.
+
 AppImage installations use the signed in-app updater. Package-managed and source
 installations do not: update them through their package manager or rebuild.
 Linux ARM64 currently requires a source build. No prebuilt `.deb` or `.rpm` is
@@ -93,6 +102,7 @@ Without a default toolchain, the Tauri CLI fails with a panic while running
 | Claude usage credentials | file, then Keychain | `~/.claude/.credentials.json` |
 | Device name | `scutil --get ComputerName` | kernel hostname |
 | Window | overlay title bar | native decorations |
+| Dock icon and app menu | app bundle | the package's desktop entry; the AppImage writes a user entry at launch |
 | Shortcut labels | ⌘ ⇧ ⌥ | Ctrl, Shift, Alt |
 | Interface wording | Mac, Finder, macOS | computer, file manager, system (`<key>.generic` variants) |
 | Dictation, Finder file promises | available | unavailable |
