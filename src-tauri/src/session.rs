@@ -1535,6 +1535,8 @@ fn spawn_tab_with_id(
         context_window: None,
         choice,
         kickoff: None,
+        interrupted: false,
+        cuts: Vec::new(),
     })
 }
 
@@ -2397,6 +2399,8 @@ mod tests {
             context_window: None,
             choice,
             kickoff: None,
+            interrupted: false,
+            cuts: Vec::new(),
         }
     }
 

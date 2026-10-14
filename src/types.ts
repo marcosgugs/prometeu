@@ -37,6 +37,8 @@ export type Tab = {
   choice?: Choice | null;
   /// The "Start with" skill (`<package>/<skill>`) this conversation began from; absent otherwise.
   kickoff?: string | null;
+  /// The app ended while this conversation was working or waiting; cleared by the next accepted message.
+  interrupted?: boolean;
 };
 
 /// Provider, model, and effort form one choice because each model belongs to a provider and has supported effort levels.

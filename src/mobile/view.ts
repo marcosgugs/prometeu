@@ -348,11 +348,13 @@ function itemNode(item: Item): HTMLElement {
       return box;
     }
     case "ask":
-      return h("div", "m-item m-ask", t("mobile.ask", { tool: toolLabel(item.tool) }));
+      return h("div", "m-item m-ask", item.closed
+        ? t("chat.unanswered", { what: toolLabel(item.tool) })
+        : t("mobile.ask", { tool: toolLabel(item.tool) }));
     case "result":
       return h("div", `m-item m-result${item.error ? " err" : ""}`, item.text);
     case "system":
-      return h("div", `m-item m-system${item.error ? " err" : ""}`, item.text);
+      return h("div", `m-item m-system${item.error ? " err" : ""}`, item.what === "interrupted" ? t("chat.interrupted") : item.text);
     case "context":
       return h("div", "m-item m-hidden");
   }

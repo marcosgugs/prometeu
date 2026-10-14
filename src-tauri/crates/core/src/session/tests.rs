@@ -409,3 +409,31 @@ fn answering_a_request_runs_the_tab_again_unless_another_still_waits() {
     react(json!({"type":"request.closed","requestId":"d","outcome":"allowed"}));
     assert_eq!(status(), "rodando");
 }
+
+#[test]
+fn an_accepted_message_clears_the_interrupted_marker() {
+    let f = Fixture::new();
+    lock(&f.board).tab_mut("s").unwrap().interrupted = true;
+    let sessions = f.service();
+    let work = Mutex::new(HashMap::new());
+    let reactions = SessionReactions {
+        sessions: &sessions,
+        work: &work,
+        context: &f,
+        actions: &f,
+        usage: &f,
+    };
+    let ready = AtomicBool::new(true);
+    reactions.react(
+        "s",
+        &json!({"type":"assistant.block","block":{"kind":"text","text":"x"}}),
+        &ready,
+    );
+    assert!(lock(&f.board).tab_mut("s").unwrap().interrupted);
+    reactions.react(
+        "s",
+        &json!({"type":"user.message","content":[{"kind":"text","text":"Continue"}]}),
+        &ready,
+    );
+    assert!(!lock(&f.board).tab_mut("s").unwrap().interrupted);
+}

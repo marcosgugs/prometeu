@@ -16,6 +16,11 @@ export type RequestActions = {
 };
 
 export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
+  if (ask.closed) {
+    const el = template("div", "sys closed", `${icon("x", 12)}<span></span>`);
+    el.querySelector("span")!.textContent = t("chat.unanswered", { what: toolLabel(ask.tool) });
+    return el;
+  }
   if (ask.answered || options.observer) {
     const el = template("div", `sys ${ask.answered ? "done" : "waiting"}`, `${icon(ask.answered ? "check" : "eye", 12)}<span></span>`);
     el.querySelector("span")!.textContent = t(ask.answered ? "chat.answered" : "chat.awaitingAnswer", { what: toolLabel(ask.tool) });

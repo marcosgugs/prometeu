@@ -749,6 +749,25 @@ const scrollOf = (tab: string) => {
   }
   return s;
 };
+const mockTab = (id: string) => board.workspaces.flatMap(workspace => workspace.tabs).find(tab => tab.id === id);
+
+/// Simulate a restart after the app ended mid-turn: `localStorage["mock:interrupted"]` names a tab whose last turn
+/// keeps a partial reply and an unanswered question, marked as the desktop marks it on revival.
+function seedInterrupted() {
+  const tab = mockTab(localStorage.getItem("mock:interrupted") ?? "");
+  if (!tab) return;
+  tab.interrupted = true;
+  const at = Date.now() - 60_000;
+  for (const event of [
+    { type: "user.message", content: [{ kind: "text", text: "Run the migrations and tell me what changed." }] },
+    { type: "assistant.started", messageId: "cut" },
+    { type: "assistant.block", messageId: "cut", index: 0, block: { kind: "text", text: "Running the migrations. The first two finished; the third" } },
+    { type: "request.opened", requestId: "cut-question", kind: "question", toolId: null, tool: "AskUserQuestion",
+      input: { questions: [{ question: "Should I also seed the database?", header: "Seed", options: [
+        { label: "Yes", description: "Run the seeds after migrating" }, { label: "No", description: "Only migrate" }] }] } },
+  ]) pushLine(tab.id, { v: 1, at, ...event });
+}
+
 function pushLine(tab: string, o: unknown, keep = true) {
   const s = scrollOf(tab);
   let adapter = conversationAdapters.get(tab);
@@ -1509,10 +1528,17 @@ const mockCommands: IpcHandlers = {
   // Append runtime turn state after the numbered transcript; it is not a conversation line.
   chat_snapshot(args) {
     const s = scrollOf(String(args.session));
-    return { text: s.text + line({ v: 1, type: "session.state", at: Date.now(), state: "ready" }) + "\n", seq: s.seq };
+    // As after a restart, an interrupted conversation has no process behind it.
+    const state = mockTab(String(args.session))?.interrupted ? "stopped" : "ready";
+    return { text: s.text + line({ v: 1, type: "session.state", at: Date.now(), state }) + "\n", seq: s.seq };
   },
   // Respond to incoming messages so remote input and replies can be tested.
   chat_send(args) {
+    const tab = mockTab(String(args.session));
+    if (tab?.interrupted) {
+      tab.interrupted = false;
+      emit("board", board);
+    }
     sayInto(String(args.session), String(args.text));
     return;
   },
@@ -2666,6 +2692,8 @@ w.__TAURI_INTERNALS__ = {
 };
 
 // Console shortcut for file-drop testing: mock.drop([...]).
+seedInterrupted();
+
 w.mock = {
   catalog: (servers: McpServer[]) => { mcpHub = servers; emit("catalog", null); },
   usage: (payload: unknown) => emit("usage", payload),

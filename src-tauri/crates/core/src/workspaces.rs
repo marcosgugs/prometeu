@@ -494,6 +494,8 @@ impl Workspaces {
             context_window: None,
             choice,
             kickoff: None,
+            interrupted: false,
+            cuts: Vec::new(),
         };
         let workspace = next.board.workspace_mut(workspace).unwrap();
         workspace.active = Some(tab.id.clone());
@@ -596,6 +598,8 @@ fn in_place(
             context_window: None,
             choice: None,
             kickoff: None,
+            interrupted: false,
+            cuts: Vec::new(),
         }],
     }
 }

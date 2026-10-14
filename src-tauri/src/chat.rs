@@ -13,7 +13,7 @@ use crate::transcript_store::ProviderTranscriptStore;
 use crate::{accounts, conversation, paths, AppState};
 use prometeu_core::session::output::SessionOutput;
 mod host;
-use prometeu_core::conversation::stream::{ConversationEvents, ConversationInput};
+use prometeu_core::conversation::stream::{ConversationEvents, ConversationInput, Presence};
 pub use prometeu_core::conversation::stream::{Lines, Snapshot};
 #[cfg(test)]
 pub use prometeu_core::conversation::work::Work;
@@ -212,11 +212,11 @@ pub(crate) fn launch(
         id: id.to_string(),
         profile,
     });
+    let lines = Lines::seeded(store.as_ref()).unwrap_or_default();
+    remember_cut(app, id, lines.end());
     let pump = Pump::new(
         Arc::new(SessionOutput {
-            lines: Arc::new(Mutex::new(
-                Lines::seeded(store.as_ref()).unwrap_or_default(),
-            )),
+            lines: Arc::new(Mutex::new(lines)),
             gone,
             turn: AtomicBool::new(false),
             store,
@@ -527,20 +527,47 @@ fn answers_for(input: &Value, updated: &Value) -> Option<Value> {
     Some(out)
 }
 
+/// An interrupted conversation starting again has nothing after the cut yet: its history ends
+/// there. Record that place so every later replay keeps the old turn cut off.
+fn remember_cut(app: &AppHandle, id: &str, at: u64) {
+    let state = app.state::<AppState>();
+    let mut board = lock(&state.board);
+    let recorded = match board.tab_mut(id) {
+        Some(tab) if tab.interrupted && tab.cuts.last() != Some(&at) => {
+            tab.cuts.push(at);
+            true
+        }
+        _ => false,
+    };
+    drop(board);
+    if recorded {
+        crate::state::publish(app);
+    }
+}
+
 /// Append runtime turn state to the snapshot so replay can settle or resume streaming correctly.
+/// Without a process, including after a restart, replay shows a turn it left unfinished as cut off.
 pub(crate) fn snapshot(state: &AppState, session: &str) -> Snapshot {
+    let cuts = lock(&state.board)
+        .tab_mut(session)
+        .map(|tab| tab.cuts.clone())
+        .unwrap_or_default();
     match lock(&state.sessions.conversations).get(session) {
-        Some(chat) => lock(&chat.buffer).snapshot(
-            chat.alive() && chat.pump.output.turn.load(Ordering::Relaxed),
-            chat.pump.clock.as_ref(),
-        ),
+        Some(chat) => {
+            let presence = match (chat.alive(), chat.pump.output.turn.load(Ordering::Relaxed)) {
+                (false, _) => Presence::Stopped,
+                (true, true) => Presence::Busy,
+                (true, false) => Presence::Ready,
+            };
+            lock(&chat.buffer).snapshot(presence, &cuts, chat.pump.clock.as_ref())
+        }
         None => {
             let lines = lock(&state.board)
                 .workspace_of(session)
                 .map(|workspace| ProviderTranscriptStore::new(transcript_of(workspace, session)))
                 .and_then(|store| Lines::seeded(&store).ok())
                 .unwrap_or_default();
-            lines.snapshot(false, &SystemClock)
+            lines.snapshot(Presence::Stopped, &cuts, &SystemClock)
         }
     }
 }

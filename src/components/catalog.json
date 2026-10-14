@@ -294,7 +294,8 @@
       "permission",
       "plan",
       "answered",
-      "waiting"
+      "waiting",
+      "closed"
     ]
   },
   {

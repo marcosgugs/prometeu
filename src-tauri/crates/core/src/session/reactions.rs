@@ -64,6 +64,15 @@ impl SessionReactions<'_> {
                     self.sessions.remember_session(id, identity);
                 }
             }
+            // Any accepted message moves an interrupted conversation on, Continue included.
+            Some("user.message") => {
+                let resumed = lock(self.sessions.board)
+                    .tab_mut(id)
+                    .is_some_and(|tab| std::mem::take(&mut tab.interrupted));
+                if resumed {
+                    self.sessions.update(id, None, Note::Keep, None);
+                }
+            }
             // Output while a request is open leaves the tab waiting and the request's note.
             Some("assistant.block") if status == Some(Status::Rodando) => {
                 let note = match frame["block"]["kind"].as_str() {

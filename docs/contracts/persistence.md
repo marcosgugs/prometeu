@@ -233,7 +233,14 @@ growth is added. When the context drops after compaction, the new value starts
 another segment and adds to the total. Old boards without `context_tokens` treat
 `tokens` as the total and the initial cursor, without duplicating the value. The
 tab also contains identity, status, pending message, model override and the
-external identity used for resume when needed. An empty `Tab.title` is an
+external identity used for resume when needed. `Tab.interrupted` is set on
+revival for a tab that was `rodando` or `querendo` when the app ended, and the
+next accepted message clears it; it is written only while true. When such a tab
+starts a process again, its transcript ends at the cut, so `Tab.cuts` records
+that line count; replay places `session.state: stopped` there, and continuing
+never makes the cut reply look finished. Transcripts only grow at the end, so
+the position holds for native and app-owned logs alike. `cuts` is written only
+when not empty, so older boards load and save unchanged. An empty `Tab.title` is an
 unnamed tab: the interface shows the model it talks to. Old boards with the
 invented name `conversa` or `conversa N` are normalized to empty on load.
 
