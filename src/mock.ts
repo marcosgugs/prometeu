@@ -1279,6 +1279,10 @@ const mockCommands: IpcHandlers = {
   load_board() {
     return board;
   },
+  board_recovery() {
+    return JSON.parse(localStorage.getItem("mock:boardRecovery") ?? "null");
+  },
+  board_recovery_open() {},
   cloud_status(args) {
     if (args.refresh && localStorage.getItem("mock:cloudExpired")) localStorage.removeItem("mock:cloud");
     return { ...mockCloud(), offline: !!localStorage.getItem("mock:cloudOffline") };

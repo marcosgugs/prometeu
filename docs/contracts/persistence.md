@@ -25,6 +25,7 @@ In release, the default root is `~/.prometeu`. In debug, `~/.prometeu-dev`.
 | external MCP clients | `<root>/mcp-clients/<uuid>.json` | `mcp_access.rs`; private versioned credentials and project scope; see [embedded MCP](embedded-mcp.md) |
 | MCP socket discovery | `<root>/mcp-socket` | `embedded_mcp.rs`; private ephemeral socket path, replaced on startup |
 | board backup | next to `board.json` | `board_store.rs` |
+| copies of unreadable state | `<root>/recovery/<label>-<millis>.json` | `recovery.rs`; see [Unreadable state](#unreadable-state) |
 | team and credential | `<root>/team.json` | `team.rs` |
 | E2EE identities, TOFU links and replay | `<root>/team-security.json` | `team.rs` (file), `team-security.ts` (internal schema) |
 | optional Prometeu account | `<root>/cloud.json` | `cloud.rs`; see the [contract](cloud-account.md) |
@@ -264,6 +265,34 @@ On load:
 A change that removes, renames or alters the semantics of a persisted field
 requires a test with JSON from the previous version.
 
+### Unreadable state
+
+Prometeu never replaces bytes it could not read. When `board.json` does not
+deserialize, the board comes from `board.json.bak`; when the backup does not
+either, it starts empty. Before anything replaces an unreadable file, its bytes
+are copied into the private `<root>/recovery/` folder as `board-<millis>.json`
+or `board-backup-<millis>.json`. A copy identical to one already there is not
+written again, a new copy never takes an existing name, and only the newest five
+distinct copies of each file remain.
+
+An unreadable `board.json` is copied at load, so the original stays in place
+until a save replaces it. While that copy fails, or when the file could not be
+read at all, every save returns an error and the files on disk stay untouched.
+An unreadable backup is copied at load when the board falls back, and otherwise
+before the first save of the session refreshes it. While that copy fails, saves
+still write `board.json` but leave the backup as it is.
+
+At startup the interface asks `board_recovery` and, when the board came from
+the backup or started empty, shows a dialog with the recovery folder and any
+copy error; see [IPC](ipc.md#board-recovery). `team.json` follows the same
+rule: a file that does not parse still reads as no team, but joining or leaving
+first copies it to `recovery/team-<millis>.json`, and a file that cannot be read
+blocks both.
+
+Neither the board nor `team.json` changes format. Coverage lives in
+`board_store.rs`, `recovery.rs` and `team.rs`. See
+[ADR 0091](../decisions/0091-keep-unreadable-state.md).
+
 ## Ordered board publication
 
 `BoardPublisher::publish` serializes snapshot creation, enqueueing, and the `board`
@@ -357,7 +386,8 @@ axis; the hub keeps them as packages, so only the state and the interface change
 `Workspace.skills` is absent, therefore inherited, in old boards.
 
 The migration is one-way: a previous version cannot deserialize the object form
-and falls back to the board backup, then to a default board. The resolved set is
+and falls back to the board backup, then to a default board. Versions that keep
+[unreadable state](#unreadable-state) copy the unreadable files before saving. The resolved set is
 captured at spawn, so a change in any layer takes effect at the next spawn or
 resume
 ([`agent-runtime.md`](agent-runtime.md)).

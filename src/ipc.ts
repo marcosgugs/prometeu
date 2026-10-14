@@ -109,6 +109,8 @@ export type Commands = {
   list_branches: { args: { project: string }; result: { all: string[]; local: string[]; default: string; git: boolean } };
   list_dir: { args: { id: string; rel: string }; result: PathEntry[] };
   load_board: { args: undefined; result: T.Board };
+  board_recovery: { args: undefined; result: T.BoardRecovery | null };
+  board_recovery_open: { args: undefined; result: void };
   look_at: { args: { id?: string | null }; result: void };
   machine: { args: undefined; result: Machine };
   mcp_check: { args: { server: T.McpServer }; result: T.McpCheck };

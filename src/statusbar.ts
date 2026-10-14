@@ -8,7 +8,7 @@ import { brand, icon } from "./icons";
 import { fromBack, t } from "./i18n";
 import * as menu from "./menu";
 import { invoke } from "./ipc";
-import type { Board, ProviderId } from "./types";
+import { dockLabel, type Board, type DockKind, type ProviderId } from "./types";
 import { mac } from "./platform";
 import { $, span } from "./util";
 
@@ -418,7 +418,7 @@ function resPanel(): string {
     .map(
       (p) =>
         `<div class="prow"><span class="pname">${esc(p.name)}` +
-        (p.detail ? `<em>${esc(p.kind === "term" ? dock(p.detail) : p.detail)}</em>` : "") +
+        (p.detail ? `<em>${esc(p.kind === "term" ? dockLabel(p.detail as DockKind) : p.detail)}</em>` : "") +
         `</span>${spark(p.hist)}<span class="pcpu">${p.cpu.toFixed(1)}%</span>` +
         `<span class="prss">${bytes(p.rss)}</span></div>`,
     )
@@ -428,14 +428,6 @@ function resPanel(): string {
     (rows || `<div class="uempty">${t("status.res.none")}</div>`) +
     `<button class="urow act" id="u-clean">${t("status.res.clean")}${icon("chevron-right", 14)}</button>`
   );
-}
-
-/// Use the dock's own tab labels.
-function dock(what: string): string {
-  if (what === "setup") return t("dock.setup");
-  if (what === "run") return t("dock.run");
-  const n = /^term(\d+)$/.exec(what)?.[1];
-  return n ? t("dock.terminalN", { n }) : t("dock.terminal");
 }
 
 function portPanel(): string {

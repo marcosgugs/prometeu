@@ -14,6 +14,7 @@ import type { Info } from "./chat";
 import * as archived from "./archived";
 import * as sidebar from "./sidebar";
 import { openCleanup } from "./cleanup";
+import { announceBoardRecovery } from "./board-recovery";
 import * as notificationCenter from "./notification-center";
 import * as desk from "./desk";
 import * as dock from "./dock";
@@ -823,6 +824,7 @@ team.boardChanged(state);
 alert.boardChanged(state);
 island.boardChanged(state);
 showDesk();
+void announceBoardRecovery();
 
 // Show release notes after the initial page renders so the dialog overlays the application.
 void news.init();

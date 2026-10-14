@@ -1227,6 +1227,14 @@ export const PT = {
 
   /* Disk cleanup. */
 
+  "boardRecovery.backup.title": "Workspaces restaurados do backup",
+  "boardRecovery.backup": "Não deu para ler a lista salva de workspaces, então o Prometeu abriu o backup dela. O que mudou nos últimos instantes antes de fechar pode estar faltando.",
+  "boardRecovery.reset.title": "Lista de workspaces vazia",
+  "boardRecovery.reset": "Não deu para ler a lista salva de workspaces nem o backup dela, então o Prometeu começou com a lista vazia. As conversas continuam no disco.",
+  "boardRecovery.kept": "Os arquivos que não deu para ler foram guardados sem alteração nesta pasta:",
+  "boardRecovery.blocked": "As mudanças nos workspaces não serão salvas até o Prometeu conseguir guardar uma cópia dos arquivos que não leu: {cause}",
+  "boardRecovery.open": "Abrir pasta",
+  "boardRecovery.close": "Fechar",
   "clean.title": "Limpar worktrees",
   "clean.offer": "Workspace arquivado. Tirar o worktree do disco?",
   "clean.keep": "Manter worktree",
