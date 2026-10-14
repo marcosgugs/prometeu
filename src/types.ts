@@ -306,6 +306,14 @@ export type Cleanable = {
   blocked: string | null;
 };
 
+/// Saved workspaces came from board.json.bak or started empty because board.json could not be read.
+/// `folder` holds untouched copies of the unreadable files; while `error` is set, nothing is saved.
+export type BoardRecovery = {
+  source: "backup" | "reset";
+  folder: string | null;
+  error: string | null;
+};
+
 /// Dock PTYs are separate from agent sessions. Setup/run are fixed repository scripts; terminal, terminal-2, and later shells exist only after explicit creation.
 export type DockKind = "setup" | "run" | `terminal${string}`;
 

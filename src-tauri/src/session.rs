@@ -35,6 +35,34 @@ pub fn load_board(state: State<AppState>) -> Board {
     lock(&state.board).clone()
 }
 
+/// Report once per start that saved workspaces came from the backup or started empty, and where
+/// the unreadable originals were copied.
+#[tauri::command]
+pub fn board_recovery(
+    store: State<std::sync::Arc<crate::board_store::FileBoardStore>>,
+) -> Option<crate::board_store::BoardRecovery> {
+    store.recovery()
+}
+
+/// Open the fixed recovery folder in the system file manager.
+#[tauri::command]
+pub fn board_recovery_open(
+    store: State<std::sync::Arc<crate::board_store::FileBoardStore>>,
+) -> Result<(), String> {
+    let folder = store.recovery_folder();
+    let opened = crate::platform::opener()
+        .arg(&folder)
+        .status()
+        .map_err(i18n::io)?
+        .success();
+    opened.then_some(()).ok_or_else(|| {
+        i18n::ta(
+            "err.session.openFailed",
+            &[("path", folder.display().to_string())],
+        )
+    })
+}
+
 /* ---------- projects ---------- */
 
 /// Register folders once so the launcher can reuse them. Non-Git folders support agent sessions but

@@ -48,6 +48,7 @@ mod paths;
 mod platform;
 mod plugins;
 mod pty;
+mod recovery;
 mod review_calibration;
 mod scripts;
 mod selection;
@@ -175,10 +176,11 @@ fn main() {
             process_launcher: Arc::new(prometeu_process::UnixProcessLauncher),
             telemetry: Mutex::new(telemetry),
             board: Mutex::new(board),
-            save: BoardPublisher::new(board_store),
+            save: BoardPublisher::new(board_store.clone()),
             ptys: Mutex::new(HashMap::new()),
             looking: Mutex::new(None),
         })
+        .manage(board_store)
         .manage(background::State::default())
         .manage(usage::Service::new())
         .manage(machine::Service::new())
@@ -217,6 +219,8 @@ fn main() {
             machine::set_resource_detail,
             awake::set_awake,
             session::load_board,
+            session::board_recovery,
+            session::board_recovery_open,
             session::add_project,
             session::remove_project,
             session::reorder_projects,

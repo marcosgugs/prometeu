@@ -534,6 +534,20 @@ on 401, `feedback.rateLimit` at the limit, `feedback.uncertain` with `{id}` on
 uncertain delivery and `feedback.sendError` for the rest. The mock records the
 report and nothing leaves the machine.
 
+## Board recovery
+
+`board_recovery` takes no arguments and returns `null`, or
+`{source, folder, error}` when the last load did not come from a readable
+`board.json`: `source` is `backup` or `reset`, `folder` is the absolute path of
+the private recovery folder once it holds copies of the unreadable files, and
+`error` is the cause while copying fails and saves stay blocked.
+`board_recovery_open` opens that fixed folder in the system file manager and
+returns an `err.session.openFailed` error when it cannot. Both are local-only;
+the WSL runtime does not implement them, and the interface treats its
+`application_command_unsupported` answer as nothing to report. The browser mock
+returns the value stored in `localStorage["mock:boardRecovery"]`. See
+[unreadable state](persistence.md#unreadable-state).
+
 ## Built-in MCP catalog entry
 
 `mcp_hub`, `mcp_save` and `mcp_remove` return the virtual `prometeu` entry with
