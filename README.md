@@ -134,6 +134,7 @@ chmod +x Prometeu_x86_64.AppImage
 ./Prometeu_x86_64.AppImage
 ```
 
+Each launch adds Prometeu to your application menu, so the dock shows its icon.
 The AppImage is built on Ubuntu 22.04. See the [Linux guide](docs/operations/linux.md)
 for runtime requirements, Arch and Debian source packages, ARM64 builds and
 platform differences. macOS and AppImage installations offer in-app updates;

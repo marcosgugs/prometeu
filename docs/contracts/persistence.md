@@ -50,6 +50,14 @@ document; see [Git projects](cloud-catalog.md#git-projects).
 
 Worktrees live in `~/prometeu/worktrees[-dev]/...`, outside the state root.
 
+A Linux AppImage launch keeps a desktop entry for the running file outside the
+state root, in `$XDG_DATA_HOME` (`~/.local/share` by default):
+`applications/co.prometeu.desktop.desktop` and its icon
+`icons/hicolor/256x256/apps/co.prometeu.desktop.png`. They hold no app state.
+`desktop_entry.rs` replaces each through a rename only when its content differs,
+and removes the entry when AppImageLauncher or Gear Lever lists the same file;
+see [ADR 0055](../decisions/0055-linux-desktop.md).
+
 Transcript lookup uses the tab's resolved provider, including a frozen task
 profile, before falling back to the workspace provider. This is also the rule
 for snapshots after the process stops; mixed-provider tabs retain their own
