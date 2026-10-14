@@ -295,6 +295,12 @@ ports starting at `PROMETEU_PORT`; `PORT` has the same starting value.
 Equivalent `CONDUCTOR_` variables preserve compatibility with existing scripts.
 Use these ports instead of a fixed port when running multiple workspaces.
 
+Scripts and workspace terminals run in Prometeu's own terminal: they see
+`TERM_PROGRAM=Prometeu` and `TERM=xterm-256color`, and do not inherit the
+identity of the terminal that started Prometeu (such as `TMUX` or
+`ITERM_SESSION_ID`) or the session markers of an agent it runs under (such as
+`CLAUDECODE`). The full list is in `prometeu-process`'s `terminal.rs`.
+
 If a worktree has no settings file, it inherits the original checkout's file.
 This lets you keep private setup commands outside version control.
 

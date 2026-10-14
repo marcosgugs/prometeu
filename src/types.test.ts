@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { use } from "./i18n";
-import { branchTaken, fmtTokens, repoPath, tabLabel, toggleSelection, type Board, type Selection, type Tab, type Workspace } from "./types";
+import { branchTaken, dockLabel, fmtTokens, repoPath, tabLabel, toggleSelection, type Board, type Selection, type Tab, type Workspace } from "./types";
 
 use("en");
 
@@ -127,3 +127,10 @@ describe("repoPath", () => {
     expect(repoPath(multi, "gone", "README.md")).toBe("README.md");
   });
 });
+
+describe("dockLabel", () => {
+  it("numbers later shells the way their dock tabs do", () => {
+    expect((["terminal", "terminal-2", "terminal-10"] as const).map(dockLabel)).toEqual(["Terminal", "Terminal 2", "Terminal 10"]);
+  });
+});
+

@@ -118,3 +118,49 @@ fn abandoning_the_terminal_waiter_kills_and_reaps() {
     assert!(!terminal.control.running());
     assert!(!running(pid));
 }
+
+#[test]
+fn dock_terminals_drop_the_launching_terminal_and_agent_and_present_prometeu() {
+    let mut command = CommandBuilder::new("sh");
+    for (key, value) in [
+        ("CLAUDECODE", "1"),
+        ("CLAUDE_CODE_SESSION_ID", "parent"),
+        ("CODEX_THREAD_ID", "thread"),
+        ("TMUX", "/tmp/tmux-501/default,1,0"),
+        ("TMUX_PANE", "%1"),
+        ("ITERM_SESSION_ID", "w0t0p0"),
+        ("ZELLIJ", "0"),
+        ("TERM", "xterm-ghostty"),
+        ("TERM_PROGRAM", "iTerm.app"),
+        ("TERM_PROGRAM_VERSION", "3.5"),
+        ("HOME", "/Users/person"),
+    ] {
+        command.env(key, value);
+    }
+    own_terminal(&mut command, Some("1.2.3"));
+    command.env("PROMETEU_WORKSPACE_PATH", "/worktree");
+    command.env("PORT", "4100");
+    let value = |key: &str| {
+        command
+            .get_env(key)
+            .map(|value| value.to_str().unwrap().to_owned())
+    };
+    for key in LAUNCHER_ENV {
+        assert_eq!(value(key), None, "{key}");
+    }
+    assert_eq!(value("TERM").as_deref(), Some("xterm-256color"));
+    assert_eq!(value("TERM_PROGRAM").as_deref(), Some("Prometeu"));
+    assert_eq!(value("TERM_PROGRAM_VERSION").as_deref(), Some("1.2.3"));
+    assert_eq!(value("HOME").as_deref(), Some("/Users/person"));
+    assert_eq!(
+        value("PROMETEU_WORKSPACE_PATH").as_deref(),
+        Some("/worktree")
+    );
+    assert_eq!(value("PORT").as_deref(), Some("4100"));
+
+    // A host that does not know the app version claims none rather than the outer terminal's.
+    let mut command = CommandBuilder::new("sh");
+    command.env("TERM_PROGRAM_VERSION", "3.5");
+    own_terminal(&mut command, None);
+    assert_eq!(command.get_env("TERM_PROGRAM_VERSION"), None);
+}

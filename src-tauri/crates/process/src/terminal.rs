@@ -10,6 +10,46 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// Handles of the terminal or multiplexer that launched Prometeu, and markers of an agent session
+/// it may run under. They describe where Prometeu came from, never one of its own terminals.
+const LAUNCHER_ENV: &[&str] = &[
+    "ITERM_SESSION_ID",
+    "LC_TERMINAL",
+    "LC_TERMINAL_VERSION",
+    "KITTY_WINDOW_ID",
+    "WEZTERM_PANE",
+    "WT_SESSION",
+    "TERM_SESSION_ID",
+    "TMUX",
+    "TMUX_PANE",
+    "STY",
+    "ZELLIJ",
+    "ZELLIJ_SESSION_NAME",
+    "ZELLIJ_PANE_ID",
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_SSE_PORT",
+    "CODEX_THREAD_ID",
+];
+
+/// A dock shell or script runs in Prometeu's own terminal: it presents itself as Prometeu and
+/// carries neither the launching terminal's identity nor a parent agent's session. `version` is
+/// the app's, when the host knows it. Apply before the workspace variables, which it leaves alone.
+pub fn own_terminal(command: &mut CommandBuilder, version: Option<&str>) {
+    for key in LAUNCHER_ENV {
+        command.env_remove(key);
+    }
+    command.env("TERM", "xterm-256color");
+    command.env("TERM_PROGRAM", "Prometeu");
+    match version {
+        Some(version) => command.env("TERM_PROGRAM_VERSION", version),
+        None => command.env_remove("TERM_PROGRAM_VERSION"),
+    }
+}
+
 pub struct UnixTerminalFactory;
 impl TerminalFactory<CommandBuilder> for UnixTerminalFactory {
     fn open(

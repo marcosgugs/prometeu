@@ -324,6 +324,14 @@ export const isTerm = (kind: DockKind) => kind.startsWith("terminal");
 export const termNumber = (kind: DockKind) => Number(kind.slice("terminal-".length)) || 1;
 export const termKind = (n: number): DockKind => (n === 1 ? "terminal" : `terminal-${n}`);
 
+/// The dock's own tab label, also used where processes are listed by kind.
+export const dockLabel = (kind: DockKind) => {
+  if (kind === "setup") return t("dock.setup");
+  if (kind === "run") return t("dock.run");
+  const n = termNumber(kind);
+  return n === 1 ? t("dock.terminal") : t("dock.terminalN", { n });
+};
+
 /// A dock may be running or retain output after exit.
 export type DockState = { kind: DockKind; alive: boolean };
 
