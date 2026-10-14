@@ -78,7 +78,7 @@ pub fn check(ws: &Workspace) -> Result<(), String> {
         if !wt.exists() {
             continue;
         }
-        let dirty = git(&wt, &["status", "--porcelain"]).lines().count();
+        let dirty = status(&wt)?.lines().count();
         if dirty > 0 {
             return Err(with_args("err.cleanup.dirty", &[("n", dirty.to_string())]));
         }
@@ -136,6 +136,26 @@ fn size_of(wt: &Path) -> u64 {
             .and_then(|n| n.parse().ok())
     })
     .unwrap_or(0)
+}
+
+/// A status Git could not produce leaves cleanliness unknown, so it blocks cleanup instead of
+/// reading as an empty, clean worktree. Only force, the explicit approval of loss, gets past it.
+fn status(wt: &Path) -> Result<String, String> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(wt)
+        .args(["status", "--porcelain"])
+        .output()
+        .map_err(|e| with_args("err.git.spawn", &[("cause", e.to_string())]))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let cause = match stderr.is_empty() {
+            true => out.status.to_string(),
+            false => stderr,
+        };
+        return Err(with_args("err.cleanup.unverified", &[("cause", cause)]));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn git_ok(dir: &Path, args: &[&str]) -> bool {

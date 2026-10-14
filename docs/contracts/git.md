@@ -279,7 +279,9 @@ The scoped offer uses the same `cleanup_list` and `cleanup_worktree` commands as
 the archived-workspaces screen. A safe worktree starts selected. A worktree with
 uncommitted changes or an unmerged branch starts unselected, shows the reason,
 and requires the person to select it before the destructive confirmation can
-run with `force`. Cleanup removes the worktree and any branch created for that
+run with `force`. The checks fail closed: when `git status` fails in the
+worktree, cleanliness is unknown, so the row is blocked the same way and shows
+Git's message. Cleanup removes the worktree and any branch created for that
 workspace, but keeps preexisting branches, the archived card and transcript.
 Original clones are never eligible.
 

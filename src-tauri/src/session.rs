@@ -2102,6 +2102,24 @@ mod tests {
         std::fs::remove_file(dest.join("c.txt")).unwrap();
         super::check(&ws).unwrap();
 
+        // A status Git cannot read never counts as clean, even with the PR merged; the person sees
+        // Git's message and force remains the explicit way through.
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&dest)
+            .args(["rev-parse", "--path-format=absolute", "--git-path", "index"])
+            .output()
+            .unwrap();
+        let index = std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+        let readable = std::fs::read(&index).unwrap();
+        std::fs::write(&index, "not an index").unwrap();
+        let blocked = super::check(&ws).unwrap_err();
+        assert!(blocked.contains("err.cleanup.unverified"), "{blocked}");
+        assert!(blocked.contains("index"), "{blocked}");
+        super::hard(&ws).unwrap();
+        std::fs::write(&index, readable).unwrap();
+        super::check(&ws).unwrap();
+
         // Force never bypasses the requirement to archive first.
         ws.archived = false;
         assert!(super::check(&ws).unwrap_err().contains("notArchived"));
