@@ -153,7 +153,11 @@ the timeline keeps an unfinished turn cut off instead of settling it: the
 partial reply has no completion footer, open requests read as closed without an
 answer, and an `interrupted` notice marks the place. The composer of an
 interrupted tab offers **Continue**, an ordinary message; any accepted message
-clears the marker through the core reactions. The WSL runtime keeps its
+clears the marker through the core reactions. The transcript itself has no
+record of the cut, and Claude's native history cannot take one, so the place is
+kept in the board: when the conversation starts again, `chat.rs` records its
+history's line count in `Tab.cuts`, and every later snapshot replays `stopped`
+there. The WSL runtime keeps its
 conversations across interface restarts, so only its snapshot changes.
 
 A question or approval holds the tab in `Querendo` from `request.opened` until

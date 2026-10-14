@@ -128,6 +128,10 @@ pub struct Tab {
     /// off. Set on revival, cleared by the next accepted message; absent while false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub interrupted: bool,
+    /// Transcript line counts where the app cut a turn off, recorded when the conversation starts
+    /// again. Replay stops at each one, so continuing never makes the cut reply look finished.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cuts: Vec<u64>,
 }
 
 impl Tab {
@@ -550,6 +554,7 @@ impl Board {
                     choice: None,
                     kickoff: None,
                     interrupted: false,
+                    cuts: Vec::new(),
                 });
             }
             // Processes do not survive app restarts. Remove generated placeholder titles so the UI
@@ -799,11 +804,13 @@ mod tests {
         );
         let saved = serde_json::to_value(&board).unwrap();
         assert_eq!(saved["workspaces"][0]["tabs"][0]["interrupted"], true);
-        assert!(saved["workspaces"][0]["tabs"][2]
-            .as_object()
-            .unwrap()
-            .get("interrupted")
-            .is_none());
+        let ready = saved["workspaces"][0]["tabs"][2].as_object().unwrap();
+        assert!(ready.get("interrupted").is_none());
+        assert!(ready.get("cuts").is_none());
+        let mut cut = board.workspaces[0].tabs[0].clone();
+        cut.cuts = vec![3];
+        let restored: Tab = serde_json::from_value(serde_json::to_value(&cut).unwrap()).unwrap();
+        assert_eq!(restored.cuts, vec![3]);
     }
 
     /// Existing legacy sessions still receive their migrated tab.

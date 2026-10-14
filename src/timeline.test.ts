@@ -525,6 +525,22 @@ describe("a conversation whose process is gone", () => {
     expect(timeline.answer("q")).toEqual([]);
   });
 
+  it("keeps a cut turn cut off after the conversation continued past it", () => {
+    const timeline = unfinished();
+    // Replay places the recorded cut where the history ended, before the continuation.
+    timeline.push(state("stopped"));
+    timeline.push(j({ v: 1, type: "user.message", at: 200, content: [{ kind: "text", text: "Continue" }] }));
+    timeline.push(j({ v: 1, type: "assistant.block", at: 210, messageId: "n", index: 0, block: { kind: "text", text: "Done" } }));
+    timeline.push(j({ v: 1, type: "turn.completed", at: 220, outcome: "ok", message: "", durationMs: 20, costUsd: null, messageId: "n" }));
+    timeline.push(state("ready"));
+    const replies = timeline.items.flatMap(item => item.kind === "assistant" ? [!!item.cut] : []);
+    expect(replies).toEqual([true, false]);
+    expect(timeline.items.find(item => item.kind === "ask")).toMatchObject({ answered: false, closed: true });
+    const speech = pieces(timeline.items).filter(piece => piece.kind === "say");
+    expect(turnMetadata(timeline.items, speech[0])).toBeNull();
+    expect(turnMetadata(timeline.items, speech[1])).toEqual({ durationMs: 20 });
+  });
+
   it("marks a turn cut before the agent replied", () => {
     const timeline = new Timeline();
     timeline.push(j({ v: 1, type: "user.message", at: 100, content: [{ kind: "text", text: "Run the migrations" }] }));

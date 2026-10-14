@@ -225,8 +225,10 @@ state, but it does not start a new execution in the Dock's pending tracking.
 restart: replay keeps a turn the transcript left unfinished visibly cut off,
 with the partial reply marked incomplete, open requests closed without an
 answer and an `interrupted` notice, while `ready` still settles them as before.
-Older readers treat `stopped` like `ready`. These events stay ephemeral, with no
-change to the envelope, the persisted format or the contract's version.
+The snapshot also places `stopped` after each line count in `Tab.cuts`, where
+the app cut a turn off before the conversation continued. Older readers treat
+`stopped` like `ready`. These events stay ephemeral, with no change to the
+envelope, the persisted format or the contract's version.
 Optional local notifications use these same live events without changing V1.
 Notifications and sound start disabled; see the
 [notification contract](notifications.md) and

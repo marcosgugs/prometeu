@@ -54,16 +54,27 @@ const KEEP: usize = 4 * 1024 * 1024;
 pub struct Lines {
     pub text: String,
     pub seq: u64,
+    /// Transcript lines trimmed from the head of `text`, so line positions stay absolute.
+    pub first: u64,
 }
 
 impl Lines {
     pub fn seeded(store: &dyn TranscriptStore) -> Result<Self, String> {
         let mut text = store.load()?;
-        trim(&mut text);
+        let first = trim(&mut text);
         if !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');
         }
-        Ok(Self { text, seq: 0 })
+        Ok(Self {
+            text,
+            seq: 0,
+            first,
+        })
+    }
+
+    /// Transcript lines recorded so far, counted from the start of the transcript.
+    pub fn end(&self) -> u64 {
+        self.first + lines_in(&self.text)
     }
 
     /// Internal capture fields never enter replay or public delivery; canonical turn usage does.
@@ -133,7 +144,7 @@ impl Lines {
     pub fn absorb(&mut self, line: &str) -> u64 {
         self.text.push_str(line);
         self.text.push('\n');
-        trim(&mut self.text);
+        self.first += trim(&mut self.text);
         self.skip()
     }
 
@@ -143,13 +154,29 @@ impl Lines {
     }
 
     /// Synthetic runtime state participates in replay, but does not consume a live sequence.
-    pub fn snapshot(&self, presence: Presence, clock: &dyn Clock) -> Snapshot {
+    /// `cuts` are transcript positions where the app ended a turn; replay stops there too, so a
+    /// later continuation does not turn the cut reply into a finished one.
+    pub fn snapshot(&self, presence: Presence, cuts: &[u64], clock: &dyn Clock) -> Snapshot {
         let state = match presence {
             Presence::Busy => "busy",
             Presence::Ready => "ready",
             Presence::Stopped => "stopped",
         };
-        let mut text = self.text.clone();
+        let mut text = match cuts.is_empty() {
+            true => self.text.clone(),
+            false => {
+                let stopped = event("session.state", clock.now(), json!({ "state": "stopped" }));
+                let mut text = String::with_capacity(self.text.len());
+                for (at, line) in (self.first + 1..).zip(self.text.split_inclusive('\n')) {
+                    text.push_str(line);
+                    if cuts.contains(&at) {
+                        text.push_str(&stopped.to_string());
+                        text.push('\n');
+                    }
+                }
+                text
+            }
+        };
         text.push_str(&event("session.state", clock.now(), json!({ "state": state })).to_string());
         text.push('\n');
         Snapshot {
@@ -176,15 +203,23 @@ pub struct Snapshot {
     pub seq: u64,
 }
 
-fn trim(text: &mut String) {
-    if text.len() > KEEP {
-        let cut = text.len() - KEEP;
-        let at = text.as_bytes()[cut..]
-            .iter()
-            .position(|&b| b == b'\n')
-            .map_or(text.len(), |i| cut + i + 1);
-        text.drain(..at);
+/// Drop whole lines from the head beyond the memory ceiling and return how many were dropped.
+fn trim(text: &mut String) -> u64 {
+    if text.len() <= KEEP {
+        return 0;
     }
+    let cut = text.len() - KEEP;
+    let at = text.as_bytes()[cut..]
+        .iter()
+        .position(|&b| b == b'\n')
+        .map_or(text.len(), |i| cut + i + 1);
+    let dropped = lines_in(&text[..at]);
+    text.drain(..at);
+    dropped
+}
+
+fn lines_in(text: &str) -> u64 {
+    text.bytes().filter(|&b| b == b'\n').count() as u64
 }
 
 fn closed_request(command: &Value, clock: &dyn Clock) -> Option<Value> {

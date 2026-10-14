@@ -353,12 +353,12 @@ impl Runtime {
                 };
                 (
                     Some(&active.effects.generation),
-                    lock(&active.pump.output.lines).snapshot(presence, &SystemClock),
+                    lock(&active.pump.output.lines).snapshot(presence, &[], &SystemClock),
                 )
             }
             None => (
                 None,
-                Lines::seeded(self.store.as_ref())?.snapshot(Presence::Stopped, &SystemClock),
+                Lines::seeded(self.store.as_ref())?.snapshot(Presence::Stopped, &[], &SystemClock),
             ),
         };
         Ok(
