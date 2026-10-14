@@ -1193,6 +1193,14 @@ export const EN: Record<keyof typeof pt.PT, string> = {
 
   /* ---------- releasing the disk ---------- */
 
+  "boardRecovery.backup.title": "Workspaces restored from backup",
+  "boardRecovery.backup": "Prometeu couldn't read the saved list of workspaces, so it opened its backup. Changes from the last moments before closing may be missing.",
+  "boardRecovery.reset.title": "Workspace list started empty",
+  "boardRecovery.reset": "Prometeu couldn't read the saved list of workspaces or its backup, so it started with an empty list. Conversations are still on disk.",
+  "boardRecovery.kept": "The files it couldn't read were kept unchanged in this folder:",
+  "boardRecovery.blocked": "Changes to workspaces won't be saved until Prometeu can keep a copy of the files it couldn't read: {cause}",
+  "boardRecovery.open": "Open folder",
+  "boardRecovery.close": "Close",
   "clean.title": "Clean up worktrees",
   "clean.offer": "Workspace archived. Remove the worktree from disk?",
   "clean.keep": "Keep worktree",

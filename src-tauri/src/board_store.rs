@@ -1,50 +1,150 @@
 //! Existing board.json persistence, composed with an explicit root.
-use crate::paths;
+use crate::{lock::lock, paths, recovery};
 use prometeu_core::{board::Board, publication::BoardStore};
-use std::path::PathBuf;
+use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 pub struct FileBoardStore {
     path: PathBuf,
+    recovery: Mutex<Option<Recovery>>,
+}
+
+/// How the last load fell back, for the notice shown at startup.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct BoardRecovery {
+    /// `backup` when the board came from `board.json.bak`, `reset` when it started empty.
+    pub source: &'static str,
+    /// Holds byte-for-byte copies of the files that could not be read, once there are any.
+    pub folder: Option<String>,
+    /// Why those copies could not be kept; saving stays blocked while it is set.
+    pub error: Option<String>,
+}
+
+struct Recovery {
+    source: &'static str,
+    /// Unreadable files not copied yet.
+    pending: Vec<Unreadable>,
+    kept: bool,
+    error: Option<String>,
+}
+
+struct Unreadable {
+    label: &'static str,
+    /// The bytes read at load; `None` when the file itself could not be read, so no copy can
+    /// protect it.
+    bytes: Option<Vec<u8>>,
+    error: String,
+}
+
+impl Recovery {
+    /// Copy every unreadable file before a save may replace it. A failure blocks the save.
+    fn preserve(&mut self, folder: &Path) -> Result<(), String> {
+        while let Some(file) = self.pending.first() {
+            let kept = match &file.bytes {
+                Some(bytes) => recovery::keep(folder, file.label, bytes),
+                None => Err(file.error.clone()),
+            };
+            if let Err(error) = kept {
+                self.error = Some(error.clone());
+                return Err(error);
+            }
+            self.pending.remove(0);
+            self.kept = true;
+        }
+        self.error = None;
+        Ok(())
+    }
+}
+
+/// `Ok(None)` means the file does not exist.
+fn read(path: &Path, label: &'static str) -> Result<Option<Board>, Unreadable> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(Unreadable {
+                label,
+                bytes: None,
+                error: error.to_string(),
+            })
+        }
+    };
+    serde_json::from_slice(&bytes)
+        .map(Some)
+        .map_err(|error| Unreadable {
+            label,
+            bytes: Some(bytes),
+            error: error.to_string(),
+        })
 }
 
 impl FileBoardStore {
     pub fn new(root: PathBuf) -> Self {
         Self {
             path: root.join("board.json"),
+            recovery: Mutex::new(None),
         }
+    }
+
+    pub fn recovery_folder(&self) -> PathBuf {
+        recovery::folder(self.path.parent().unwrap_or(Path::new(".")))
+    }
+
+    /// Present when the last load did not come from a readable board.json.
+    pub fn recovery(&self) -> Option<BoardRecovery> {
+        lock(&self.recovery).as_ref().map(|recovery| BoardRecovery {
+            source: recovery.source,
+            folder: recovery
+                .kept
+                .then(|| self.recovery_folder().display().to_string()),
+            error: recovery.error.clone(),
+        })
     }
 }
 
 impl BoardStore for FileBoardStore {
     fn load(&self) -> Board {
-        let current = &self.path;
-        let backup = current.with_extension("json.bak");
-        let read = |candidate: &std::path::Path| -> Result<Board, String> {
-            let text = std::fs::read_to_string(candidate).map_err(|error| error.to_string())?;
-            serde_json::from_str(&text).map_err(|error| error.to_string())
-        };
-        match read(current) {
-            Ok(board) => board,
-            Err(error) => match read(&backup) {
-                Ok(board) => {
-                    if current.exists() {
-                        eprintln!(
-                            "invalid board.json ({error}); trying backup {}",
-                            backup.display()
-                        );
-                    }
-                    board
-                }
-                Err(backup_error) => {
-                    if current.exists() || backup.exists() {
-                        eprintln!("invalid board.json and backup: {error}; {backup_error}");
-                    }
-                    Board::default()
-                }
-            },
+        let backup = self.path.with_extension("json.bak");
+        let mut unreadable = Vec::new();
+        match read(&self.path, "board") {
+            Ok(Some(board)) => return board,
+            Ok(None) => {}
+            Err(file) => {
+                eprintln!(
+                    "invalid board.json ({}); trying backup {}",
+                    file.error,
+                    backup.display()
+                );
+                unreadable.push(file);
+            }
         }
+        let (board, source) = match read(&backup, "board-backup") {
+            Ok(Some(board)) => (board, "backup"),
+            Ok(None) if unreadable.is_empty() => return Board::default(),
+            Ok(None) => (Board::default(), "reset"),
+            Err(file) => {
+                eprintln!("invalid board.json backup ({})", file.error);
+                unreadable.push(file);
+                (Board::default(), "reset")
+            }
+        };
+        let mut recovery = Recovery {
+            source,
+            pending: unreadable,
+            kept: false,
+            error: None,
+        };
+        // Copy right away so the notice can point at the copies; a failure is retried before
+        // every save, which stays blocked until it succeeds.
+        let _ = recovery.preserve(&self.recovery_folder());
+        *lock(&self.recovery) = Some(recovery);
+        board
     }
     fn save(&self, board: &Board) -> Result<(), String> {
+        if let Some(recovery) = lock(&self.recovery).as_mut() {
+            recovery.preserve(&self.recovery_folder())?;
+        }
         let path = &self.path;
         let json = serde_json::to_string_pretty(board).map_err(|error| error.to_string())?;
         // Only back up a board that still deserializes. Replacing the last valid backup with
@@ -74,6 +174,29 @@ mod tests {
             .join(format!("prometeu-board-{}", uuid::Uuid::new_v4()))
             .join("board.json")
     }
+    fn store(current: &Path) -> FileBoardStore {
+        FileBoardStore::new(current.parent().unwrap().to_path_buf())
+    }
+    /// Bytes of every copy in the recovery folder whose name starts with `label-`, oldest first.
+    fn copies(store: &FileBoardStore, label: &str) -> Vec<Vec<u8>> {
+        let mut names: Vec<_> = std::fs::read_dir(store.recovery_folder())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                let name = path.file_name().unwrap().to_str().unwrap();
+                name.strip_prefix(label)
+                    .and_then(|rest| rest.strip_prefix('-'))
+                    .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+            })
+            .collect();
+        names.sort();
+        names
+            .iter()
+            .map(|path| std::fs::read(path).unwrap())
+            .collect()
+    }
 
     #[test]
     fn corrupt_boards_recover_from_the_last_valid_backup() {
@@ -86,10 +209,7 @@ mod tests {
         )
         .unwrap();
 
-        let recovered = FileBoardStore {
-            path: current.clone(),
-        }
-        .load();
+        let recovered = store(&current).load();
 
         assert_eq!(recovered.stages, vec!["Fazendo"]);
         assert_eq!(recovered.workspaces.len(), 1);
@@ -106,10 +226,7 @@ mod tests {
         )
         .unwrap();
 
-        let recovered = FileBoardStore {
-            path: current.clone(),
-        }
-        .load();
+        let recovered = store(&current).load();
 
         assert_eq!(recovered.stages, vec!["Fazendo"]);
         assert_eq!(recovered.workspaces[0].id, "w");
@@ -119,9 +236,7 @@ mod tests {
     #[test]
     fn saving_after_corruption_preserves_the_last_valid_backup() {
         let current = temporary_board_path();
-        let store = FileBoardStore {
-            path: current.clone(),
-        };
+        let store = store(&current);
         let mut board = board_json("");
         board.workspaces[0].title = "Recoverable".into();
         store.save(&board).unwrap();
@@ -132,6 +247,123 @@ mod tests {
         store.save(&board).unwrap();
         std::fs::remove_file(&current).unwrap();
         assert_eq!(store.load().workspaces[0].title, "Recoverable");
+        std::fs::remove_dir_all(current.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_board_is_kept_before_the_backup_replaces_it() {
+        let current = temporary_board_path();
+        std::fs::create_dir_all(current.parent().unwrap()).unwrap();
+        std::fs::write(&current, b"{\"stages\":\xff").unwrap();
+        std::fs::write(
+            current.with_extension("json.bak"),
+            serde_json::to_string(&board_json("")).unwrap(),
+        )
+        .unwrap();
+        let store = store(&current);
+
+        let board = store.load();
+        store.save(&board).unwrap();
+        store.save(&board).unwrap();
+
+        assert_eq!(board.workspaces.len(), 1);
+        let recovery = store.recovery().unwrap();
+        assert_eq!(recovery.source, "backup");
+        assert_eq!(
+            recovery.folder.as_deref(),
+            Some(store.recovery_folder().to_str().unwrap())
+        );
+        assert_eq!(recovery.error, None);
+        assert_eq!(copies(&store, "board"), vec![b"{\"stages\":\xff".to_vec()]);
+        assert!(copies(&store, "board-backup").is_empty());
+        assert_eq!(store.load().workspaces.len(), 1);
+        std::fs::remove_dir_all(current.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn unreadable_board_and_backup_survive_two_saves_byte_for_byte() {
+        let current = temporary_board_path();
+        std::fs::create_dir_all(current.parent().unwrap()).unwrap();
+        // A board written by a newer version that this one cannot deserialize.
+        let newer = br#"{"stages":["Doing"],"workspaces":[{"id":"w","tabs":{"future":true}}]}"#;
+        std::fs::write(&current, newer).unwrap();
+        std::fs::write(current.with_extension("json.bak"), b"{truncated").unwrap();
+        let store = store(&current);
+
+        let mut board = store.load();
+        assert!(board.workspaces.is_empty());
+        board.stages = vec!["First".into()];
+        store.save(&board).unwrap();
+        board.stages = vec!["Second".into()];
+        store.save(&board).unwrap();
+
+        assert_eq!(store.recovery().unwrap().source, "reset");
+        assert_eq!(copies(&store, "board"), vec![newer.to_vec()]);
+        assert_eq!(copies(&store, "board-backup"), vec![b"{truncated".to_vec()]);
+        // Starting again from the same unreadable bytes does not pile up copies.
+        std::fs::write(&current, newer).unwrap();
+        std::fs::write(current.with_extension("json.bak"), b"{truncated").unwrap();
+        let again = FileBoardStore::new(current.parent().unwrap().to_path_buf());
+        again.load();
+        assert_eq!(copies(&again, "board").len(), 1);
+        assert_eq!(copies(&again, "board-backup").len(), 1);
+        std::fs::remove_dir_all(current.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_failed_copy_blocks_saving_until_the_copy_succeeds() {
+        let current = temporary_board_path();
+        let root = current.parent().unwrap();
+        std::fs::create_dir_all(root).unwrap();
+        std::fs::write(&current, "{truncated").unwrap();
+        let store = store(&current);
+        // A file where the recovery folder belongs makes every copy fail.
+        std::fs::write(store.recovery_folder(), "").unwrap();
+
+        let board = store.load();
+        let recovery = store.recovery().unwrap();
+        assert_eq!(recovery.source, "reset");
+        assert_eq!(recovery.folder, None);
+        assert!(recovery.error.is_some());
+        assert!(store.save(&board).is_err());
+        assert_eq!(std::fs::read(&current).unwrap(), b"{truncated");
+
+        std::fs::remove_file(store.recovery_folder()).unwrap();
+        store.save(&board).unwrap();
+        assert_eq!(store.recovery().unwrap().error, None);
+        assert_eq!(copies(&store, "board"), vec![b"{truncated".to_vec()]);
+        assert!(store.load().workspaces.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn readable_or_absent_boards_report_no_recovery() {
+        let current = temporary_board_path();
+        let store = store(&current);
+        store.load();
+        assert_eq!(store.recovery(), None);
+        store.save(&board_json("")).unwrap();
+        store.load();
+        assert_eq!(store.recovery(), None);
+        assert!(!store.recovery_folder().exists());
+
+        // A missing board restored from its backup is reported without copies.
+        std::fs::remove_file(&current).unwrap();
+        std::fs::write(
+            current.with_extension("json.bak"),
+            serde_json::to_string(&board_json("")).unwrap(),
+        )
+        .unwrap();
+        let restored = FileBoardStore::new(current.parent().unwrap().to_path_buf());
+        assert_eq!(restored.load().workspaces.len(), 1);
+        assert_eq!(
+            restored.recovery(),
+            Some(BoardRecovery {
+                source: "backup",
+                folder: None,
+                error: None
+            })
+        );
         std::fs::remove_dir_all(current.parent().unwrap()).unwrap();
     }
 }
