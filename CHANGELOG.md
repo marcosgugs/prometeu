@@ -4,6 +4,22 @@ What changes in Prometeu, version by version, for whoever uses the app.
 Versions come from `sh scripts/release.sh`; this file is generated from the
 commits by git-cliff, and each release's notes on GitHub are its section.
 
+## [0.29.1] - 2026-10-15
+
+### Fixes
+
+- **cleanup:** Keep a worktree whose git status fails instead of removing it as clean
+- **conversation:** Show a tab running again as soon as its question or approval is answered
+- **conversation:** Show a turn cut off by quitting or updating as interrupted, with continue
+- **conversation:** Keep a cut-off turn marked after continuing and reopening
+- **notifications:** Quit when the main window closes while the notch island is on
+- **board:** Keep unreadable workspace files and say when the list was restored or reset
+- **board:** Keep an unreadable workspace backup when the main list still loads
+- **terminal:** Stop dock terminals from inheriting the launching terminal and agent session
+- **statusbar:** Number dock shells in the resource list as their tabs do
+- **linux:** Show the app icon in the dock instead of a gear when running the AppImage
+- **windows:** Open the installed app instead of failing to prepare WSL
+
 ## [0.29.0] - 2026-10-10
 
 ### New
