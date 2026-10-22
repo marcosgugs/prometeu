@@ -27,7 +27,7 @@ as a short index for agents and `README.md` presents the product.
 
 - [Local notifications](contracts/notifications.md): event selection, native delivery and silent defaults.
 
-- [Optional context evaluation](contracts/context-evaluation.md): bring-your-own-key TypeSafe integration, evaluation port and missing-context review.
+- [Optional context evaluation](contracts/context-evaluation.md): bring-your-own-key TypeSafe adapter, evaluation port and key test in Settings.
 
 - [Embedded MCP and delegation](contracts/embedded-mcp.md): local, opt-in orchestration infrastructure with client-owned agents and optional conversation context.
 
@@ -181,5 +181,3 @@ current system until the corresponding implementation is accepted.
 - [Diff review implementation plan](superpowers/plans/2026-09-26-diff-review.md).
 
 - [Local usage and context insights implementation plan](superpowers/plans/2026-10-01-issue-131-usage-insights.md).
-
-- [Review calibration implementation plan](superpowers/plans/2026-09-27-review-calibration.md).
