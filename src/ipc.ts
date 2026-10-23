@@ -147,6 +147,7 @@ export type Commands = {
   refresh_prs: { args: undefined; result: void };
   remove_project: { args: { id: string }; result: void };
   reorder_projects: { args: { ids: string[] }; result: void };
+  group_projects: { args: { ids: string[]; group: string | null }; result: void };
   remove_workspace: { args: { id: string }; result: void };
   rename_path: { args: { id: string; from: string; to: string }; result: void };
   rename_tab: { args: { workspace: string; tab: string; title: string }; result: void };

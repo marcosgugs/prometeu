@@ -69,6 +69,15 @@ event; the browser mock applies the same rule. Test:
 `project_order_follows_ids_and_keeps_unlisted_projects_last` in
 `src-tauri/src/session.rs`.
 
+`group_projects` receives `{ ids: string[], group: string | null }`, returns
+empty and sets `group` on the listed projects. The name is trimmed; an empty or
+null name takes the projects out of their folder. Moving a project, renaming a
+folder (all its members get the new name) and dissolving it are the same
+command, so there is no separate folder entity. Unknown IDs are ignored. The
+change reaches the frontend through the `board` event; the browser mock applies
+the same rule. Test: `project_folders_persist_trimmed_and_clear_on_empty_names`
+in `src-tauri/crates/core/src/workspaces.rs`.
+
 Local notification commands and the `notification-open` event are described in
 the [notification contract](notifications.md).
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { use } from "./i18n";
-import { branchTaken, dockLabel, fmtTokens, repoPath, tabLabel, toggleSelection, type Board, type Selection, type Tab, type Workspace } from "./types";
+import { branchTaken, dockLabel, fmtTokens, projectMatches, refillOrder, repoPath, tabLabel, toggleSelection, type Board, type Selection, type Tab, type Workspace } from "./types";
 
 use("en");
 
@@ -134,3 +134,21 @@ describe("dockLabel", () => {
   });
 });
 
+
+describe("sidebar projects", () => {
+  it("reorders one list without moving projects from other folders", () => {
+    // Folder projects b and d sit between loose projects a and c in the board order.
+    expect(refillOrder(["a", "b", "c", "d"], ["c", "a"])).toEqual(["c", "b", "a", "d"]);
+    expect(refillOrder(["a", "b", "c", "d"], ["d", "b"])).toEqual(["a", "d", "c", "b"]);
+  });
+
+  it("filters by project name, workspace title or branch, ignoring case", () => {
+    const project = { id: "/api", name: "capim-api", path: "/api" };
+    const ws = [{ title: "Boleto webhook", branch: "pato-verde" }] as Workspace[];
+    expect(projectMatches(project, ws, "")).toBe(true);
+    expect(projectMatches(project, ws, " API ")).toBe(true);
+    expect(projectMatches(project, ws, "webhook")).toBe(true);
+    expect(projectMatches(project, ws, "pato")).toBe(true);
+    expect(projectMatches(project, ws, "relay")).toBe(false);
+  });
+});

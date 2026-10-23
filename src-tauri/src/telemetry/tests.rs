@@ -884,6 +884,7 @@ fn legacy_board_identities_are_opaque_stable_and_distinct_from_paths() {
         id: "/private/repo".into(),
         path: "/private/repo".into(),
         name: "secret".into(),
+        group: None,
     });
     board.prepare_telemetry_ids();
     let before = board.telemetry_ids.get("project", "/private/repo").unwrap();

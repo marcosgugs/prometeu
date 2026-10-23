@@ -248,6 +248,15 @@ impl Workspaces {
         crate::projects::reorder(&mut next.board.projects, ids);
         self.commit(next)
     }
+    pub fn group_projects(
+        &mut self,
+        ids: &[String],
+        group: Option<&str>,
+    ) -> Result<Catalog, String> {
+        let mut next = self.catalog.clone();
+        crate::projects::group(&mut next.board.projects, ids, group);
+        self.commit(next)
+    }
     pub fn remove_project(&mut self, id: &str) -> Result<Catalog, String> {
         let mut next = self.catalog.clone();
         crate::projects::remove(&mut next.board, id);
@@ -638,6 +647,7 @@ mod tests {
                 id: path.into(),
                 path: path.into(),
                 name: "Project".into(),
+                group: None,
             })
         }
     }
@@ -782,6 +792,44 @@ mod tests {
             Workspaces::open(store, Arc::new(Folders), "/project", ProviderId::Codex).unwrap();
         assert_eq!(restored.snapshot().board.projects[0].id, second.id);
         assert_eq!(restored.snapshot().board.projects[1].id, "/project");
+    }
+    #[test]
+    fn project_folders_persist_trimmed_and_clear_on_empty_names() {
+        let store = Arc::new(Memory::default());
+        let mut service = Workspaces::open(
+            store.clone(),
+            Arc::new(Folders),
+            "/project",
+            ProviderId::Codex,
+        )
+        .unwrap();
+        let second = service.add_project("/another").unwrap();
+        let ids = ["/project".into(), second.id.clone(), "/gone".into()];
+        service.group_projects(&ids, Some("  Work ")).unwrap();
+        let restored = Workspaces::open(
+            store.clone(),
+            Arc::new(Folders),
+            "/project",
+            ProviderId::Codex,
+        )
+        .unwrap()
+        .snapshot();
+        let groups: Vec<_> = restored
+            .board
+            .projects
+            .iter()
+            .map(|p| p.group.as_deref())
+            .collect();
+        assert_eq!(groups, [Some("Work"), Some("Work")]);
+        service.group_projects(&[second.id], Some(" ")).unwrap();
+        let groups: Vec<_> = service
+            .snapshot()
+            .board
+            .projects
+            .iter()
+            .map(|p| p.group.clone())
+            .collect();
+        assert_eq!(groups, [Some("Work".into()), None]);
     }
     #[test]
     fn tool_selection_and_trust_publish_only_after_catalog_persistence() {

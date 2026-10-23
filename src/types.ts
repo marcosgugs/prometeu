@@ -44,7 +44,8 @@ export type Tab = {
 /// Provider, model, and effort form one choice because each model belongs to a provider and has supported effort levels.
 export type Choice = { agent: ProviderId; model: string; effort: string };
 
-export type Project = { id: string; name: string; path: string };
+/// `group` is the sidebar folder the person chose; absent means the project is not in a folder.
+export type Project = { id: string; name: string; path: string; group?: string };
 
 /// A repository's source clone, workspace path, base branch, and PR. Each repository retains independent Git history.
 export type Repo = { path: string; name: string; worktree: string; base: string; pr: Pr | null };
@@ -437,6 +438,20 @@ const RANK: Record<Status, number> = { querendo: 3, rodando: 2, pronta: 1, desli
 /// The most urgent tab determines workspace status, matching Rust rank ordering.
 export function worst(ws: Workspace): Tab | undefined {
   return [...ws.tabs].sort((a, b) => RANK[b.status] - RANK[a.status])[0];
+}
+
+/// A drag reorders one sidebar list (a folder or the loose projects). Refill only that list's slots
+/// in the board order so every other project keeps its place.
+export function refillOrder(order: string[], moved: string[]): string[] {
+  const slots = new Set(moved);
+  let i = 0;
+  return order.map((id) => (slots.has(id) ? moved[i++] : id));
+}
+
+/// The sidebar filter matches project names and the titles and branches of their workspaces.
+export function projectMatches(project: Project, workspaces: Workspace[], query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return !q || [project.name, ...workspaces.flatMap((w) => [w.title, w.branch])].some((s) => s.toLowerCase().includes(q));
 }
 
 export function statusOf(ws: Workspace): Status {

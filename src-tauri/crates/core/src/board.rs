@@ -156,6 +156,9 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub path: String,
+    /// Sidebar folder chosen by the person. Projects without one sit at the top level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 /// A repository's source clone and working copy. Multi-repository workspaces keep one adjacent
@@ -526,6 +529,7 @@ impl Board {
                 id: ws.repo.clone(),
                 name: ws.repo_name.clone(),
                 path: ws.repo.clone(),
+                group: None,
             })
             .collect();
         for ws in &mut self.workspaces {

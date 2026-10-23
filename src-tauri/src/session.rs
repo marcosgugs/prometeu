@@ -96,6 +96,7 @@ pub(crate) fn register_project(board: &mut Board, path: &Path) -> Project {
             .unwrap_or("repo")
             .into(),
         path: id,
+        group: None,
     };
     prometeu_core::projects::register(board, project)
 }
@@ -118,6 +119,22 @@ pub fn reorder_projects(app: AppHandle, state: State<AppState>, ids: Vec<String>
     {
         let _sync = crate::catalog::guard();
         sort_projects(&mut lock(&state.board).projects, &ids);
+    }
+    publish(&app);
+}
+
+/// Moving projects into a folder, renaming it and dissolving it are the same operation over the
+/// folder's member IDs; an empty name takes them out of the folder.
+#[tauri::command]
+pub fn group_projects(
+    app: AppHandle,
+    state: State<AppState>,
+    ids: Vec<String>,
+    group: Option<String>,
+) {
+    {
+        let _sync = crate::catalog::guard();
+        prometeu_core::projects::group(&mut lock(&state.board).projects, &ids, group.as_deref());
     }
     publish(&app);
 }

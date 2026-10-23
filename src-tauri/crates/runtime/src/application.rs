@@ -342,6 +342,10 @@ pub(crate) enum Request {
     ReorderProjects {
         ids: Vec<String>,
     },
+    GroupProjects {
+        ids: Vec<String>,
+        group: Option<String>,
+    },
     TreeGitStatus {
         id: String,
     },
@@ -668,6 +672,11 @@ impl Host {
             }
             Request::ReorderProjects { ids } => {
                 let catalog = self.catalog.reorder_projects(&ids)?;
+                self.application_events.publish_board(catalog.board)?;
+                Ok(Value::Null)
+            }
+            Request::GroupProjects { ids, group } => {
+                let catalog = self.catalog.group_projects(&ids, group.as_deref())?;
                 self.application_events.publish_board(catalog.board)?;
                 Ok(Value::Null)
             }
