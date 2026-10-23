@@ -1,6 +1,5 @@
 import { t } from "./i18n";
 import * as telemetry from "./mock-telemetry";
-import * as reviewCalibration from "./mock-review-calibration";
 import type { Notice } from "./notifications";
 import { notificationView } from "./notification-view";
 import type { IslandSnapshot } from "./island";
@@ -2563,11 +2562,6 @@ const mockCommands: IpcHandlers = {
   telemetry_events({ filter, cursor }) { return telemetry.page(filter, cursor); },
   telemetry_export({ filter }) { localStorage.setItem("mock:telemetryExport", telemetry.exportData(filter)); return null; },
   telemetry_clear() { telemetry.clear(); return null; },
-  review_calibration_status() { return reviewCalibration.status(); },
-  review_calibration_set_enabled({ enabled }) { return reviewCalibration.setEnabled(enabled); },
-  review_calibration_append({ generation, record }) { reviewCalibration.append(generation, record); return null; },
-  review_calibration_clear() { return reviewCalibration.clear(); },
-  review_calibration_export() { localStorage.setItem("mock:reviewCalibrationExport", reviewCalibration.exportCsv()); return null; },
   typesafe_status() {
     return { ...mockTypeSafe(), problem: null };
   },

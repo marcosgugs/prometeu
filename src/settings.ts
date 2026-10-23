@@ -19,9 +19,8 @@ import * as projects from "./projects";
 import * as news from "./news";
 import * as notifications from "./notification-settings";
 import * as team from "./team";
-import * as typesafe from "./typesafe";
 import { telemetryRows } from "./telemetry-settings";
-import { typesafeRows } from "./typesafe-settings";
+import { loadTypesafe, typesafeRows } from "./typesafe-settings";
 import type { GitHubStatus, LinearStatus } from "./types";
 import { settingsRow } from "./update";
 import { $, h, template } from "./util";
@@ -54,9 +53,7 @@ export async function init(context: Ctx) {
     status = payload;
     refreshPages("trabalho");
   });
-  // The optional TypeSafe integration starts disabled until its local configuration loads.
-  typesafe.onChange(() => refreshPages("trabalho"));
-  void typesafe.refresh();
+  void loadTypesafe().then(() => refreshPages("trabalho"));
   listen<GitHubStatus>("github", ({ payload }) => {
     githubStatus = payload;
     refreshPages("trabalho");
@@ -116,7 +113,7 @@ const PAGES: Page[] = [
     { id: "team", title: "settings.team", rows: teamRows },
     { id: "projects", title: "settings.localProjects", rows: projectRows, keywords: ["projects.title"] },
     { id: "telemetry", title: "telemetry.title", rows: telemetryRows },
-    { id: "integrations", title: "settings.integrations", rows: () => [linearRow(), githubRow(), ...typesafeRows(ctx.say, draw)], keywords: ["typesafe.enabled"] },
+    { id: "integrations", title: "settings.integrations", rows: () => [linearRow(), githubRow(), ...typesafeRows(ctx.say, draw)] },
   ] },
 ];
 

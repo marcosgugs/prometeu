@@ -64,12 +64,6 @@ optional for local work; model access comes from your own provider account.
   conversations and app calls, with model breakdowns and PR attribution where
   evidence supports it. History stays local and can be cleared in Settings.
   See [usage semantics and coverage](docs/contracts/telemetry.md).
-- **Optional request review.** Bring your own TypeSafe API key and turn the
-  review on in Settings to add **Review request** to new workspaces. It looks
-  for a missing decision, such as an undefined rule for existing records, and
-  suggests at most two questions you can answer, hand to the agent or dismiss.
-  It is off by default, sends your draft only when you ask, and never blocks
-  creating the workspace. See [context evaluation](docs/contracts/context-evaluation.md).
 - **Git review.** Read unified or side-by-side diffs, stage selected files,
   commit only the index, inspect history, compare branches, and resolve conflicts.
   Add persistent notes to lines or files and send a selected review batch through

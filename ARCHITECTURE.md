@@ -23,7 +23,6 @@ flowchart LR
     back <--> codex[Codex app-server]
     back <--> agy[Antigravity CLI NDJSON]
     back <--> local[Git, files and local processes]
-    back -. optional, explicit review .-> typesafe[TypeSafe API]
     ui <--> relay[Relay — Cloudflare Worker + Durable Object]
     relay <--> peer[Another member's Prometeu]
 ```
@@ -146,11 +145,9 @@ Publication is a separate operational step. See the
 
 `evaluation.rs` defines an application-owned port for bounded, closed-question
 classification; `typesafe.rs` is its only adapter and keeps the person's own
-API key in a private file. The integration starts disabled and runs only on an
-explicit **Review request** in the launcher, whose rules live in
-`src/context-review.ts`. `src/review-policy.ts` binds model identity and draft
-language to conservative thresholds; `review_calibration.rs` owns independent,
-opt-in, content-free local records and export. It is independent of the agent provider, the Cloud
+API key in a private file. No feature uses it since the launcher's request
+review was removed; Settings only saves the key and tests it with a fixed
+synthetic request. It is independent of the agent provider, the Cloud
 account, the timeline and the relay. See the
 [contract](docs/contracts/context-evaluation.md) and
 [ADR 0058](docs/decisions/0058-optional-context-evaluation.md).
@@ -284,7 +281,7 @@ The detailed rules and the current state of each one are in
 | Git and files | `src/workspace-changes.ts`, `src/changes-menu.ts`, `src/file-menu.ts`, `src/diff.ts`, `src/viewer.ts`, `src/find.ts`, `src/quick-open.ts`, `src/csv.ts`, `src-tauri/src/session/find.rs`, `src-tauri/src/session/git.rs`, `src-tauri/src/session/diff.rs`, `src-tauri/src/session/files.rs` |
 | MCP and plugins | `src/mcp.ts`, `src/plugins.ts`, `src-tauri/src/mcp.rs`, `src-tauri/src/plugins.rs`, `docs/contracts/plugin-marketplace.md` |
 | collaboration | shells `src/team.ts` (desktop) and `src/mobile/` (browser, bundle for the Cloud); core `src/team-member.ts`, `src/team-ports.ts`, features `src/team-owner.ts`, `src/team-viewer.ts`, `src/team-comments.ts`; `src/team-transport.ts`, `src/team-control.ts`, `src/team-rights.ts`, `relay/src/` |
-| optional context evaluation | `src-tauri/src/evaluation.rs` (port), `src-tauri/src/typesafe.rs` (adapter, key), `src/context-review.ts`, `src/context-review-view.ts`, `src/typesafe.ts`, `src/typesafe-settings.ts` |
+| optional context evaluation | `src-tauri/src/evaluation.rs` (port), `src-tauri/src/typesafe.rs` (adapter, key), `src/evaluation.ts` (IPC types), `src/typesafe-settings.ts` (key and test) |
 | bounded command execution | `src-tauri/crates/core/src/command.rs` (ports), `src-tauri/crates/process/src/command.rs` and `query.rs` (Unix implementations) |
 | terminal execution | `src-tauri/crates/core/src/terminal.rs` (ports and output), `src-tauri/crates/process/src/terminal.rs` (Unix PTYs), `src-tauri/src/pty.rs` (desktop composition) |
 | terminal and preview | `src/dock*.ts`, `src/term.ts`, `src/browser.ts`, `src-tauri/src/dock.rs`, `src-tauri/src/pty.rs` |

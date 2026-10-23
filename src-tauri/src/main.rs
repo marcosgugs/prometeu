@@ -51,7 +51,6 @@ mod platform;
 mod plugins;
 mod pty;
 mod recovery;
-mod review_calibration;
 mod scripts;
 mod selection;
 mod session;
@@ -370,11 +369,6 @@ fn main() {
             typesafe::typesafe_remove_key,
             typesafe::typesafe_set_enabled,
             typesafe::context_evaluate,
-            review_calibration::review_calibration_status,
-            review_calibration::review_calibration_set_enabled,
-            review_calibration::review_calibration_append,
-            review_calibration::review_calibration_clear,
-            review_calibration::review_calibration_export,
         ])
         .setup(|app| {
             if let Some(window) = tauri::Manager::get_window(app, "main") {

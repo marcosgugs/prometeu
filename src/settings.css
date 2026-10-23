@@ -72,12 +72,9 @@
 }
 
 /* Keep the optional integration compact without changing shared controls. */
-.settings-panel > .typesafe-heading { flex-wrap: wrap; }
-.typesafe-heading > .ui-switch { margin-left: auto; }
 .settings-panel > .typesafe-heading + .ui-field { margin-top: 0; max-width: 600px; }
 .typesafe-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .typesafe-key > .ui-password { flex: 1 1 220px; min-width: 0; }
-.settings-panel > .typesafe-flow { border-top: 1px solid var(--line); margin: 16px 0 0; padding: 12px 18px; font-size: 11px; }
 
 .telemetry-settings { padding: var(--space-4); }
 .telemetry-controls { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; }
