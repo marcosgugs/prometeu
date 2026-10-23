@@ -336,6 +336,7 @@ function renderGroup(
   );
   head.tabIndex = 0;
   head.setAttribute("role", "button");
+  head.dataset.track = "rail.group";
   if (opts.on) head.classList.add("on");
   head.setAttribute("aria-expanded", String(!shut));
   head.children[1].textContent = name;
@@ -357,6 +358,7 @@ function renderGroup(
   });
   // The chevron collapses groups whose heading opens a page.
   if (opts.open) {
+    (head.children[3] as HTMLElement).dataset.track = "rail.group.fold";
     head.children[3].addEventListener("click", (e) => {
       e.stopPropagation();
       fold();
@@ -382,6 +384,7 @@ function renderGroup(
     title.textContent = ws.title;
     b.querySelector(".wsbranch")!.textContent = ws.branch;
     b.title = [owner, repoLabel(ws), ws.branch].filter(Boolean).join(" · ");
+    b.dataset.track = "rail.workspace";
     b.addEventListener("click", () => hooks.open(ws));
     if (owner || opts.avatars) b.children[0].after(template("span", "av", owner ? avatar(owner) : avatars(ws.repos.map((r) => r.name))));
     if (ws.remote && !ws.remote.online) card.classList.add("off");
@@ -394,6 +397,7 @@ function renderGroup(
       const shut = ws.tabs.length > 1 && folded(key);
       const toggle = template("button", "railagents-toggle", `<span></span>${icon(shut ? "chevron-right" : "chevron-down", 12)}`);
       toggle.children[0].textContent = tn(ws.tabs.length, "rail.agents");
+      toggle.dataset.track = "rail.agents";
       toggle.setAttribute("aria-expanded", String(!shut));
       toggle.setAttribute("aria-controls", `railagents-${ws.id}`);
       const agents = h("div", "railagents");
@@ -416,6 +420,7 @@ function renderGroup(
         );
         agent.prepend(statusDot(status));
         agent.dataset.tab = tab.id;
+        agent.dataset.track = "rail.agent";
         const name = tabLabel(ws, tab);
         agent.querySelector(".lbl")!.textContent = name;
         agent.title = [name, owner ?? t(`model.${provider}`), label(status)].filter(Boolean).join(" · ");

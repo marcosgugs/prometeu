@@ -759,6 +759,7 @@ function drawTabs(ws: Workspace) {
     b.innerHTML = `<i class="dot"></i><span></span><span class="n tokens"></span>`;
     (b.children[0] as HTMLElement).style.background = `var(--dot-${tab.status})`;
     b.dataset.tab = tab.id;
+    b.dataset.track = "tab.conversation";
     b.children[1].textContent = tabLabel(ws, tab);
     b.children[2].textContent = tab.tokens ? `~${fmtTokens(tab.tokens)}` : "";
     b.title =
@@ -780,6 +781,7 @@ function drawTabs(ws: Workspace) {
       x.className = "tabx ico sm";
       x.innerHTML = icon("x", 12);
       x.title = t("tab.close");
+      x.dataset.track = "tab.close";
       x.addEventListener("click", (e) => {
         e.stopPropagation();
         invoke("close_tab", { workspace: ws.id, tab: tab.id });
@@ -804,6 +806,7 @@ function drawTabs(ws: Workspace) {
     x.className = "tabx ico sm";
     x.innerHTML = icon("x", 12);
     x.title = t(fs.diff ? "tab.changes.closeKey" : "tab.changes.close");
+    x.dataset.track = "tab.changes.close";
     x.addEventListener("click", (e) => {
       e.stopPropagation();
       closeChanges();
@@ -820,11 +823,13 @@ function drawTabs(ws: Workspace) {
     b.children[1].textContent = t("tab.browser");
     b.children[2].textContent = fs.port ? `:${fs.port}` : "";
     b.title = t("tab.browser.title", { port: fs.port });
+    b.dataset.track = "tab.browser";
     b.addEventListener("click", () => void showWeb());
     const x = document.createElement("span");
     x.className = "tabx ico sm";
     x.innerHTML = icon("x", 12);
     x.title = t(fs.web ? "tab.browser.closeKey" : "tab.browser.close");
+    x.dataset.track = "tab.browser.close";
     x.addEventListener("click", (e) => {
       e.stopPropagation();
       void closeWeb();
@@ -877,11 +882,13 @@ function appendTermTabs(bar: HTMLElement) {
     b.innerHTML = `${icon("terminal", 14)}<span></span>`;
     b.children[1].textContent = d.label;
     b.title = d.label;
+    b.dataset.track = "tab.terminal";
     b.addEventListener("click", () => dockbar.select(d.kind));
     const x = document.createElement("span");
     x.className = "tabx ico sm";
     x.innerHTML = icon("x", 12);
     x.title = t("dock.closeTerm");
+    x.dataset.track = "dock.closeTerm";
     x.addEventListener("click", (e) => {
       e.stopPropagation();
       dockbar.closeTab(d.kind);
@@ -899,8 +906,11 @@ function appendFileTabs(bar: HTMLElement, fs: Files) {
     b.innerHTML = `${icon("file", 14)}<span></span><span class="tabx ico sm">${icon("x", 12)}</span>`;
     b.children[1].textContent = path.slice(path.lastIndexOf("/") + 1);
     b.title = path;
+    b.dataset.track = "tab.file";
     b.addEventListener("click", () => openFile(path));
-    b.querySelector(".tabx")!.addEventListener("click", (e) => {
+    const x = b.querySelector<HTMLElement>(".tabx")!;
+    x.dataset.track = "tab.file.close";
+    x.addEventListener("click", (e) => {
       e.stopPropagation();
       closeFile(path);
     });

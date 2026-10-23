@@ -28,8 +28,9 @@ export function viewScreen(screen: Screen) {
   track({ name: "screen_viewed", screen });
 }
 
+/** `data-track` names a control whose label is user data, or a clickable part nested in one. */
 const CONTROLS = [
-  "button", "a", "summary", "select", "input[type=checkbox]", "input[type=radio]",
+  "[data-track]", "button", "a", "summary", "select", "input[type=checkbox]", "input[type=radio]",
   ...["button", "link", "menuitem", "menuitemcheckbox", "tab", "option", "switch", "checkbox"].map(role => `[role=${role}]`),
 ].join(",");
 
@@ -47,7 +48,7 @@ export function trackClicks(root: Document = document) {
     if (!el) return;
     const role = el.getAttribute("role") ?? el.tagName.toLowerCase();
     const area = el.closest("[role=menu]") ? "menu" : ancestorId(el, stable);
-    const target = labelKey(el) ?? (stable.has(el.id) ? el.id : null);
+    const target = (el as HTMLElement).dataset?.track ?? labelKey(el) ?? (stable.has(el.id) ? el.id : null);
     track({ name: "ui_clicked", control: ROLES[role] ?? "button", target, area });
   }, { capture: true });
 }
