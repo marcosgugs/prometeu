@@ -14,6 +14,7 @@ import type { TeamConfig, Organization } from "./team";
 
 /** The frontend and browser mock share this contract. Rust remains the wire authority. */
 export type Commands = {
+  analytics_track: { args: { event: import("./analytics").AnalyticsEvent }; result: void };
   background_context: { args: undefined; result: import("./background").BackgroundContext };
   notification_permission: { args: { request: boolean }; result: import("./notifications").NoticePermission };
   notification_show: { args: { notice: import("./notifications").Notice }; result: void };

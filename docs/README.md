@@ -27,6 +27,8 @@ as a short index for agents and `README.md` presents the product.
 
 - [Local notifications](contracts/notifications.md): event selection, native delivery and silent defaults.
 
+- [Anonymous product analytics](contracts/product-analytics.md): PostHog event vocabulary, payload, installation identity and rules for new events.
+
 - [Optional context evaluation](contracts/context-evaluation.md): bring-your-own-key TypeSafe adapter, evaluation port and key test in Settings.
 
 - [Embedded MCP and delegation](contracts/embedded-mcp.md): local, opt-in orchestration infrastructure with client-owned agents and optional conversation context.
@@ -64,6 +66,7 @@ as a short index for agents and `README.md` presents the product.
 - [ADR 0089](decisions/0089-notch-island.md): persistent notch island that follows agents, answers requests and reopens conversations.
 - [ADR 0090](decisions/0090-approved-remote-input.md): remote input only from member and key pairs approved on the owner's Mac, with separate view, message and control rights.
 - [ADR 0091](decisions/0091-keep-unreadable-state.md): unreadable board and team files are copied to a recovery folder before anything replaces them, and saves wait while copying fails.
+- [ADR 0093](decisions/0093-anonymous-product-analytics.md): anonymous feature and click events sent to PostHog from Rust, identified only by i18n keys and static IDs.
 
 [Lifecycle and current index](decisions/README.md). Only implemented decisions
 appear below. Retired documents and previous versions remain in Git history;

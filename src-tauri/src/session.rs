@@ -1144,6 +1144,10 @@ pub(crate) fn create_workspace_owned(
             },
         },
     );
+    crate::analytics::track(crate::analytics::Event::WorkspaceCreated {
+        provider: draft.launch.agent,
+        is_worktree: draft.worktree,
+    });
     let (bg, id) = (app.clone(), ws.id.clone());
     std::thread::spawn(move || prepare(&bg, &id, draft, cols, rows, generation));
 
@@ -1406,6 +1410,9 @@ pub fn new_tab(
             },
         );
     }
+    crate::analytics::track(crate::analytics::Event::ConversationCreated {
+        provider: launch.agent,
+    });
     chat::ready_now(&app, &tab.id);
     Ok(tab)
 }

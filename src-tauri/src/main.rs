@@ -7,6 +7,7 @@ mod accounts;
 mod actions;
 mod agent_launch;
 mod agents;
+mod analytics;
 mod antigravity;
 mod awake;
 mod background;
@@ -145,6 +146,7 @@ fn main() {
         return;
     }
     install_crypto();
+    analytics::track(analytics::Event::AppOpened);
     adopt_login_path();
     let root = paths::root();
     let profiles: Arc<dyn prometeu_profiles::ProfileBackend> = Arc::new(account_profiles::native());
@@ -186,6 +188,7 @@ fn main() {
         .manage(usage::Service::new())
         .manage(machine::Service::new())
         .invoke_handler(tauri::generate_handler![
+            analytics::analytics_track,
             background::background_context,
             notifications::notification_permission,
             notifications::notification_show,
