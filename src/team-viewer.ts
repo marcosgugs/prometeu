@@ -151,13 +151,15 @@ export function detach() {
   attached = null;
 }
 
-/// Leave another owner's share for every device of this person. The relay drops it from the audience, answers with
-/// `unshare` and keeps the person out until the owner readmits them; the owner does not need to be online.
+/// Leave another owner's share for every device of this person. The relay drops it from the audience, detaches this
+/// device, answers with `unshare` and keeps the person out until the owner readmits them; the owner does not need to be
+/// online. Until that `unshare` arrives the conversation stays attached, so a failed send leaves everything as it was.
 export async function leave(id: string): Promise<boolean> {
   const found = remoteIds.get(id);
   if (!found) return false;
-  if (attached?.ws === found.ws) detach();
-  return ctx.sendConfirmed({ t: "leave", ws: found.ws });
+  const sent = await ctx.sendConfirmed({ t: "leave", ws: found.ws });
+  if (!sent) ctx.fail(t("err.team.leave"));
+  return sent;
 }
 
 /// Forward viewer input or JSON control to the online owner of the currently attached tab.

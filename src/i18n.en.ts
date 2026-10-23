@@ -1632,6 +1632,7 @@ export const EN: Record<keyof typeof pt.PT, string> = {
   "err.team.noShare": "that workspace isn't shared anymore",
   "err.team.offline": "the owner is offline — the conversation can't take a message",
   "err.team.down": "no connection to the team — the comment didn't go out",
+  "err.team.leave": "no connection to the team — you are still in the share",
   "err.team.empty": "the comment is empty",
   "err.team.tooBig": "the comment is too big",
   "err.team.noNote": "that comment no longer exists",

@@ -74,3 +74,19 @@ it("reflects the rights the owner announced, so a viewer without them sees no ac
   expect(viewer.rightsIn(remote.id)).toEqual({ send: false, control: true });
   expect(viewer.announcedRights(remote.id)).toEqual({ send: [], control: ["eu_mock"] });
 });
+
+it("leaves a remote share through the relay, which detaches the open conversation", async () => {
+  const scope = JSON.stringify(["team", "ws://mock", "fakeTeam"]);
+  await member.connect({
+    member: "eu_mock", scope, privateScope: JSON.stringify([scope, "", "eu_mock"]), shareScope: "team:fakeTeam", legacy: true,
+    url: async () => "ws://mock/team/fakeTeam?m=eu_mock&n=Me",
+  });
+  await vi.waitFor(() => expect(viewer.remotes()).toHaveLength(1));
+  const [remote] = viewer.remotes();
+  await viewer.attach(remote.id, "mt1");
+  const fail = vi.fn(); member.onError(fail);
+  expect(await viewer.leave(remote.id)).toBe(true);
+  await vi.waitFor(() => expect(viewer.remotes()).toHaveLength(0));
+  expect(viewer.attachedTab()).toBeNull();
+  expect(fail).not.toHaveBeenCalled();
+});

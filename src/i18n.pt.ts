@@ -1678,6 +1678,7 @@ export const PT = {
   "err.team.noShare": "esse workspace não está mais compartilhado",
   "err.team.offline": "o dono está offline — a conversa não recebe fala",
   "err.team.down": "sem conexão com o time — o comentário não saiu",
+  "err.team.leave": "sem conexão com o time — você continua no compartilhamento",
   "err.team.empty": "o comentário está vazio",
   "err.team.tooBig": "o comentário é grande demais",
   "err.team.noNote": "esse comentário não existe mais",
