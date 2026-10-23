@@ -109,3 +109,4 @@ Status: Proposed
 | [0090](0090-approved-remote-input.md) | Remote input only from approved identities, with separate rights |
 | [0091](0091-keep-unreadable-state.md) | Keep unreadable state before replacing it |
 | [0093](0093-anonymous-product-analytics.md) | Anonymous product analytics in PostHog |
+| [0094](0094-leaving-a-share.md) | Leaving a share, enforced by the relay |

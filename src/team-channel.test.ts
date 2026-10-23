@@ -142,6 +142,28 @@ describe("end-to-end encrypted channel through the relay", () => {
     expect(received(t.deliveries, "mac2", "write").slice(-1)[0]).toMatchObject({ from: "alice", data: "from the other Mac" });
   });
 
+  it("stops encrypting for a viewer who left until the owner readmits them", async () => {
+    const t = await team();
+    const everyone = { ...shared, audience: null };
+    t.alice.own(everyone);
+    await t.send("alice", { t: "share", share: everyone });
+    expect(t.bob.shares.has(shared.id)).toBe(true);
+    await t.send("bob", { t: "leave", ws: shared.id });
+    expect(t.bob.shares.has(shared.id)).toBe(false);
+    expect(t.alice.leftOf(shared.id)).toEqual(["bob"]);
+
+    const stale = (await t.send("alice", { t: "share", share: everyone })).encrypted as Extract<Up, { t: "share" }>;
+    expect(stale.share.audience).toEqual(["carol"]);
+    expect(Object.keys(stale.share.encrypted!.boxes).sort()).toEqual(["alice", "carol"]);
+    expect(t.bob.shares.has(shared.id)).toBe(false);
+
+    await t.send("alice", { t: "readmit", ws: shared.id, person: "bob" });
+    t.alice.readmitted(shared.id, "bob");
+    await t.send("alice", { t: "share", share: everyone });
+    expect(t.bob.shares.get(shared.id)).toMatchObject({ id: shared.id, title: shared.title });
+    expect(t.alice.leftOf(shared.id)).toEqual([]);
+  });
+
   it("authenticates remote input and persists replay rejection across restarts", async () => {
     const t = await team();
     await t.send("alice", { t: "share", share: shared });

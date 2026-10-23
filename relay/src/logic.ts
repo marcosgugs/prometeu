@@ -35,7 +35,8 @@ const notesSize = (s: State) => [...s.notes.values()].reduce((size, list) => siz
 
 export type Attached = { ws: string; tab: string } | null;
 export type Sock = { id: string; member: string; attached: Attached };
-export type Entry = { share: Share; owner: string; online: boolean };
+/// `left` names the people who left the share, omitted when nobody did.
+export type Entry = { share: Share; owner: string; online: boolean; left?: string[] };
 
 export type State = {
   members: Map<string, { name: string; last_seen: number; key?: string; person?: string }>;
@@ -81,7 +82,10 @@ export function members(s: State): Member[] {
 const socksOf = (s: State, member: string) =>
   [...s.socks.values()].filter((k) => k.member === member).map((k) => k.id);
 
-const shared = (e: Entry): Shared => ({ ...e.share, owner: e.owner, online: e.online });
+const shared = (e: Entry): Shared => ({ ...e.share, owner: e.owner, online: e.online, ...(e.left ? { left: e.left } : {}) });
+
+/// The person a member acts for: a companion device maps to its primary member, anyone else to itself.
+const personIn = (s: State, member: string) => s.members.get(member)?.person ?? member;
 
 /// The owner always has access. Other members require an unrestricted audience or an explicit audience
 /// entry.
@@ -286,6 +290,49 @@ function setAttached(sock: Sock, attached: Attached): Effect {
   return { e: "attachment", sock: sock.id, member: sock.member, attached };
 }
 
+/// Store an entry whose audience changed and tell every socket what it gained or lost: viewers still in the audience
+/// get the new announcement, the ones left out are detached, receive `unshare` and lose the share's inbox items.
+function reaccess(s: State, had: Entry | undefined, e: Entry): Effect[] {
+  s.shares.set(e.share.id, e);
+  const out: Effect[] = [{ e: "put", key: `share:${e.share.id}`, value: e }];
+  const detachedFrom: { ws: string; tab: string }[] = [];
+  // Revoked viewers receive unshare and stop watching the tab.
+  for (const k of s.socks.values()) {
+    const tabStillExists = !k.attached || k.attached.ws !== e.share.id || e.share.tabs.some((tab) => tab.id === k.attached?.tab);
+    if (canSee(e, k.member) && tabStillExists) {
+      out.push({ e: "send", sock: k.id, frame: { t: "share", share: shared(e) } });
+      continue;
+    }
+    if (k.attached?.ws === e.share.id) {
+      detachedFrom.push(k.attached);
+      out.push(setAttached(k, null));
+    }
+    if (had && canSee(had, k.member) && !canSee(e, k.member)) {
+      out.push({ e: "send", sock: k.id, frame: { t: "unshare", ws: e.share.id } });
+    } else if (canSee(e, k.member)) {
+      out.push({ e: "send", sock: k.id, frame: { t: "share", share: shared(e) } });
+    }
+  }
+  // Remove inaccessible comments from inboxes without deleting comments still visible to the new
+  // audience.
+  for (const [member, box] of s.inbox) {
+    if (canSee(e, member)) continue;
+    const removed = box.filter((item) => item.ws === e.share.id);
+    if (!removed.length) continue;
+    const keep = box.filter((item) => item.ws !== e.share.id);
+    if (keep.length) s.inbox.set(member, keep);
+    else s.inbox.delete(member);
+    for (const item of removed) out.push({ e: "del", key: inboxKey(member, item.id) });
+    out.push(...toMember(s, member, { t: "inbox", items: keep }));
+  }
+  // Report updated viewer lists to the owner after audience changes.
+  for (const at of detachedFrom) out.push(...watchChanged(s, at));
+  if (had) {
+    for (const tab of e.share.tabs) out.push(...watchChanged(s, { ws: e.share.id, tab: tab.id }));
+  }
+  return out;
+}
+
 export function reduce(s: State, ev: Event): Effect[] {
   switch (ev.k) {
     case "roster": {
@@ -295,7 +342,16 @@ export function reduce(s: State, ev: Event): Effect[] {
         if (!allowed.has(sock.member)) out.push(...reduce(s, { k: "close", sock: sock.id, now: ev.now }));
       }
       for (const [id, entry] of s.shares) {
-        if (allowed.has(entry.owner)) continue;
+        if (allowed.has(entry.owner)) {
+          // People who left the organization no longer need to stay out, which keeps `left` within the roster limit.
+          const left = entry.left?.filter((person) => allowed.has(person));
+          if (left && left.length !== entry.left!.length) {
+            if (left.length) entry.left = left;
+            else delete entry.left;
+            out.push({ e: "put", key: `share:${id}`, value: entry });
+          }
+          continue;
+        }
         out.push(...toAudience(s, id, { t: "unshare", ws: id }), { e: "del", key: `share:${id}` }, ...purgeNotes(s, id));
         s.shares.delete(id);
         for (const sock of s.socks.values()) if (sock.attached?.ws === id) out.push(setAttached(sock, null));
@@ -440,46 +496,9 @@ function text(s: State, ev: Extract<Event, { k: "text" }>): Effect[] {
         const found = byTab(s, tab.id);
         if (found && found[0] !== share.id) return error(sock.id, "tabConflict");
       }
-      const audience = share.audience?.filter((member) => member !== me && s.members.has(member)) ?? null;
-      const e: Entry = { share: { ...share, audience }, owner: me, online: true };
-      s.shares.set(share.id, e);
-      const out: Effect[] = [{ e: "put", key: `share:${share.id}`, value: e }];
-      const detachedFrom: { ws: string; tab: string }[] = [];
-      // Revoked viewers receive unshare and stop watching the tab.
-      for (const k of s.socks.values()) {
-        const tabStillExists = !k.attached || k.attached.ws !== share.id || e.share.tabs.some((tab) => tab.id === k.attached?.tab);
-        if (canSee(e, k.member) && tabStillExists) {
-          out.push({ e: "send", sock: k.id, frame: { t: "share", share: shared(e) } });
-          continue;
-        }
-        if (k.attached?.ws === share.id) {
-          detachedFrom.push(k.attached);
-          out.push(setAttached(k, null));
-        }
-        if (had && canSee(had, k.member) && !canSee(e, k.member)) {
-          out.push({ e: "send", sock: k.id, frame: { t: "unshare", ws: share.id } });
-        } else if (canSee(e, k.member)) {
-          out.push({ e: "send", sock: k.id, frame: { t: "share", share: shared(e) } });
-        }
-      }
-      // Remove inaccessible comments from inboxes without deleting comments still visible to the new
-      // audience.
-      for (const [member, box] of s.inbox) {
-        if (canSee(e, member)) continue;
-        const removed = box.filter((item) => item.ws === share.id);
-        if (!removed.length) continue;
-        const keep = box.filter((item) => item.ws !== share.id);
-        if (keep.length) s.inbox.set(member, keep);
-        else s.inbox.delete(member);
-        for (const item of removed) out.push({ e: "del", key: inboxKey(member, item.id) });
-        out.push(...toMember(s, member, { t: "inbox", items: keep }));
-      }
-      // Report updated viewer lists to the owner after audience changes.
-      for (const at of detachedFrom) out.push(...watchChanged(s, at));
-      if (had) {
-        for (const tab of e.share.tabs) out.push(...watchChanged(s, { ws: share.id, tab: tab.id }));
-      }
-      return out;
+      // People who left stay out until the owner readmits them, whatever audience the owner announces.
+      const audience = share.audience?.filter((member) => member !== me && s.members.has(member) && !had?.left?.includes(personIn(s, member))) ?? null;
+      return reaccess(s, had, { share: { ...share, audience }, owner: me, online: true, ...(had?.left ? { left: had.left } : {}) });
     }
 
     case "unshare": {
@@ -494,6 +513,27 @@ function text(s: State, ev: Extract<Event, { k: "text" }>): Effect[] {
       }
       out.push(...[...s.socks.values()].filter((k) => canSee(e, k.member)).map((k): Effect => ({ e: "send", sock: k.id, frame: { t: "unshare", ws: f.ws } })));
       return out;
+    }
+
+    case "leave": {
+      const e = s.shares.get(f.ws);
+      if (!e || e.owner === me || !canSee(e, me)) return error(sock.id, "noShare");
+      const person = personIn(s, me);
+      // Every device of the person leaves, including the owner's own companions; the owner always keeps the share.
+      const audience = (e.share.audience ?? [...s.members.keys()]).filter((member) => member !== e.owner && personIn(s, member) !== person);
+      return reaccess(s, e, { ...e, share: { ...e.share, audience }, left: [...new Set([...(e.left ?? []), person])] });
+    }
+
+    case "readmit": {
+      const e = s.shares.get(f.ws);
+      if (!e || e.owner !== me) return error(sock.id, "owner");
+      if (!e.left?.includes(f.person)) return [];
+      const left = e.left.filter((person) => person !== f.person);
+      // The owner's next announcement brings the person back into the audience.
+      const { left: _gone, ...rest } = e;
+      const next: Entry = left.length ? { ...rest, left } : rest;
+      s.shares.set(f.ws, next);
+      return [{ e: "put", key: `share:${f.ws}`, value: next }];
     }
 
     case "attach": {
@@ -682,7 +722,10 @@ export function hydrate(rows: Iterable<[string, unknown]>, socks: Sock[]): State
         isId(v.owner) &&
         share.tabs.every((tab) => !byTab(s, tab.id)) &&
         s.shares.size < SHARES_MAX
-      ) s.shares.set(ws, { share, owner: v.owner, online: false });
+      ) {
+        const left = Array.isArray(v.left) ? [...new Set(v.left.filter(isId))] : [];
+        s.shares.set(ws, { share, owner: v.owner, online: false, ...(left.length ? { left } : {}) });
+      }
     } else if (key.startsWith("note:")) {
       const n = parseNote(v);
       if (n) {

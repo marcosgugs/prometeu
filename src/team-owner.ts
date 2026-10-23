@@ -168,12 +168,14 @@ const tabOwnedBy = (tab: string, ids: Set<string>) =>
 /// Require the tab to belong to a currently announced local workspace.
 const mine = (tab: string) => tabOwnedBy(tab, new Set(announced.keys()));
 
-/// Local audiences list people; a companion device is admitted through the person it belongs to.
-function admitted(audience: string[] | null, remoteControl: boolean, member: string): boolean {
+/// Local audiences list people; a companion device is admitted through the person it belongs to. People who left the
+/// share stay out whatever the audience says.
+function admitted(w: Workspace, audience: string[] | null, remoteControl: boolean, member: string): boolean {
   const owner = ctx.you();
   if (member === owner) return true;
   const members = ctx.members();
   const person = personOf(members, member);
+  if (ctx.channel()?.leftOf(w.id).includes(person)) return false;
   if (owner && person === personOf(members, owner)) return remoteControl;
   return !audience || audience.includes(member) || audience.includes(person);
 }
@@ -189,7 +191,7 @@ function canReceive(tab: string, member: string): boolean {
   const w = workspaceOf(tab);
   if (!w || !sharedHere(w) || w.archived || w.cleaned || !ctx.channel()?.security.key(member)) return false;
   const access = accessOf(w);
-  return !!access && admitted(access.audience, access.remoteControl, member);
+  return !!access && admitted(w, access.audience, access.remoteControl, member);
 }
 
 /// Viewing never grants acting. The owner's devices act through remote control; anyone else needs the right on their
@@ -232,9 +234,29 @@ export async function remoteControl(id: string, enabled: boolean): Promise<numbe
   if (!workspace) return 0;
   const audience = workspace.shared && (workspace.audience === null || workspace.audience.length > 0) ? workspace.audience : [];
   const generation = ctx.generation();
-  await setAccess(id, audience, enabled, rightsOf(workspace));
   const you = ctx.you();
-  return enabled && you ? approve([personOf(ctx.members(), you)], generation) : 0;
+  const self = you && personOf(ctx.members(), you);
+  // Turning remote control on again is how the owner's devices come back after one of them left.
+  if (enabled && self && ctx.channel()?.leftOf(id).includes(self)) await readmit(id, self);
+  await setAccess(id, audience, enabled, rightsOf(workspace));
+  return enabled && self ? approve([self], generation) : 0;
+}
+
+/// People who left a local share; they stay out until the owner readmits them.
+export const leftOf = (id: string): string[] => ctx.channel()?.leftOf(id) ?? [];
+
+/// Let a person who left back in. An explicit audience regains the person; the relay accepts them again on the next
+/// announcement.
+export async function readmit(id: string, person: string) {
+  if (!await ctx.sendConfirmed({ t: "readmit", ws: id, person })) throw t("err.team.encryption");
+  ctx.channel()?.readmitted(id, person);
+  const workspace = lastBoard?.workspaces.find(w => w.id === id);
+  if (workspace && sharedWithTeam(workspace) && workspace.audience && !workspace.audience.includes(person)) {
+    await share(id, [...workspace.audience, person]);
+  } else if (lastBoard) {
+    announced.delete(id);
+    boardChanged(lastBoard);
+  }
 }
 
 async function setAccess(id: string, audience: string[] | null, remoteControl: boolean, rights: ShareRights) {
@@ -302,7 +324,7 @@ export function pausedIn(id: string): PausedInput[] {
   const you = ctx.you(), members = ctx.members();
   const people = new Set<string>();
   for (const [member, workspaces] of Object.entries(security.paused())) {
-    if (workspaces.includes(id) && admitted(access.audience, access.remoteControl, member) &&
+    if (workspaces.includes(id) && admitted(w, access.audience, access.remoteControl, member) &&
       (entitled(access, member, "send") || entitled(access, member, "control"))) people.add(personOf(members, member));
   }
   const self = you && personOf(members, you);
