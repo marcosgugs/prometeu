@@ -89,7 +89,12 @@ static QUEUE: OnceLock<Option<Sender<Event>>> = OnceLock::new();
 
 /// Never blocks or fails the caller; delivery problems drop the event.
 pub fn track(event: Event) {
-    let queue = QUEUE.get_or_init(|| option_env!("PROMETEU_POSTHOG_KEY").map(start));
+    // CI defines the variable as empty when the repository variable is missing.
+    let queue = QUEUE.get_or_init(|| {
+        option_env!("PROMETEU_POSTHOG_KEY")
+            .filter(|key| !key.trim().is_empty())
+            .map(start)
+    });
     if let Some(queue) = queue {
         let _ = queue.send(event);
     }
