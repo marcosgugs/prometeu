@@ -142,6 +142,17 @@ memory, until the owner sends, edits or discards it, unless the workspace turned
 owner confirmation off; interrupts and answers do not wait. The sender receives
 no receipt either way.
 
+A viewer leaves another owner's share with `leave { ws }`. The relay removes
+every device of the viewer's person from the stored audience, records the person
+in the entry's `left`, detaches them, sends `unshare` and drops the share's inbox
+items, even while the owner is offline. Later `share` announcements cannot bring
+that person back: the relay filters their devices out until the owner sends
+`readmit { ws, person }`, which only the owner may send. `Shared.left` reaches the
+owner, and is omitted when nobody left; the owner's channel excludes those people
+from its recipients and discards their watch and input. Stopping the share
+deletes `left` with the entry; the roster drops people who left the
+organization. Decision in [ADR 0094](../decisions/0094-leaving-a-share.md).
+
 Peers' comments use the last authenticated audience they received. If the relay
 omits an update, revocation may be delayed for those senders. Content already
 received and previously authorized snapshots are not revocable.
@@ -198,7 +209,8 @@ content in v3 collaboration; see the limits and the operation in ADR 0022.
 `team-crypto.test.ts`, `team-security.test.ts` and `team-channel.test.ts` check
 the client's boundary with real cryptography; `team-owner.test.ts` checks that
 input runs only from approved identities while content keeps flowing.
-`protocol.test.ts` and `logic.test.ts` check the relay's contracts and rules. The real local Worker is
+`protocol.test.ts` and `logic.test.ts` check the relay's contracts and rules,
+including leaving and readmission. The real local Worker is
 exercised in `relay/src/worker.integration.test.ts`, and the web mock uses the
 same encrypted channel for the E2E flows. There has been no independent security
 audit. `team-organizations.test.ts` covers renewal on the same socket, discarding

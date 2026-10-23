@@ -2,6 +2,7 @@ import { avatar, avatars, brand, icon, stageIcon } from "./icons";
 import { stage as stageName, t, tn } from "./i18n";
 import * as menu from "./menu";
 import { keys } from "./platform";
+import { confirmDialog } from "./ui";
 import * as team from "./team";
 import { accountButton } from "./cloud";
 import * as rename from "./rename";
@@ -143,6 +144,19 @@ export function attachMenu(node: HTMLElement, ws: Workspace, board: Board, hooks
   node.addEventListener("contextmenu", (e) => {
     e.preventDefault();
     menu.openAt({ x: e.clientX, y: e.clientY }, wsMenu(ws, board, hooks, label, kind));
+  });
+}
+
+/// Another owner's share only offers leaving: every device of this person stops receiving it until the owner lets them
+/// back, even while the owner is offline.
+function attachLeave(node: HTMLElement, ws: Workspace, owner: string) {
+  const leave = async () => {
+    if (await confirmDialog({ title: t("share.leave.title"), message: t("share.leave.message", { name: owner }),
+      accept: t("share.leave"), cancel: t("actions.cancel") })) await team.leaveShare(ws.id);
+  };
+  node.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    menu.openAt({ x: e.clientX, y: e.clientY }, [{ label: t("share.leave"), glyph: icon("x"), danger: true, run: () => void leave() }]);
   });
 }
 
@@ -541,6 +555,7 @@ function renderGroup(
     if (owner || opts.avatars) b.children[0].after(template("span", "av", owner ? avatar(owner) : avatars(ws.repos.map((r) => r.name))));
     if (ws.remote && !ws.remote.online) card.classList.add("off");
     if (!ws.remote) attachMenu(b, ws, board, hooks, title, "sub");
+    else attachLeave(b, ws, owner!);
     card.append(b);
 
     if (ws.tabs.length) {

@@ -293,6 +293,35 @@ it("lets the owner's devices act through remote control without per-person right
   expect(controls()).toEqual(["request.respond"]);
 });
 
+it("ignores a person who left the share until the owner readmits them", async () => {
+  await upgradedFrom(workspace(null, false, send("bob")));
+  const announced = socket.shares().slice(-1)[0].share;
+  socket.says({ t: "share", share: { ...announced, owner: "alice", online: true, left: ["bob"] } });
+  await vi.waitFor(() => expect(owner.leftOf("ws1")).toEqual(["bob"]));
+  // The channel rejects the envelope before spending a receipt: nobody who left is a recipient anymore.
+  const ignored = await write(devices[1], "Merge it");
+  await new Promise(resolve => setTimeout(resolve, 10));
+  expect(receipts()[(ignored as Extract<Down, { t: "write" }>).encrypted!.id]).toBeUndefined();
+  expect(prompts()).toEqual([]);
+
+  const before = socket.shares().length;
+  await owner.readmit("ws1", "bob");
+  expect(socket.sent).toContainEqual({ t: "readmit", ws: "ws1", person: "bob" });
+  expect(owner.leftOf("ws1")).toEqual([]);
+  await vi.waitFor(() => expect(socket.shares().length).toBeGreaterThan(before));
+  await settled(await write(devices[1], "Merge it"));
+  expect(prompts()).toEqual([t("team.remotePrompt", { name: "Bob", text: "Merge it" })]);
+});
+
+it("readmits a person into an explicit audience the owner had narrowed", async () => {
+  await connect(workspace(["carol"]));
+  const announced = socket.shares().slice(-1)[0].share;
+  socket.says({ t: "share", share: { ...announced, owner: "alice", online: true, left: ["bob"] } });
+  await vi.waitFor(() => expect(owner.leftOf("ws1")).toEqual(["bob"]));
+  await owner.readmit("ws1", "bob");
+  expect(host.setShared).toHaveBeenLastCalledWith("ws1", true, ["carol", "bob"], false, membership.shareScope, { send: [], control: [] });
+});
+
 it("drops people who left the organization when a right changes, so a new grant reaches peers", async () => {
   const left = Array.from({ length: 64 }, (_, i) => `gone${i}`);
   await connect(workspace(null, false, { send: left, control: ["gone0"] }));

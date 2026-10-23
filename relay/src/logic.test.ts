@@ -316,6 +316,82 @@ describe("audience", () => {
   });
 });
 
+describe("leaving", () => {
+  /// Alice shares `ws1` with Bob and Carol; Bob watches `t1` and has a mention waiting.
+  function room(): State {
+    const s = empty();
+    reduce(s, open("a1", "alice"));
+    reduce(s, open("b1", "bob"));
+    reduce(s, open("c1", "carol"));
+    reduce(s, text("a1", { t: "share", share: share("ws1", ["t1"], ["bob", "carol"]) }));
+    reduce(s, text("b1", { t: "attach", ws: "ws1", tab: "t1" }));
+    reduce(s, text("c1", { t: "note", ws: "ws1", text: "@bob", mentions: ["bob"], quote: null }, "n1"));
+    return s;
+  }
+
+  it("removes the person from the audience, detaches them and tells the owner", () => {
+    const s = room();
+    const fx = reduce(s, text("b1", { t: "leave", ws: "ws1" }));
+    expect(kinds(fx, "b1")).toEqual(["unshare", "inbox"]);
+    expect(fx).toContainEqual({ e: "attachment", sock: "b1", member: "bob", attached: null });
+    expect(dels(fx)).toEqual([`inbox:bob:${NOW + 2}-n1`]);
+    expect(one(fx, "a1", "share")!.share).toMatchObject({ audience: ["carol"], left: ["bob"] });
+    expect(one(fx, "a1", "watch")).toMatchObject({ tab: "t1", members: [] });
+    expect(one(fx, "c1", "share")!.share.audience).toEqual(["carol"]);
+    expect(one(reduce(s, text("b1", { t: "attach", ws: "ws1", tab: "t1" })), "b1", "error")!.code).toBe("noShare");
+  });
+
+  it("keeps the person out of later announcements until the owner readmits them", () => {
+    const s = room();
+    reduce(s, text("b1", { t: "leave", ws: "ws1" }));
+    const stale = reduce(s, text("a1", { t: "share", share: share("ws1", ["t1"], ["bob", "carol"]) }));
+    expect(kinds(stale, "b1")).toEqual([]);
+    expect(s.shares.get("ws1")!.share.audience).toEqual(["carol"]);
+
+    expect(one(reduce(s, text("c1", { t: "readmit", ws: "ws1", person: "bob" })), "c1", "error")!.code).toBe("owner");
+    const back = reduce(s, text("a1", { t: "readmit", ws: "ws1", person: "bob" }));
+    expect(puts(back)).toEqual(["share:ws1"]);
+    expect(s.shares.get("ws1")!.left).toBeUndefined();
+    const again = reduce(s, text("a1", { t: "share", share: share("ws1", ["t1"], ["bob", "carol"]) }));
+    expect(kinds(again, "b1")).toEqual(["share"]);
+  });
+
+  it("takes every device of the person out, including the owner's own companions", () => {
+    const s = empty();
+    reduce(s, { k: "roster", now: NOW, members: [{ id: "alice", name: "Alice" }, { id: "mac2", name: "Alice", person: "alice" },
+      { id: "bob", name: "Bob" }, { id: "phone", name: "Bob", person: "bob" }] });
+    for (const [sock, member] of [["a1", "alice"], ["m1", "mac2"], ["b1", "bob"], ["p1", "phone"]]) reduce(s, open(sock, member));
+    reduce(s, text("a1", { t: "share", share: share("ws1", ["t1"], ["mac2", "bob", "phone"]) }));
+
+    const bob = reduce(s, text("p1", { t: "leave", ws: "ws1" }));
+    expect(kinds(bob, "b1")).toEqual(["unshare"]);
+    expect(kinds(bob, "p1")).toEqual(["unshare"]);
+    expect(s.shares.get("ws1")!.share.audience).toEqual(["mac2"]);
+
+    const own = reduce(s, text("m1", { t: "leave", ws: "ws1" }));
+    expect(kinds(own, "m1")).toEqual(["unshare"]);
+    expect(one(own, "a1", "share")!.share).toMatchObject({ audience: [], left: ["bob", "alice"] });
+  });
+
+  it("refuses leaving from the owner and from people outside the audience", () => {
+    const s = room();
+    expect(one(reduce(s, text("a1", { t: "leave", ws: "ws1" })), "a1", "error")!.code).toBe("noShare");
+    reduce(s, open("d1", "dave"));
+    expect(one(reduce(s, text("d1", { t: "leave", ws: "ws1" })), "d1", "error")!.code).toBe("noShare");
+  });
+
+  it("forgets people who left the organization and persists the rest", () => {
+    const s = room();
+    reduce(s, text("b1", { t: "leave", ws: "ws1" }));
+    reduce(s, text("c1", { t: "leave", ws: "ws1" }));
+    const woke = hydrate([["share:ws1", s.shares.get("ws1")]], []);
+    expect(woke.shares.get("ws1")!.left).toEqual(["bob", "carol"]);
+    const fx = reduce(s, { k: "roster", now: NOW, members: [{ id: "alice", name: "alice" }, { id: "carol", name: "carol" }] });
+    expect(puts(fx)).toContain("share:ws1");
+    expect(s.shares.get("ws1")!.left).toEqual(["carol"]);
+  });
+});
+
 describe("notes", () => {
   it("broadcasts notes and creates inbox items for mentioned members", () => {
     const s = team();

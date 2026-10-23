@@ -24,6 +24,8 @@ export class TeamChannel {
   /// Rights announced with owned shares, and those read from other owners' authenticated announcements.
   private ownedRights = new Map<string, ShareRights>();
   private announcedRights = new Map<string, ShareRights>();
+  /// People who left owned shares, as the relay last reported; they receive nothing until the owner readmits them.
+  private left = new Map<string, string[]>();
   private attached: { ws: string; tab: string } | null = null;
   private pendingWelcome: Extract<Down, { t: "welcome" }> | null = null;
   ready = false;
@@ -36,6 +38,18 @@ export class TeamChannel {
     this.ownedRights.set(share.id, rights);
     if (remoteControl) this.remoteControl.add(share.id);
     else this.remoteControl.delete(share.id);
+  }
+
+  /// People who left an owned share.
+  leftOf(ws: string): string[] {
+    return this.left.get(ws) ?? [];
+  }
+
+  /// Forget a person's departure once the owner readmits them, before the relay echoes the next announcement.
+  readmitted(ws: string, person: string) {
+    const left = this.leftOf(ws).filter(p => p !== person);
+    if (left.length) this.left.set(ws, left);
+    else this.left.delete(ws);
   }
 
   /// The rights another owner announced for a share; undefined when that owner predates rights.
@@ -88,13 +102,14 @@ export class TeamChannel {
     // A local audience names people and may include the owner's own person (whole organization or a
     // self-mention); the owner's devices only join through remote control. Received audiences are already
     // expanded to devices and keep the owner's other devices as listed.
+    const left = owner === this.self ? this.leftOf(share.id) : [];
     const excluded = owner === this.self ? (id: string) => personOf(this.members, id) === person : (id: string) => id === owner;
     const audience = (share.audience ?? this.members.filter(m => !m.person).map(m => m.id)).filter(id => !excluded(id));
     const recipients = new Set([owner, ...this.devices(audience)]);
     if (this.remoteControl.has(share.id)) {
       for (const member of this.members) if (member.id !== owner && personOf(this.members, member.id) === person) recipients.add(member.id);
     }
-    return [...recipients];
+    return [...recipients].filter(id => id === owner || !left.includes(personOf(this.members, id)));
   }
 
   private allowed(ws: string, member: string): Shared {
@@ -122,7 +137,7 @@ export class TeamChannel {
         break;
       }
       case "unshare": this.shares.delete(frame.ws); this.owned.delete(frame.ws); this.remoteControl.delete(frame.ws);
-        this.ownedRights.delete(frame.ws); break;
+        this.ownedRights.delete(frame.ws); this.left.delete(frame.ws); break;
       case "attach": this.allowed(frame.ws, this.self); this.attached = frame; break;
       case "detach": this.attached = null; break;
       case "write": {
@@ -179,6 +194,8 @@ export class TeamChannel {
 
   private async readShare(wire: Shared): Promise<Shared> {
     if (wire.owner === this.self) {
+      if (wire.left) this.left.set(wire.id, wire.left);
+      else this.left.delete(wire.id);
       const own = this.owned.get(wire.id);
       if (!own) throw new Error("Unannounced own workspace");
       return own;

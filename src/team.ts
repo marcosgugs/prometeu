@@ -48,8 +48,8 @@ member.register(comments.install);
 member.register(viewer.install);
 
 export const { useTransport, onChange, onError, nameOf, people, personOf } = member;
-export const { setSink, isRemote, attachedTab, attach, detach, write, rightsIn } = viewer;
-export const { boardChanged, share, grant, remoteControl, sharedHere, sharedWithTeam, isShared, watchersOf, pausedIn, allowInput, dismissInput,
+export const { setSink, isRemote, attachedTab, attach, detach, write, rightsIn, leave: leaveShare } = viewer;
+export const { boardChanged, share, grant, remoteControl, readmit, leftOf, sharedHere, sharedWithTeam, isShared, watchersOf, pausedIn, allowInput, dismissInput,
   pendingIn, sendPending, editPending, discardPending } = owner;
 export type { PausedInput, PendingMessage } from "./team-owner";
 export const { inboxCount, inboxItems, supportsThreads, inboxList } = comments;

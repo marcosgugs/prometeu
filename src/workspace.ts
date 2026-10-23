@@ -500,10 +500,15 @@ function shareItems(ws: Workspace): menu.Item[] {
   const set = (audience: string[] | null | false) => team.share(ws.id, audience).catch(fail);
   const all = team.sharedWithTeam(ws) && !ws.audience;
   const some = team.sharedWithTeam(ws) && ws.audience ? ws.audience : [];
+  const left = team.sharedWithTeam(ws) ? team.leftOf(ws.id) : [];
   const items: menu.Item[] = [
     { label: t("share.all"), glyph: icon("users", 14), checked: all, run: () => set(all ? false : null) },
     "sep",
     ...others.map((m): menu.Item => {
+      // Someone who left stays out until the owner picks them again, which readmits them.
+      if (left.includes(m.id)) {
+        return { label: m.name, glyph: avatar(m.name), hint: t("share.left"), run: () => void team.readmit(ws.id, m.id).catch(fail) };
+      }
       const on = some.includes(m.id);
       return {
         label: m.name,
@@ -517,7 +522,7 @@ function shareItems(ws: Workspace): menu.Item[] {
   if (!others.length) items.push({ label: t("share.alone"), disabled: true });
   if (team.sharedWithTeam(ws)) {
     // Rights go to people who view, one by one; granting approves the devices they have now and says how many.
-    const viewers = all ? others : others.filter((m) => some.includes(m.id));
+    const viewers = (all ? others : others.filter((m) => some.includes(m.id))).filter((m) => !left.includes(m.id));
     const rights = ws.rights ?? { send: [], control: [] };
     const grant = (right: "send" | "control"): menu.Item[] => [
       { label: t(`share.${right}.about`), disabled: true },
