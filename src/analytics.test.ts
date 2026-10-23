@@ -9,16 +9,16 @@ import { labelKey, trackClicks, viewScreen } from "./analytics";
 use("en");
 beforeEach(() => vi.mocked(invoke).mockClear());
 
-type Spec = { tag?: string; id?: string; role?: string; aria?: string; title?: string; text?: string; t?: string };
+type Spec = { tag?: string; id?: string; role?: string; aria?: string; title?: string; text?: string; t?: string; track?: string };
 type Node = Element & { spec: Spec };
 
 /** Only what analytics reads from an element; tests run without a DOM. `closest` understands the
- * tag, `[role=…]` and `tag[type=…]` selectors analytics uses. */
+ * tag, `[role=…]`, `[data-track]` and `tag[type=…]` selectors analytics uses. */
 function node(spec: Spec, parent: Node | null = null): Node {
   const attributes: Record<string, string | undefined> = { role: spec.role, "aria-label": spec.aria, title: spec.title };
   const el = {
     spec, id: spec.id ?? "", tagName: (spec.tag ?? "div").toUpperCase(), parentElement: parent,
-    dataset: { t: spec.t }, textContent: spec.text ?? "",
+    dataset: { t: spec.t, track: spec.track }, textContent: spec.text ?? "",
     getAttribute: (name: string) => attributes[name] ?? null,
     querySelector: () => null,
     closest(selector: string) {
@@ -34,6 +34,7 @@ function node(spec: Spec, parent: Node | null = null): Node {
 function matches(el: Node, selector: string) {
   const role = /^\[role=(\w+)\]$/.exec(selector);
   if (role) return el.spec.role === role[1];
+  if (selector === "[data-track]") return el.spec.track !== undefined;
   return el.tagName.toLowerCase() === selector && !selector.includes("[");
 }
 
@@ -84,6 +85,18 @@ describe("click capture", () => {
     const click = page([tiles]);
     click(node({ tag: "a", id: "workspace-acme-payments", text: "acme-payments" }, tiles));
     expect(sent()).toEqual([{ name: "ui_clicked", control: "link", target: null, area: "tiles" }]);
+  });
+
+  it("names controls labeled with user data by their data-track token", () => {
+    const tabbar = node({ id: "tabbar" });
+    const click = page([tabbar]);
+    const tab = node({ tag: "button", track: "tab.conversation", text: "fix login bug" }, tabbar);
+    click(node({ tag: "span", text: "fix login bug" }, tab));
+    click(node({ tag: "span", track: "tab.close", title: t("tab.close") }, tab));
+    expect(sent()).toEqual([
+      { name: "ui_clicked", control: "button", target: "tab.conversation", area: "tabbar" },
+      { name: "ui_clicked", control: "button", target: "tab.close", area: "tabbar" },
+    ]);
   });
 
   it("ignores clicks outside controls", () => {

@@ -222,6 +222,7 @@ async function fill(id: string, rel: string, into: HTMLElement | DocumentFragmen
     if (entry.path === target) row.classList.add("targeted");
     row.style.paddingLeft = `${14 + depth * 20}px`;
     row.dataset.dir = entry.dir ? "1" : "0";
+    row.dataset.track = entry.dir ? "tree.folder" : "tree.file";
     row.dataset.depth = String(depth);
     if (gone) row.dataset.gone = "1";
     row.innerHTML = `<span class="tw"></span><span class="tn"></span><span class="tg"></span><span class="tc"></span>`;

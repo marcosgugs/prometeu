@@ -46,13 +46,21 @@ One capture-phase listener in [`src/analytics.ts`](../../src/analytics.ts)
 records every click on a control, so new UI is covered without annotation. It
 never reads visible text into the event:
 
-- `target` is the i18n key of the control's label. The label (`data-t` or
+- `target` is the control's `data-track` token when it has one, else the i18n
+  key of the control's label. The label (`data-t` or
   `data-t-title`, then `aria-label`, `title`, menu label, text) is looked up in
   the active catalog; only an exact match of a parameterless translation
   produces a key. Otherwise `target` is the control's own ID if that ID was in
   `index.html` at startup, else `null`. Workspace names, file names, agent
   output and typed text never match, so they never become a target. Translations
   shared by several keys resolve to the first key in the catalog.
+- `data-track` names controls whose label is user data or a parameterized
+  translation, which would otherwise send `null`: rail workspaces, groups and
+  agents (`rail.*`), file tree rows (`tree.folder`, `tree.file`) and center tabs
+  (`tab.conversation`, `tab.file`, `tab.terminal`, `tab.browser`). An element
+  with `data-track` counts as a control even when it is not one, so a close
+  icon nested in a tab (`tab.close`, `tab.file.close`, …) is told apart from the
+  tab itself. The token is a static string we author; never build it from data.
 - `area` is `menu` inside a menu, otherwise the nearest ancestor ID present in
   `index.html` at startup (`deskView`, `settingsView`, `tabbar`, `rail` and so
   on), else `null`.
@@ -95,7 +103,7 @@ with a new one.
 ## Rules for new events
 
 - Clicks need no new event; follow the naming rules above before adding one.
-- An i18n key used as a click `target` is part of this contract. Renaming it
+- An i18n key or `data-track` token used as a click `target` is part of this contract. Renaming it
   starts a new series in PostHog; update the Actions that filter on it.
 - Add the variant to the Rust enum and the TypeScript union, add a row to the
   table above, and emit it with a single `track` call at the use case.
@@ -134,6 +142,7 @@ payload contains only the event's fields plus the fixed metadata, that unknown
 events are rejected, that extra or unknown values are dropped, and that click
 tokens reject sentences, paths and URLs. [`src/analytics.test.ts`](../../src/analytics.test.ts)
 checks that only catalog keys become click targets, that captured clicks carry
-the right control, target and region, and that repeated screens are not counted. The IPC parity
+the right control, target and region, that `data-track` tokens name dynamic
+controls and their nested parts, and that repeated screens are not counted. The IPC parity
 test in [`src-tauri/tests/mock.rs`](../../src-tauri/tests/mock.rs) covers command
 registration.
