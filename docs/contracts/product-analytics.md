@@ -110,7 +110,7 @@ with a new one.
 - One background thread collects events for 5 seconds after the first one, then
   posts the batch with a 10-second timeout. Failures, and a batch still waiting
   when the app quits, are dropped; there is no offline queue.
-- Only builds compiled with `PROMETEU_POSTHOG_KEY` send events. Release CI reads
+- Only builds compiled with a non-empty `PROMETEU_POSTHOG_KEY` send events. Release CI reads
   it from the `PROMETEU_POSTHOG_KEY` repository variable; other builds send
   nothing.
 - The PostHog project is in the US region; a key from another region is
@@ -133,6 +133,7 @@ The tests in [`analytics.rs`](../../src-tauri/src/analytics.rs) check that the
 payload contains only the event's fields plus the fixed metadata, that unknown
 events are rejected, that extra or unknown values are dropped, and that click
 tokens reject sentences, paths and URLs. [`src/analytics.test.ts`](../../src/analytics.test.ts)
-checks that only catalog keys become click targets. The IPC parity
+checks that only catalog keys become click targets, that captured clicks carry
+the right control, target and region, and that repeated screens are not counted. The IPC parity
 test in [`src-tauri/tests/mock.rs`](../../src-tauri/tests/mock.rs) covers command
 registration.
