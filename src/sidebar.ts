@@ -289,7 +289,14 @@ function renderRail(board: Board, hooks: Hooks) {
   const single = live.filter((w) => !w.pinned && w.repos.length < 2);
   const mineOf = (id: string) => single.filter((w) => w.project === id);
   const shown = board.projects.filter((p) => projectMatches(p, mineOf(p.id), query));
-  if (query && !shown.length) rail.append(h("div", "railhint", t("rail.filter.none")));
+  // Group multi-repository workspaces by repository set. These transient collections have split avatars but no project creation/menu controls.
+  const sets = new Map<string, Workspace[]>();
+  for (const w of live) {
+    if (w.pinned || w.repos.length < 2) continue;
+    if (!projectMatches({ id: "", name: repoLabel(w), path: "" }, [w], query)) continue;
+    sets.set(repoLabel(w), [...(sets.get(repoLabel(w)) ?? []), w]);
+  }
+  if (query && !shown.length && !sets.size) rail.append(h("div", "railhint", t("rail.filter.none")));
   const order = board.projects.map((p) => p.id);
   const folders = [...new Set(board.projects.flatMap((p) => (p.group ? [p.group] : [])))].sort((a, b) => a.localeCompare(b));
 
@@ -345,6 +352,7 @@ function renderRail(board: Board, hooks: Hooks) {
     const head = renderGroup(box, board, hooks, project.name, avatar(project.name), mine, `@proj:${project.id}`, {
       extra: [more, plus],
       open: () => hooks.openProject(project.id),
+      searching: !!query,
       on: openId === project.id,
     });
     // Hidden projects cannot be placed relative to visible ones, so dragging waits for an empty filter.
@@ -412,13 +420,6 @@ function renderRail(board: Board, hooks: Hooks) {
   }
   for (const project of shown) if (!project.group) rail.append(projectBox(project));
 
-  // Group multi-repository workspaces by repository set. These transient collections have split avatars but no project creation/menu controls.
-  const sets = new Map<string, Workspace[]>();
-  for (const w of live) {
-    if (w.pinned || w.repos.length < 2) continue;
-    if (!projectMatches({ id: "", name: repoLabel(w), path: "" }, [w], query)) continue;
-    sets.set(repoLabel(w), [...(sets.get(repoLabel(w)) ?? []), w]);
-  }
   if (sets.size) {
     rail.append(document.createElement("hr"));
     const head = template("div", "sect", `<span></span>`);
@@ -426,7 +427,7 @@ function renderRail(board: Board, hooks: Hooks) {
     rail.append(head);
     for (const [name, mine] of sets) {
       mine.sort((a, b) => stageAt(a) - stageAt(b));
-      renderGroup(rail, board, hooks, name, avatars(mine[0].repos.map((r) => r.name)), mine, `@set:${name}`);
+      renderGroup(rail, board, hooks, name, avatars(mine[0].repos.map((r) => r.name)), mine, `@set:${name}`, { searching: !!query });
     }
   }
 
@@ -474,9 +475,11 @@ function renderGroup(
     open?: () => void;
     /// Mark the heading when its project page is open.
     on?: boolean;
+    /// A search opens the group to show its matches without changing the saved collapse state.
+    searching?: boolean;
   } = {},
 ): HTMLElement {
-  const shut = folded(key);
+  const shut = !opts.searching && folded(key);
   // Use a focusable div because project controls cannot be nested inside another button.
   const head = template(
     "div",
@@ -493,7 +496,7 @@ function renderGroup(
   // Empty groups do not collapse; their heading only offers creation.
   head.children[3].innerHTML = list.length ? icon(shut ? "chevron-right" : "chevron-down", 14) : "";
   const fold = () => {
-    if (!list.length) return;
+    if (!list.length || opts.searching) return;
     localStorage.setItem(FOLD + key, shut ? "0" : "1");
     renderRail(board, hooks);
   };
