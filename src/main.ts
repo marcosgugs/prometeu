@@ -2,6 +2,7 @@ import * as actions from "./actions";
 import * as background from "./background";
 import * as cloud from "./cloud";
 import { invoke } from "./ipc";
+import { trackClicks, viewScreen, type Screen } from "./analytics";
 import { onConnectionRestored } from "./connection";
 import { listen } from "@tauri-apps/api/event";
 import { openProjects } from "./projects";
@@ -47,6 +48,8 @@ import * as viewer from "./viewer";
 import * as ws from "./workspace";
 import { announceWorkspaceUsage } from "./workspace-usage";
 
+// Before rendering, so only index.html IDs count as stable click regions.
+trackClicks();
 // Use the backend mock when running outside Tauri.
 if (!("__TAURI_INTERNALS__" in window)) await import("./mock");
 await background.start().catch(() => {});
@@ -193,9 +196,14 @@ function travel(dir: -1 | 1) {
 $("back").addEventListener("click", () => travel(-1));
 $("fwd").addEventListener("click", () => travel(1));
 
-/// Show one non-workspace page at a time.
-function showOnly(view: "settingsView" | "issuesView" | "notificationsView" | "archivedView" | "deskView" | null) {
+const SCREENS = {
+  settingsView: "settings", issuesView: "issues", notificationsView: "notifications", archivedView: "archived", deskView: "desk",
+} as const;
+
+/// Show one non-workspace page at a time; a null view shows a workspace or project.
+function showOnly(view: keyof typeof SCREENS | null, screen: Screen = view ? SCREENS[view] : "workspace") {
   navigationVersion++;
+  viewScreen(screen);
   $("deskView").hidden = view !== "deskView";
   $("settingsView").hidden = view !== "settingsView";
   $("issuesView").hidden = view !== "issuesView";
@@ -232,7 +240,7 @@ function showDesk(push = true) {
 /// Open clone files directly without creating a branch, worktree, or conversation.
 function showProject(project: Project, push = true) {
   if (push) visit(project.id);
-  showOnly(null);
+  showOnly(null, "project");
   ws.openProject(project);
   sidebar.setOpen(project.id);
   draw();

@@ -200,6 +200,11 @@ bundler notarizes the app; the workflow notarizes and staples the final DMG,
 replaces the asset created before that step and then uses `stapler` and `spctl`
 to validate the copy downloaded from the draft.
 
+Product analytics use the `PROMETEU_POSTHOG_KEY` repository variable, not a
+secret: a PostHog project key only writes events and ships inside the app.
+Release builds compile it in; without it the app sends no analytics. See the
+[contract](../contracts/product-analytics.md).
+
 Do not run a cut, tag, push or publication as part of an ordinary task without
 an explicit request.
 

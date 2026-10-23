@@ -140,6 +140,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          PROMETEU_POSTHOG_KEY: ${{ vars.PROMETEU_POSTHOG_KEY }}
           APPLE_SIGNING_IDENTITY: "Developer ID Application: Gustavo Brancaglione (6MQT6A482B)"
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -241,6 +242,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          PROMETEU_POSTHOG_KEY: ${{ vars.PROMETEU_POSTHOG_KEY }}
         run: |
           npm run tauri -- build --verbose --bundles appimage --config '{"build":{"beforeBuildCommand":""}}'
 

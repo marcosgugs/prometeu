@@ -178,6 +178,12 @@ desktop and browser-mock adapters only. The WSL runtime reports them unsupported
 this does not claim native Windows GitHub discovery, notifications or PR launch
 support.
 
+## Product analytics
+
+The WSL runtime does not implement `analytics_track`; the frontend ignores the
+rejection, so native Windows builds send no
+[product analytics](product-analytics.md).
+
 ## Conversation tools
 
 Codex startup reads the current catalog through `ToolSelection` at each spawn and

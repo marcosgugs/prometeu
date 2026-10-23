@@ -212,6 +212,17 @@ The first version has no Cloud synchronization or analytics upload. See the
 [contract](docs/contracts/telemetry.md) and
 [ADR 0059](docs/decisions/0059-local-telemetry-foundation.md).
 
+## Product analytics
+
+`analytics.rs` sends anonymous feature events to PostHog, separate from local
+telemetry. A closed Rust enum is the only vocabulary. `src/analytics.ts` records
+every click as the i18n key of the control's label and its static region, never
+visible text; use cases emit a few typed events. A background thread batches
+deliveries.
+Only release builds compiled with the project key send events. See the
+[contract](docs/contracts/product-analytics.md) and
+[ADR 0093](docs/decisions/0093-anonymous-product-analytics.md).
+
 ## Internal public boundaries
 
 Three contracts require explicit compatibility:

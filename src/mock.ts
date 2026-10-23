@@ -2556,6 +2556,8 @@ const mockCommands: IpcHandlers = {
     if (workspace.active === args.tab) workspace.active = workspace.tabs[0]?.id ?? null;
     emit("board", board);
   },
+  // The browser preview never sends product analytics.
+  analytics_track() {},
   telemetry_summary({ filter }) { return telemetry.summary(filter); },
   telemetry_insights({ filter }) { return telemetry.insights(filter); },
   telemetry_turns({ conversation, messageIds }) { return telemetry.turns(conversation, messageIds); },
