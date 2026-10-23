@@ -9,6 +9,8 @@ import { h, template } from "./util";
 /// shows only whether a key exists. Test sends one fixed synthetic request, never user data.
 let status: EvaluationStatus = { configured: false, enabled: false, problem: null };
 let feedback = "";
+/// Lives outside the render so leaving and reopening Settings cannot start a second paid request.
+let busy = false;
 
 /// A missing or older backend keeps the key unconfigured.
 export async function loadTypesafe() {
@@ -32,9 +34,12 @@ export function typesafeRows(say: (text: string, isError?: boolean) => void, red
   key.control.dataset.focus = "typesafe-key";
   const controls = () => [save, remove, test];
   const run = async (work: () => Promise<string>) => {
+    if (busy) return;
+    busy = true;
     controls().forEach(control => { control.disabled = true; });
     try { feedback = await work(); }
     catch (error) { feedback = ""; say(fromBack(error), true); }
+    finally { busy = false; }
     redraw();
   };
   const save = button(t(status.configured ? "typesafe.key.replace" : "typesafe.key.save"), () => {
@@ -62,6 +67,7 @@ export function typesafeRows(say: (text: string, isError?: boolean) => void, red
   test.hidden = !status.configured;
   key.control.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); save.click(); } });
   const keyRow = h("div", "typesafe-key");
+  controls().forEach(control => { control.disabled = busy; });
   keyRow.append(key.root, save, test, remove);
 
   const rows: HTMLElement[] = [row, field(t("typesafe.key"), keyRow, t(status.configured ? "typesafe.key.configured" : "typesafe.key.missing"))];

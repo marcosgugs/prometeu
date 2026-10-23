@@ -153,6 +153,7 @@ longer exist.
   key replaced, disabled or removed after the credential snapshot, no overwrite
   of an invalid file, origin-only overrides.
 - `src/typesafe-settings.test.ts`: Test enables a saved key, sends only the
-  synthetic request and surfaces backend errors.
+  synthetic request, surfaces backend errors and never overlaps a pending
+  request after Settings re-renders.
 - `src-tauri/tests/mock.rs`: command parity across Rust, the typed map and the
   mock.

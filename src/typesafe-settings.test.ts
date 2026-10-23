@@ -47,3 +47,21 @@ test("a rejected key surfaces the backend error", async () => {
   await vi.waitFor(() => expect(say).toHaveBeenCalledWith('i18n:{"code":"err.evaluation.auth"}', true));
   expect(state.invoke).not.toHaveBeenCalledWith("typesafe_set_enabled", expect.anything());
 });
+
+test("a test still pending after a re-render cannot start another request", async () => {
+  let reply!: (value: unknown) => void;
+  state.invoke.mockImplementation(async (command: string) => {
+    if (command === "typesafe_status") return { configured: true, enabled: true, problem: null };
+    if (command === "context_evaluate") return new Promise(resolve => { reply = resolve; });
+    throw new Error(command);
+  });
+  await loadTypesafe();
+  const redraw = vi.fn();
+  typesafeRows(vi.fn(), redraw);
+  state.actions.get("typesafe.test")!();
+  typesafeRows(vi.fn(), redraw);
+  state.actions.get("typesafe.test")!();
+  expect(state.invoke.mock.calls.filter(([command]) => command === "context_evaluate")).toHaveLength(1);
+  reply({ answers: [], model: "jev-1.13.0" });
+  await vi.waitFor(() => expect(redraw).toHaveBeenCalled());
+});
