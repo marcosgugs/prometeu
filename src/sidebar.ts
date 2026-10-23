@@ -5,7 +5,8 @@ import { keys } from "./platform";
 import * as team from "./team";
 import { accountButton } from "./cloud";
 import * as rename from "./rename";
-import { hasWorktree, label, repoLabel, stateLabel, statusOf, tabLabel, type Board, type Status, type Workspace } from "./types";
+import { issueSearch } from "./issues-controls";
+import { hasWorktree, label, projectMatches, refillOrder, repoLabel, stateLabel, statusOf, tabLabel, type Board, type Project, type Status, type Workspace } from "./types";
 import { h, template } from "./util";
 
 /// Actions shared by sidebar rows and workspace menus.
@@ -39,6 +40,8 @@ export type Hooks = {
   removeProject: (id: string) => void;
   /// Persist the project order chosen by dragging headings.
   reorderProjects: (ids: string[]) => void;
+  /// Move projects into a folder, rename it with all its members, or take them out with null.
+  groupProjects: (ids: string[], group: string | null) => void;
   projectTools: (id: string) => void;
   /// Open clone files without creating a workspace.
   openProject: (id: string) => void;
@@ -149,10 +152,41 @@ export function attachMenu(node: HTMLElement, ws: Workspace, board: Board, hooks
 const FOLD = "prometeu:grupo:";
 const folded = (name: string) => localStorage.getItem(FOLD + name) === "1";
 
+/// Shorter project lists fit at a glance; longer ones get a filter.
+const FILTER_FROM = 7;
+/// The filter outlives redraws so agent updates neither clear nor blur what the person is typing.
+let finder: ReturnType<typeof issueSearch> | null = null;
+let last: [Board, Hooks] | null = null;
+/// A folder created from a project menu opens its name for editing once the board shows it.
+let naming: string | null = null;
+
+function filterField() {
+  if (finder) return finder;
+  const f = issueSearch("");
+  f.control.addEventListener("input", () => last && renderRail(...last));
+  f.control.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !f.control.value) return;
+    e.stopPropagation();
+    f.control.value = "";
+    if (last) renderRail(...last);
+  });
+  return (finder = f);
+}
+
+/// Pick a folder name not already in use, so a new folder never merges into an existing one.
+function untitled(taken: string[]) {
+  const base = t("rail.folder.untitled");
+  let name = base;
+  for (let i = 2; taken.includes(name); i++) name = `${base} ${i}`;
+  return name;
+}
+
 function renderRail(board: Board, hooks: Hooks) {
   const rail = el("railbody");
   const keep = refocus && document.activeElement === refocus.head ? refocus.id : null;
   refocus = null;
+  last = [board, hooks];
+  const typing = finder !== null && document.activeElement === finder.control;
   rail.replaceChildren();
   const live = board.workspaces.filter((w) => !w.archived && !w.remote);
 
@@ -212,9 +246,26 @@ function renderRail(board: Board, hooks: Hooks) {
 
   const sect = template("div", "sect", `<span></span>`);
   sect.children[0].textContent = t("rail.projects");
-  const add = template("button", "ico sm", icon("folder-plus"));
-  add.title = t("rail.addProject");
-  add.addEventListener("click", hooks.addProject);
+  const add = template("button", "ico sm", icon("plus"));
+  add.title = t("rail.add");
+  add.addEventListener("click", () => {
+    const at = add.getBoundingClientRect();
+    const taken = board.projects.flatMap((p) => (p.group ? [p.group] : []));
+    // A folder exists only through its members, so a new one starts with the project picked here.
+    const start = (id: string) => {
+      naming = untitled(taken);
+      hooks.groupProjects([id], naming);
+    };
+    menu.openAt({ x: at.left, y: at.bottom + 4 }, [
+      { label: t("rail.addProject"), glyph: icon("folder-plus"), run: hooks.addProject },
+      {
+        label: t("rail.folder.newWith"),
+        glyph: icon("folder"),
+        disabled: !board.projects.length,
+        sub: board.projects.map((p) => ({ label: p.name, glyph: avatar(p.name), run: () => start(p.id) })),
+      },
+    ]);
+  });
   sect.append(add);
   rail.append(sect);
 
@@ -222,12 +273,28 @@ function renderRail(board: Board, hooks: Hooks) {
     rail.append(h("div", "railhint", t("rail.noProjects")));
   }
 
+  let query = "";
+  if (board.projects.length >= FILTER_FROM) {
+    const f = filterField();
+    f.control.placeholder = t("rail.filter");
+    f.control.setAttribute("aria-label", t("rail.filter"));
+    rail.append(f.root);
+    if (typing) f.control.focus();
+    query = f.control.value.trim();
+  } else if (finder) finder.control.value = "";
+
   // Project headings disambiguate repositories with matching initials.
   const stageAt = (ws: Workspace) => board.stages.indexOf(ws.stage);
   // Workspaces spanning repositories belong to collection groups.
   const single = live.filter((w) => !w.pinned && w.repos.length < 2);
-  for (const project of board.projects) {
-    const mine = single.filter((w) => w.project === project.id);
+  const mineOf = (id: string) => single.filter((w) => w.project === id);
+  const shown = board.projects.filter((p) => projectMatches(p, mineOf(p.id), query));
+  if (query && !shown.length) rail.append(h("div", "railhint", t("rail.filter.none")));
+  const order = board.projects.map((p) => p.id);
+  const folders = [...new Set(board.projects.flatMap((p) => (p.group ? [p.group] : [])))].sort((a, b) => a.localeCompare(b));
+
+  const projectBox = (project: Project) => {
+    const mine = mineOf(project.id);
     // Order project workspaces by stage, with ongoing work first.
     mine.sort((a, b) => stageAt(a) - stageAt(b));
     const plus = template("button", "ico sm", icon("plus"));
@@ -242,8 +309,28 @@ function renderRail(board: Board, hooks: Hooks) {
     more.addEventListener("click", (e) => {
       e.stopPropagation();
       const at = more.getBoundingClientRect();
+      const move: menu.Item[] = [
+        ...folders.map((name) => ({
+          label: name,
+          checked: project.group === name,
+          run: () => hooks.groupProjects([project.id], name),
+        })),
+        ...(folders.length ? ["sep" as const] : []),
+        {
+          label: t("rail.folder.new"),
+          glyph: icon("folder-plus"),
+          run: () => {
+            naming = untitled(folders);
+            hooks.groupProjects([project.id], naming);
+          },
+        },
+        ...(project.group
+          ? [{ label: t("rail.folder.leave"), glyph: icon("x"), run: () => hooks.groupProjects([project.id], null) }]
+          : []),
+      ];
       menu.openAt({ x: at.left, y: at.bottom + 4 }, [
         { label: t("tools.project"), glyph: icon("plug"), run: () => hooks.projectTools(project.id) },
+        { label: t("rail.folder.move"), glyph: icon("folder"), sub: move },
         {
           label: t("rail.removeProject"),
           glyph: icon("x"),
@@ -260,14 +347,76 @@ function renderRail(board: Board, hooks: Hooks) {
       open: () => hooks.openProject(project.id),
       on: openId === project.id,
     });
-    reorderable(box, head, hooks);
-    rail.append(box);
+    // Hidden projects cannot be placed relative to visible ones, so dragging waits for an empty filter.
+    if (!query) reorderable(box, head, order, hooks);
+    return box;
+  };
+
+  // Folders come first, alphabetically, so dragging within a folder or among loose projects never
+  // depends on where a folder sits in the board order.
+  for (const name of folders) {
+    const members = shown.filter((p) => p.group === name);
+    if (!members.length) continue;
+    const ids = board.projects.filter((p) => p.group === name).map((p) => p.id);
+    const key = `@folder:${name}`;
+    // A search shows every match, so folders open while it is active.
+    const shut = !query && folded(key);
+    const head = template(
+      "div",
+      "group",
+      `<span class="gg">${icon(shut ? "folder" : "folder-open", 14)}</span><span></span><span class="n"></span><span class="gc">${icon(shut ? "chevron-right" : "chevron-down", 14)}</span>`,
+    );
+    head.tabIndex = 0;
+    head.setAttribute("role", "button");
+    head.setAttribute("aria-expanded", String(!shut));
+    head.dataset.track = "rail.folder";
+    const title = head.children[1] as HTMLElement;
+    title.textContent = name;
+    head.children[2].textContent = String(members.length);
+    // A collapsed folder still reports agents that need attention or are working.
+    if (shut) {
+      const statuses = single.filter((w) => ids.includes(w.project)).map(statusOf);
+      const urgent = (["querendo", "rodando"] as const).find((s) => statuses.includes(s));
+      if (urgent) head.children[2].before(statusDot(urgent));
+    }
+    const fold = () => {
+      localStorage.setItem(FOLD + key, shut ? "0" : "1");
+      renderRail(board, hooks);
+    };
+    head.addEventListener("click", fold);
+    head.addEventListener("keydown", (e) => {
+      if (e.target === head && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        fold();
+      }
+    });
+    const renameFolder = () => rename.start(title, name, (next) => next && hooks.groupProjects(ids, next), "sub");
+    const more = template("button", "ico sm", icon("ellipsis"));
+    more.title = t("rail.folder.actions", { folder: name });
+    more.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const at = more.getBoundingClientRect();
+      menu.openAt({ x: at.left, y: at.bottom + 4 }, [
+        { label: t("rail.folder.rename"), glyph: icon("pencil"), run: renameFolder },
+        { label: t("rail.folder.ungroup"), glyph: icon("x"), run: () => hooks.groupProjects(ids, null) },
+      ]);
+    });
+    head.append(more);
+    const body = h("div", "railfolder-body");
+    rail.append(head, body);
+    if (!shut) for (const project of members) body.append(projectBox(project));
+    if (naming === name) {
+      naming = null;
+      renameFolder();
+    }
   }
+  for (const project of shown) if (!project.group) rail.append(projectBox(project));
 
   // Group multi-repository workspaces by repository set. These transient collections have split avatars but no project creation/menu controls.
   const sets = new Map<string, Workspace[]>();
   for (const w of live) {
     if (w.pinned || w.repos.length < 2) continue;
+    if (!projectMatches({ id: "", name: repoLabel(w), path: "" }, [w], query)) continue;
     sets.set(repoLabel(w), [...(sets.get(repoLabel(w)) ?? []), w]);
   }
   if (sets.size) {
@@ -445,10 +594,10 @@ const DRAG_START = 4;
 
 /// Reorder projects by dragging their headings, or with Alt+Arrow on a focused heading. Pointer
 /// gestures are used because Tauri intercepts HTML drag events for native file drops.
-function reorderable(box: HTMLElement, head: HTMLElement, hooks: Hooks) {
+function reorderable(box: HTMLElement, head: HTMLElement, order: string[], hooks: Hooks) {
   const commit = () => {
-    const ids = [...box.parentElement!.querySelectorAll<HTMLElement>(":scope > .railproject")].map((p) => p.dataset.project!);
-    hooks.reorderProjects(ids);
+    const moved = [...box.parentElement!.querySelectorAll<HTMLElement>(":scope > .railproject")].map((p) => p.dataset.project!);
+    hooks.reorderProjects(refillOrder(order, moved));
   };
   let dropped = false;
   head.addEventListener("click", (e) => dropped && e.stopImmediatePropagation(), { capture: true });

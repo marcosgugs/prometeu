@@ -1499,6 +1499,12 @@ const mockCommands: IpcHandlers = {
     emit("board", board);
     return;
   },
+  group_projects(args) {
+    const group = args.group?.trim() || undefined;
+    board.projects = board.projects.map((p) => (args.ids.includes(p.id) ? { ...p, group } : p));
+    emit("board", board);
+    return;
+  },
   remove_project(args) {
     board.projects = board.projects.filter((project) => project.id !== args.id);
     emit("board", board);

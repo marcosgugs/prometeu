@@ -150,6 +150,9 @@ body.norail .top .nav { margin-left: 0; }
 .group:hover .gc, .group:focus-within .gc { opacity: 1; }
 .group .ico { opacity: 0; }
 .group:hover .ico, .group:focus-within .ico { opacity: 1; }
+/* Folders indent their projects; a collapsed folder shows its most urgent agent status. */
+.railfolder-body { padding-left: 10px; }
+.group .rail-status { margin-right: 2px; }
 /* Dragging a project heading moves the whole group; the original stays in place, dimmed. */
 .railproject.dragging { opacity: .5; }
 body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; }
@@ -811,14 +814,15 @@ body.noside .side { display: none; }
 
 /* Search sits on the left; fetch time and refresh sit on the right. */
 .ibar { gap: 8px; padding: 0 12px; }
-.ibar .ifind {
+:is(.ibar, .railbody) .ifind {
   display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px;
   width: min(360px, 100%); flex-shrink: 0; background: var(--bg); border: 1px solid var(--line-raised);
   border-radius: var(--r); color: var(--fg-3);
 }
-.ibar .ifind input { border: none; background: none; padding: 0; height: 100%; min-height: 0; }
-.ibar .ifind:has(input:focus-visible) { outline: 2px solid var(--tab-line); outline-offset: 1px; }
-.ibar .ifind input:focus-visible { outline: none; }
+:is(.ibar, .railbody) .ifind input { border: none; background: none; padding: 0; height: 100%; min-height: 0; }
+:is(.ibar, .railbody) .ifind:has(input:focus-visible) { outline: 2px solid var(--tab-line); outline-offset: 1px; }
+:is(.ibar, .railbody) .ifind input:focus-visible { outline: none; }
+.railbody .ifind { width: auto; margin: 0 0 4px; }
 .ibar .imeta { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 .ibar .imeta.err { color: var(--err); }
 

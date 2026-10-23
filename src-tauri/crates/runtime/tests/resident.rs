@@ -1377,6 +1377,16 @@ fn application_resident_starts_empty_and_restores_projects_without_a_primary_wor
     client
         .application("reorder_projects".into(), json!({"ids":reordered}))
         .unwrap();
+    client
+        .application(
+            "group_projects".into(),
+            json!({"ids":reordered,"group":"Work"}),
+        )
+        .unwrap();
+    let board = client
+        .application("load_board".into(), Value::Null)
+        .unwrap();
+    assert_eq!(board["projects"][0]["group"], "Work");
     let skill = serde_json::json!({"id":"review","description":"Before a review","content":"Read the diff."});
     assert_eq!(
         client.application("skill_hub".into(), Value::Null).unwrap(),

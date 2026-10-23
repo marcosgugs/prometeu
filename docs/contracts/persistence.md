@@ -225,7 +225,11 @@ changes. Tests: `src/model-choice.test.ts`, `src/agents.test.ts`, and
 
 `Board` contains projects, stages, workspaces and the optional `actions`
 catalog. The order of `projects` is the sidebar order the person chose by
-dragging; older boards keep their registration order. `Tab.task` stores the resolved configuration and the tasks' cursors.
+dragging; older boards keep their registration order. `Project.group` is the
+optional sidebar folder; it is written only when set, so older boards load
+unchanged and older versions ignore it. Folders exist only as that name on their
+members. The sidebar shows folders first, alphabetically, then loose projects,
+and a drag reorders only within one folder or among loose projects. `Tab.task` stores the resolved configuration and the tasks' cursors.
 The absence of those fields keeps previous sessions working. The catalog
 receives Code review exactly once, recorded in `actions.defaults_initialized`;
 see [actions](actions.md). `Workspace` contains repositories, branch, worktree,
