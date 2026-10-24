@@ -4,6 +4,17 @@ What changes in Prometeu, version by version, for whoever uses the app.
 Versions come from `sh scripts/release.sh`; this file is generated from the
 commits by git-cliff, and each release's notes on GitHub are its section.
 
+## [0.33.0] - 2026-10-24
+
+### New
+
+- **projects:** Create local git projects
+
+### Fixes
+
+- **launcher:** Restore choices when switching projects
+- **launcher:** Preserve choices during branch discovery
+
 ## [0.32.0] - 2026-10-24
 
 ### New
