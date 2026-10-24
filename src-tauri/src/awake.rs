@@ -147,8 +147,32 @@ mod tests {
     /// the machine permanently awake.
     #[test]
     fn enables_display_and_system_awake_once_then_disables_them() {
+        #[cfg(not(target_os = "macos"))]
+        {
+            let command = inhibitor(Mode::Display);
+            assert_eq!(
+                command.get_program(),
+                std::ffi::OsStr::new("systemd-inhibit")
+            );
+            assert!(command
+                .get_args()
+                .any(|arg| arg == std::ffi::OsStr::new("--what=idle:sleep")));
+            assert!(command
+                .get_args()
+                .any(|arg| arg == std::ffi::OsStr::new("--mode=block")));
+        }
         if !supported() {
             eprintln!("skipped: no systemd session to inhibit");
+            return;
+        }
+        // Hosted runners can have systemd but deny the lock after spawn succeeds.
+        #[cfg(not(target_os = "macos"))]
+        if !Command::new("systemd-inhibit")
+            .args(["--what=idle:sleep", "--mode=block", "true"])
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            eprintln!("skipped: cannot acquire sleep inhibition");
             return;
         }
         set_awake(Mode::Display).expect("inhibitor did not start");
