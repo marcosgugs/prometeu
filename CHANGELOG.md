@@ -4,6 +4,19 @@ What changes in Prometeu, version by version, for whoever uses the app.
 Versions come from `sh scripts/release.sh`; this file is generated from the
 commits by git-cliff, and each release's notes on GitHub are its section.
 
+## [0.32.0] - 2026-10-24
+
+### New
+
+- **sidebar:** Group projects into collapsible folders and filter the list
+- **team:** Leave a shared workspace you no longer want to follow
+
+### Fixes
+
+- **analytics:** Identify clicks on workspaces, tabs and files
+- **sidebar:** Show filter matches inside collapsed projects and sets
+- **team:** Keep the conversation open when leaving a share fails
+
 ## [0.31.0] - 2026-10-23
 
 ### New
