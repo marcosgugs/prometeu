@@ -1,7 +1,8 @@
 # Product analytics
 
-Prometeu records two kinds of product evidence: identified control activations
-and explicit feature use. The decision is in
+Prometeu optionally records two kinds of product evidence: identified control
+activations and explicit feature use. Tracking is off until the person enables
+it in Settings / General / Privacy. The decision is in
 [ADR 0093](../decisions/0093-anonymous-product-analytics.md). Execution diagnostics
 remain in [local telemetry](telemetry.md), which never leaves the machine.
 
@@ -132,14 +133,15 @@ execution telemetry remains unchanged.
 
 The unit is an observed installation, not an identified person. For feature
 adoption, count installations using the feature among eligible active
-installations on versions and platforms that emit the necessary facts. Follow
+opted-in installations on versions and platforms that emit the necessary facts. Follow
 recurrence across days/weeks and concentration of activity. An app can stay open
 for days; process starts are not an activity denominator.
 
 Availability, discovery, configuration and use are different. Installing or
 enabling a plugin does not prove a provider invoked it. A rarely used feature
 may be important to a small group. Absence from a chart can reflect missing
-instrumentation, unsupported shells or delivery loss. Removing features needs
+instrumentation, missing consent, unsupported shells or delivery loss. Opt-in
+introduces selection bias. Removing features needs
 verified coverage, sufficient observation and qualitative context.
 
 Existing dashboard descriptions distinguish initializations, reopens,
@@ -155,10 +157,34 @@ payload contains the event's allowed fields and fixed metadata:
 `$process_person_profile: false`, and `$geoip_disable: true`. No PostHog JS SDK,
 session replay, DOM upload or local telemetry synchronization is introduced.
 
-Identity is a random UUID stored in `<root>/analytics-id`. It is pseudonymous:
+Identity is a random UUID stored in `<root>/analytics-id`, created only when
+consent and the build key allow capture. It is pseudonymous:
 events from an installation can be linked, but no account or workspace identity
-is sent. The PostHog US project must discard client IP data. There is currently
-no opt-in/opt-out control; vocabulary expansion must revisit that decision.
+is sent. The PostHog US project must discard client IP data.
+
+Tracking defaults to off for new and existing installations. An existing
+`analytics-id` is not consent. The preference is a JSON boolean in the private,
+atomically written `<root>/analytics-enabled.json`; missing, unreadable or
+malformed values mean off. Explicitly saving a choice replaces that value.
+
+`analytics_enabled` takes no arguments and returns a boolean.
+`analytics_set_enabled` takes `{ enabled: boolean }`, persists it and returns
+the saved boolean. A write failure rejects with `err.analytics.storage` and
+leaves the running preference unchanged. These preference commands are additive;
+the version-2 tracking payload follows the required metadata rules above.
+
+The backend checks consent before initializing delivery or queuing any event,
+including app startup and events emitted by native use cases. Settings changes
+take effect without restarting. Delivery rechecks consent after the batch
+window, dropping pending events from before a disable even if tracking has
+since been enabled again. Events dropped while off are never replayed.
+Consent changes and dispatch share a delivery gate: a prepared batch is
+revalidated under that gate, which remains held through HTTP completion.
+Saving waits for an in-flight request (bounded by the 10-second HTTP timeout)
+on a background thread; capture does not acquire the delivery gate and the UI
+stays responsive. No stale batch can start after disabling succeeds.
+Disabling does not erase events already received by PostHog or the local
+installation ID. This preference does not change local telemetry or its capture.
 
 The top-level `offset` is monotonic elapsed milliseconds from capture to batch
 construction. PostHog subtracts it from server receipt time, preserving spacing
@@ -168,13 +194,13 @@ absolute time; it is not a latency measurement.
 One thread batches for five seconds after the first event and uses a ten-second
 request timeout. Failed deliveries and batches waiting at exit are dropped.
 There is no offline queue or retry. Tracking never blocks or fails a feature.
-Only builds compiled with a nonempty `PROMETEU_POSTHOG_KEY` send events.
+Only opted-in builds compiled with a nonempty `PROMETEU_POSTHOG_KEY` send events.
 
 | Shell | Coverage |
 | --- | --- |
-| macOS and Linux desktop | Releases with the ingestion key |
-| Native Windows / WSL | No product-event transport in this delivery |
-| Browser mock | No upload; used for control and behavior verification |
+| macOS and Linux desktop | Explicit consent and the ingestion key |
+| Native Windows / WSL | Analytics commands unsupported; Settings disables the control |
+| Browser mock | No upload; preference persists in mock localStorage |
 | Mobile companion | No product-event transport in this delivery |
 
 ## Compatibility and verification
@@ -197,6 +223,20 @@ that were never clicked. The [shared E2E fixture](../../e2e/fixtures.ts) rejects
 missing metadata on controls activated by existing browser scenarios.
 Feature tests cover successful/failed actions, review
 persistence, dictation and configuration flows. See the coverage map for scope.
+
+Native consent tests cover default-off upgrades, invalid/unreadable preferences,
+persistence across restarts, failed writes and pending event rejection across
+disable/enable cycles. Dispatch tests cover disabling after batch preparation,
+serialization with an in-flight send and capture without waiting for the network.
+[`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) covers
+loading and changing consent, pending saves, error recovery and unsupported
+backends. The analytics scenario in
+[`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts) covers focus
+after successful and failed saves in Chromium and WebKit, including moving to
+another control while saving. This needs real DOM replacement and native
+disabled-input focus behavior, which the mocked settings unit tests cannot prove.
+The IPC parity test in [`src-tauri/tests/mock.rs`](../../src-tauri/tests/mock.rs)
+covers command registration.
 
 Run `npm run analytics:check` and the closest feature tests during development;
 run `npm run check` for changes spanning modules. These tests verify local

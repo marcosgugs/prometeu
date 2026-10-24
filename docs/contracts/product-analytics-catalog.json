@@ -2461,6 +2461,12 @@
       ]
     },
     {
+      "target": "settings.analytics.enabled",
+      "sources": [
+        "src/analytics-settings.ts"
+      ]
+    },
+    {
       "target": "settings.defaults.resources",
       "sources": [
         "src/settings.ts"

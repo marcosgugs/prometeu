@@ -89,6 +89,12 @@ control activations from explicit feature use. The
 [contract](../contracts/product-analytics.md) defines triggers and the
 [coverage map](product-analytics-coverage.md) inventories product modules.
 
+Claude, Codex and Antigravity share the same default-off consent in
+Settings / General / Privacy. The setting gates native and frontend events
+without changing agent execution or local history. Rust consent/persistence/batch
+tests live in `src-tauri/src/analytics.rs`; Settings tests live in
+`src/analytics-settings.test.ts`.
+
 | Measurement | Claude | Codex | Antigravity |
 | --- | --- | --- | --- |
 | Named controls and navigation | Shared desktop UI | Shared desktop UI | Shared desktop UI |
@@ -107,9 +113,10 @@ TypeScript tests check parity, identity capture and feature triggers. The
 real-DOM analytics check verifies metadata on shared controls and portals.
 These checks do not certify live PostHog delivery or every CLI version.
 
-Only macOS/Linux desktop builds compiled with the key send events. Windows/WSL,
-the browser mock and mobile do not. Missing events from those shells must not
-be counted as missing usage.
+Only opted-in macOS/Linux desktop builds compiled with the key send events.
+Windows/WSL and mobile do not; the browser mock persists the choice but ignores
+events. Missing events from those shells or installations without consent must
+not be counted as missing usage.
 
 ## Legend
 

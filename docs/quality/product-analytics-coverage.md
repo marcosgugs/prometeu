@@ -1,7 +1,7 @@
 # Product analytics coverage
 
 Status: implemented vocabulary and source inventory; live delivery requires a
-release with the key. Read the [tracking contract](../contracts/product-analytics.md)
+release with the key and explicit consent. Read the [tracking contract](../contracts/product-analytics.md)
 for exact meanings and the [generated catalog](../contracts/product-analytics-catalog.json)
 for control identities and closed event fields.
 
@@ -49,6 +49,10 @@ control identities. Repeated items share an authored action token.
 
 ## Interaction inventory
 
+The Privacy toggle has an authored target and area like other controls. Consent
+defaults to off and is enforced by the native delivery boundary; the preference
+value is not uploaded as a feature-event property.
+
 The generated catalog contains explicit static targets with their sources, and
 separately lists composed metadata expressions such as a dialog's `.save` and
 `.cancel` suffixes. This distinction avoids claiming that a source scan has
@@ -81,7 +85,10 @@ Relevant permanent tests:
   nested control resolution, missing/invalid identities, screen changes.
 - [`src/analytics-events.test.ts`](../../src/analytics-events.test.ts) and
   [`analytics.rs`](../../src-tauri/src/analytics.rs): frontend/native vocabulary,
-  closed fields, content exclusion, non-null identities and batch offsets.
+  closed fields, content exclusion, non-null identities, batch offsets and consent.
+- [`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) and
+  [`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts): consent
+  saves, errors, unsupported backends, control metadata and focus restoration.
 - [`src/actions.test.ts`](../../src/actions.test.ts),
   [`src/workspace-review.test.ts`](../../src/workspace-review.test.ts),
   [`src/voice.test.ts`](../../src/voice.test.ts): actual action acceptance,

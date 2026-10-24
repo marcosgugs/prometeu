@@ -67,7 +67,7 @@ IP data. This is pseudonymous metadata, not an identified-user dataset.
 
 Tracking is fire-and-forget and cannot fail a feature. One thread collects
 five-second batches; failed requests and pending shutdown batches are dropped.
-There is no retry or offline queue. Only builds compiled with a nonempty
+There is no retry or offline queue. Only opted-in builds compiled with a nonempty
 `PROMETEU_POSTHOG_KEY` send events. Windows/WSL, mobile and the browser mock do not
 have a product-event transport in this delivery.
 
@@ -77,9 +77,16 @@ trusting the client clock. Network delay still shifts absolute time. Existing
 lifecycle/navigation meanings remain; old click series with null or inferred
 identities are historical data, not backfilled into the new catalog.
 
-The current delivery has no opt-in or opt-out control. Revisit that decision
-before widening the vocabulary beyond content-free feature use. The existing
-local telemetry store and its deletion semantics remain independent.
+Tracking requires explicit opt-in in Settings / General / Privacy. New and
+existing installations default to off; a pre-existing installation ID is not
+consent. Rust persists the choice and enforces it before queuing and before
+delivery. Disabling also invalidates pending events across later opt-ins;
+already-started HTTP requests cannot be recalled. A delivery gate serializes
+dispatch and consent changes through HTTP completion; saving may wait up to
+the request timeout on a background thread, while event capture stays independent
+of that gate. This trades immediate save completion for a guarantee that stale
+batches cannot start after disabling succeeds. The local telemetry store and
+its deletion semantics remain independent.
 
 ## Consequences
 
@@ -101,11 +108,20 @@ then gather qualitative context. Existing PostHog dashboard titles were correcte
 without changing their queries; adoption dashboards require released events and
 verified ingestion.
 
+Opt-in reduces coverage and introduces selection bias, but gives people control
+over external product tracking. The preference belongs in the backend so startup
+and native use cases follow the same choice before the webview loads. An unreadable
+preference disables tracking; a failed save keeps the previous running choice
+and surfaces an error instead of claiming success.
+
 ## Evidence
 
 - [Typed native vocabulary and payload tests](../../src-tauri/src/analytics.rs),
   [feature schema parity](../../src/analytics-events.test.ts), and
   [shared fixtures](../../src-tauri/tests/fixtures/product-analytics.json).
+- Consent persistence and pending batch invalidation are tested in
+  [`analytics.rs`](../../src-tauri/src/analytics.rs); Settings saves and failure
+  recovery are covered by [`analytics-settings.test.ts`](../../src/analytics-settings.test.ts).
 - [Click capture and diagnostics](../../src/analytics.ts),
   [capture tests](../../src/analytics.test.ts), and
   [real DOM/portal checks](../../scripts/check-analytics.mjs).
