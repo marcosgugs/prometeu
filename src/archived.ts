@@ -36,7 +36,7 @@ export function hide() {
 function buildBar() {
   const bar = $("abar");
   bar.innerHTML = `
-    <label class="ifind">${icon("search", 14)}<input spellcheck="false" /></label>
+    <label class="ifind">${icon("search", 14)}<input spellcheck="false" data-track="archived.search" /></label>
     <span class="spacer"></span>
     <span class="imeta" id="ameta"></span>
     <button class="ghost md" id="aclean" data-t-title="rail.cleanup.title">${icon("trash", 14)}<span data-t="rail.cleanup"></span></button>`;
@@ -117,6 +117,7 @@ function row(ws: Workspace): HTMLElement {
       `<span class="iact"></span>`,
   );
   el.tabIndex = 0;
+  el.dataset.track = "archived.workspace.open";
   el.querySelector(".av")!.innerHTML = avatars(ws.repos.map((r) => r.name));
   (el.querySelector(".av") as HTMLElement).title = repoLabel(ws);
   el.querySelector(".atitle b")!.textContent = ws.title;
@@ -145,6 +146,7 @@ function row(ws: Workspace): HTMLElement {
 
   const act = el.querySelector(".iact")!;
   const back = template("button", "ghost", `${icon("archive-restore", 14)}<span></span>`);
+  back.dataset.track = "ws.menu.unarchive";
   back.children[1].textContent = t("ws.menu.unarchive");
   back.title = ws.cleaned ? t("ws.menu.gone") : t("ws.menu.unarchive");
   (back as HTMLButtonElement).disabled = ws.cleaned;

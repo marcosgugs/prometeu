@@ -93,7 +93,7 @@ export async function open(p: Pick, place: Place = { scroll: 0 }) {
     // Hub rows trust the resolved provenance; a row the hub no longer has falls back to the layer's add.
     const on = seen !== undefined ? isOn(seen) : (current?.add.includes(row.id) ?? false);
     items.push({
-      key: `row:${row.id}`,
+      track: "tools.select", key: `row:${row.id}`,
       label: row.label,
       hint: row.hint,
       checked: on,
@@ -107,14 +107,14 @@ export async function open(p: Pick, place: Place = { scroll: 0 }) {
     // an empty `none` layer so the global, project and CLI contributions are all switched off.
     const empty = current?.base === "none" && !current.add.length;
     items.push("sep", {
-      key: "action:none",
+      track: "tools.none", key: "action:none",
       label: t("tools.selectNone"),
       checked: empty,
       run: () => choose({ base: "none", add: [], remove: [] }, "action:none"),
     });
     if (current) {
       items.push({
-        key: "action:reset",
+        track: "tools.reset", key: "action:reset",
         label: t("tools.reset"),
         run: () => choose(null, "action:reset"),
       });
@@ -123,7 +123,7 @@ export async function open(p: Pick, place: Place = { scroll: 0 }) {
   // A pending project declaration resolves but is not injected until the person approves its hash.
   if (p.trust && pending) {
     items.push("sep", {
-      label: t("tools.trust.prompt"),
+      track: "tools.trust", label: t("tools.trust.prompt"),
       run: () => p.trust!(),
     });
   }
@@ -146,7 +146,7 @@ export type FlatPick = {
   /// The layer as it stands; null selects nothing on its own.
   current: () => Selection | null;
   set: (sel: Selection | null) => Promise<void> | void;
-  at: () => { x: number; y: number };
+  at: () => menu.Where;
   noneLabel: string;
 };
 
@@ -164,7 +164,7 @@ export function openFlat(p: FlatPick, place: Place = { scroll: 0 }) {
   for (const row of p.rows) {
     const isOn = on(row.id);
     items.push({
-      key: `row:${row.id}`,
+      track: "tools.select", key: `row:${row.id}`,
       label: row.label,
       hint: row.hint,
       checked: isOn,
@@ -173,7 +173,7 @@ export function openFlat(p: FlatPick, place: Place = { scroll: 0 }) {
   }
   if (p.rows.length && current) {
     items.push("sep", {
-      key: "action:reset",
+      track: "tools.reset", key: "action:reset",
       label: t("tools.reset"),
       run: () => choose(null, "action:reset"),
     });

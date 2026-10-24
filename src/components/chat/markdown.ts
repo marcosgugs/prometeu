@@ -46,8 +46,8 @@ function safeHtml(src: string): string {
     // The CSP blocks remote images, so badges read as their alt text like Markdown images do.
     if (tag === "img") out += `<span class="img">${esc(attrs.get("alt") || "")}</span>`;
     else if (close) out += `</${tag}>`;
-    else if (tag === "a") out += `<a class="lnk" href="${esc(safeHref(attrs.get("href") ?? ""))}" rel="noreferrer noopener">`;
-    else out += `<${tag}${tag === "details" && attrs.has("open") ? " open" : ""}>`;
+    else if (tag === "a") out += `<a data-track="content.link.open" class="lnk" href="${esc(safeHref(attrs.get("href") ?? ""))}" rel="noreferrer noopener">`;
+    else out += `<${tag}${tag === "summary" ? ' data-track="content.details.toggle"' : ""}${tag === "details" && attrs.has("open") ? " open" : ""}>`;
   }
   return out + escText(src.slice(at));
 }
@@ -59,7 +59,7 @@ export function codeBlock(text: string, lang = ""): string {
   const diff = raw === "diff" || raw === "patch";
   const ext = LANG[raw] ?? raw ?? "txt";
   const code = diff ? diffHtml(text) : highlight(text, `x.${ext || "txt"}`);
-  return `<div class="md-code-block"><div class="md-code-toolbar"><button type="button" class="ui-button ghost sm md-code-copy" title="${esc(t("chat.copyCode"))}" aria-label="${esc(t("chat.copyCode"))}" data-code="${esc(text)}">${icon("copy", 14)}</button></div><pre class="code${diff ? " tdiff" : ""}"><code>${code}</code></pre></div>\n`;
+  return `<div class="md-code-block"><div class="md-code-toolbar"><button data-track="chat.code.copy" type="button" class="ui-button ghost sm md-code-copy" title="${esc(t("chat.copyCode"))}" aria-label="${esc(t("chat.copyCode"))}" data-code="${esc(text)}">${icon("copy", 14)}</button></div><pre class="code${diff ? " tdiff" : ""}"><code>${code}</code></pre></div>\n`;
 }
 
 marked.use({
@@ -72,7 +72,7 @@ marked.use({
       return codeBlock(text, lang);
     },
     link({ href, tokens }: Tokens.Link) {
-      return `<a class="lnk" href="${esc(safeHref(href))}" rel="noreferrer noopener">${this.parser.parseInline(tokens)}</a>`;
+      return `<a data-track="content.link.open" class="lnk" href="${esc(safeHref(href))}" rel="noreferrer noopener">${this.parser.parseInline(tokens)}</a>`;
     },
     image({ href, text }: Tokens.Image) {
       return `<span class="img">${esc(text || href)}</span>`;

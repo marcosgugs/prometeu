@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";

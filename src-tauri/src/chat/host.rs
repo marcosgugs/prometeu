@@ -139,14 +139,12 @@ impl ExecutionObservation for DelegationObservation {
 
 pub(crate) struct TelemetryCapture {
     capture: crate::telemetry::Capture,
-    analytics: crate::analytics::ConversationCapture,
     app: AppHandle,
 }
 impl TelemetryCapture {
-    pub fn new(app: AppHandle, provider: prometeu_core::board::ProviderId) -> Self {
+    pub fn new(app: AppHandle) -> Self {
         Self {
             capture: Default::default(),
-            analytics: crate::analytics::ConversationCapture::new(provider),
             app,
         }
     }
@@ -156,9 +154,6 @@ impl TelemetryCapture {
 }
 impl SessionTelemetry for TelemetryCapture {
     fn observe(&mut self, event: &Value) {
-        if let Some(event) = self.analytics.observe(event) {
-            crate::analytics::track(event);
-        }
         self.capture
             .observe(&mut lock(&self.app.state::<AppState>().telemetry), event);
     }
@@ -168,25 +163,16 @@ impl CommandTelemetry for TelemetryCapture {
         Option<(crate::telemetry::Scope, Option<String>)>,
         Vec<crate::telemetry::Event>,
         crate::telemetry::Origin,
-        Option<crate::analytics::MessageContext>,
     );
     fn generation(&self) -> u64 {
         lock(&self.app.state::<AppState>().telemetry).generation
     }
     fn accepted(
         &mut self,
-        (scope, relations, origin, message): Self::Prepared,
+        (scope, relations, origin): Self::Prepared,
         generation: u64,
         events: &[Value],
     ) {
-        if let Some(message) = message {
-            crate::analytics::track(self.analytics.accepted(message));
-        }
-        for event in events {
-            if let Some(event) = self.analytics.observe(event) {
-                crate::analytics::track(event);
-            }
-        }
         let state = self.app.state::<AppState>();
         let mut telemetry = lock(&state.telemetry);
         if generation != telemetry.generation {

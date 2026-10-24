@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import type { EvaluationStatus } from "./evaluation";
 import { fromBack, t } from "./i18n";
 import { icon } from "./icons";
@@ -27,10 +28,11 @@ export function typesafeRows(say: (text: string, isError?: boolean) => void, red
   const row = template("div", "setrow typesafe-heading", `<span class="glyph">${icon("sparkles", 18)}</span><div class="txt"><b>TypeSafe</b><span></span></div>`);
   row.querySelector(".txt span")!.textContent = t("typesafe.pitch");
 
-  const key = password("", { show: t("typesafe.key.show"), hide: t("typesafe.key.hide") });
+  const key = password("", { show: t("typesafe.key.show"), hide: t("typesafe.key.hide") }, "typesafe.key");
   key.control.placeholder = t("typesafe.key.placeholder");
   key.control.autocomplete = "off";
   key.control.spellcheck = false;
+  key.control.dataset.track = "typesafe.key";
   key.control.dataset.focus = "typesafe-key";
   const controls = () => [save, remove, test];
   const run = async (work: () => Promise<string>) => {
@@ -47,22 +49,28 @@ export function typesafeRows(say: (text: string, isError?: boolean) => void, red
     const replacing = status.configured;
     void run(async () => {
       status = await invoke("typesafe_save_key", { key: key.control.value });
+      track({ name: "integration_action_used", integration: "typesafe", action: "configure" });
       return t(replacing ? "typesafe.key.replaced" : "typesafe.key.saved");
     });
   });
+  save.dataset.track = "typesafe.save";
   save.dataset.focus = "typesafe-save";
   const remove = button(t("typesafe.key.remove"), () => void run(async () => {
     status = await invoke("typesafe_remove_key");
+    track({ name: "integration_action_used", integration: "typesafe", action: "disconnect" });
     return t("typesafe.key.removed");
   }), "ghost");
+  remove.dataset.track = "typesafe.remove";
   remove.dataset.focus = "typesafe-remove";
   remove.hidden = !status.configured;
   // The enable flag only gates `context_evaluate`, and Test is its only caller.
   const test = button(t("typesafe.test"), () => void run(async () => {
     if (!status.enabled) status = await invoke("typesafe_set_enabled", { enabled: true });
     const result = await invoke("context_evaluate", { request: TEST });
+    track({ name: "integration_action_used", integration: "typesafe", action: "test" });
     return t("typesafe.test.ok", { model: result.model ?? t("typesafe.test.unknownModel") });
   }), "ghost");
+  test.dataset.track = "typesafe.test";
   test.dataset.focus = "typesafe-test";
   test.hidden = !status.configured;
   key.control.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); save.click(); } });

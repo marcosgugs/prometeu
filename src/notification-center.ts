@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { avatar, icon } from "./icons";
 import { fromBack, t, tn } from "./i18n";
 import { invoke } from "./ipc";
@@ -196,6 +197,7 @@ function build() {
   tabs.setAttribute("aria-label", t("notifications.center"));
   for (const key of ["all", "github", "mentions"] as const) {
     const tab = issueTab(t(`notifications.filter.${key}`), () => { filter = key; draw(); });
+    tab.dataset.track = `notifications.filter.${key}`;
     tab.id = `notifications-${key}`;
     tab.setAttribute("aria-controls", "nlist");
     tabs.append(tab);
@@ -209,7 +211,8 @@ function build() {
   });
   const bar = $("nbar");
   const meta = h("span", "imeta"); meta.id = "nmeta"; meta.setAttribute("role", "status");
-  const all = button(t("notifications.readAll"), () => { read = markAll(read, items); saveRead(account, read); ctx.changed(); draw(); }, "ghost");
+  const all = button(t("notifications.readAll"), () => { read = markAll(read, items); saveRead(account, read); track({ name: "notification_action_used", source: "github", action: "read_all" }); ctx.changed(); draw(); }, "ghost");
+  all.dataset.track = "notifications.read_all";
   all.classList.remove("md"); all.id = "nreadall";
   bar.append(h("span", "spacer"), meta, all, issueRefresh(t("issues.refresh"), () => void poll()));
   $("nlist").setAttribute("role", "tabpanel");
@@ -260,16 +263,16 @@ export function draw() {
 const clock = (item: GitHubNotification) =>
   new Date(item.created_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
-const visit = (item: GitHubNotification) => void invoke("open_external", { url: item.url }).catch(error => ctx.say(fromBack(error), true));
+const visit = (item: GitHubNotification) => void invoke("open_external", { url: item.url }).then(() => track({ name: "notification_action_used", source: "github", action: "open_source" })).catch(error => ctx.say(fromBack(error), true));
 
-function rowAction(glyph: Parameters<typeof icon>[0], label: string, run: () => void) {
-  const action = button("", run, "ghost"); action.classList.remove("md"); action.classList.add("sm");
+function rowAction(glyph: Parameters<typeof icon>[0], label: string, run: () => void, target: string) {
+  const action = button("", run, "ghost", target); action.classList.remove("md"); action.classList.add("sm");
   action.innerHTML = icon(glyph, 14); action.title = label; action.setAttribute("aria-label", label);
   action.addEventListener("click", event => event.stopPropagation());
   return action;
 }
 
-const githubLink = (item: GitHubNotification) => rowAction("external-link", t("notifications.openGitHub"), () => visit(item));
+const githubLink = (item: GitHubNotification) => rowAction("external-link", t("notifications.openGitHub"), () => visit(item), "notifications.open_source");
 
 /// One row per issue or PR. Opening it reads the whole thread and opens it on GitHub; the actions
 /// open the matching workspace and expand the thread's events, newest first.
@@ -278,12 +281,13 @@ function githubRow(thread: Thread) {
   const unread = thread.items.some(entry => !isRead(read, entry.id));
   const row = template("div", "inboxrow notification-row" + (unread ? " unread" : ""),
     `<span class="av"></span><span class="txt"><b></b><span class="what"></span></span><span class="when"></span><span class="go"></span>`);
+  row.dataset.track = "notifications.thread.open";
   row.tabIndex = 0; row.setAttribute("role", "link");
   row.querySelector(".av")!.innerHTML = icon(GLYPHS[item.kind], 16);
   row.querySelector("b")!.textContent = threadHeadline(thread);
   row.querySelector(".what")!.textContent = subjectLine(item);
   row.querySelector(".when")!.textContent = clock(thread.latest);
-  const readThread = () => { read = markRead(read, ...thread.items.map(entry => entry.id)); saveRead(account, read); ctx.changed(); };
+  const readThread = () => { read = markRead(read, ...thread.items.map(entry => entry.id)); saveRead(account, read); track({ name: "notification_action_used", source: "github", action: "read" }); ctx.changed(); };
   const activate = () => { readThread(); visit(item); draw(); };
   const go = row.querySelector(".go")!;
   void workspaceOf(item).then(workspace => {
@@ -293,17 +297,18 @@ function githubRow(thread: Thread) {
       // The board changes without redrawing this list: the workspace may be gone since.
       repositories = null;
       const current = await workspaceOf(item);
-      if (current) ctx.open(current); else draw();
-    }));
+      if (current) { ctx.open(current); track({ name: "notification_action_used", source: "github", action: "open_workspace" }); } else draw();
+    }, "notifications.open_workspace"));
   });
   if (expandable(thread)) {
     const open = expanded === thread.key;
     const toggle = rowAction(open ? "chevron-up" : "chevron-down", t("notifications.details"), () => {
       readThread();
       expanded = open ? "" : thread.key;
+      if (!open) track({ name: "notification_action_used", source: "github", action: "open" });
       for (const entry of thread.items) failures.delete(entry.id);
       draw();
-    });
+    }, "notifications.details");
     toggle.setAttribute("aria-expanded", String(open));
     go.append(toggle);
   }
@@ -318,7 +323,7 @@ function githubRow(thread: Thread) {
     if (detail) wrap.append(detail);
   }
   if (!ctx.github().connected && thread.items.some(entry => entry.target && entry.target_id)) {
-    const connect = button(t("github.connect"), ctx.toSettings, "ghost"); connect.classList.add("sm");
+    const connect = button(t("github.connect"), ctx.toSettings, "ghost", "notifications.connect"); connect.classList.add("sm");
     const notice = h("div", "notification-detail");
     notice.append(t("notifications.connect"), " ", connect);
     wrap.append(notice);
@@ -365,10 +370,11 @@ function mentionRow(mention: ReturnType<typeof team.inboxList>[number]) {
   row.querySelector("b")!.textContent = t("inbox.from", { name: mention.author });
   row.querySelector(".what")!.textContent = mention.text || mention.title;
   row.querySelector(".when")!.textContent = new Date(mention.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  row.dataset.track = "notifications.mention.open";
   row.title = t("inbox.open");
   row.addEventListener("click", () => {
     const at = team.readInbox(mention.id);
-    if (at) ctx.openMention(at.workspace, at.note, at.tab);
+    if (at) { ctx.openMention(at.workspace, at.note, at.tab); track({ name: "notification_action_used", source: "team", action: "open_workspace" }); }
   });
   return row;
 }

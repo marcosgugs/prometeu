@@ -1,20 +1,19 @@
+/// <reference types="vite/client" />
 import { invoke } from "./ipc";
-import { t, type Key } from "./i18n";
-import { PT } from "./i18n.pt";
 import type { ProviderId } from "./types";
+import type { FeatureEvent } from "./analytics-events";
 
-/** Anonymous product events (ADR 0093). Strings are only identifiers we author: i18n keys and
- * static element IDs from index.html. Rust's `analytics::Event` rejects anything else. */
+/** Product events contain only authored identifiers and closed context (ADR 0093). */
 export type Control = "button" | "link" | "menuitem" | "tab" | "option" | "checkbox" | "input";
 export type Screen = "desk" | "settings" | "issues" | "notifications" | "archived" | "workspace" | "project";
+export type ClickEvent = { name: "ui_clicked"; control: Control; target: string; area: string };
 export type AnalyticsEvent =
   | { name: "app_opened" }
   | { name: "screen_viewed"; screen: Screen }
   | { name: "workspace_created"; provider: ProviderId; is_worktree: boolean }
   | { name: "conversation_created"; provider: ProviderId }
-  | { name: "message_accepted"; provider: ProviderId; is_action: boolean; is_delegated: boolean }
-  | { name: "turn_finished"; provider: ProviderId; outcome: "completed" | "failed" | "interrupted"; is_action: boolean; is_delegated: boolean; has_agent_activity: boolean }
-  | { name: "ui_clicked"; control: Control; target: string | null; area: string | null };
+  | ClickEvent
+  | FeatureEvent;
 
 /** Fire and forget: analytics never delays or fails a feature. */
 export function track(event: AnalyticsEvent) {
@@ -22,61 +21,71 @@ export function track(event: AnalyticsEvent) {
 }
 
 let shown: Screen | undefined;
-
-/** Counts screen changes, not redraws or moves between workspaces. */
 export function viewScreen(screen: Screen) {
   if (screen === shown) return;
   shown = screen;
   track({ name: "screen_viewed", screen });
 }
 
-/** `data-track` names a control whose label is user data, or a clickable part nested in one. */
 const CONTROLS = [
-  "[data-track]", "button", "a", "summary", "select", "input[type=checkbox]", "input[type=radio]",
-  ...["button", "link", "menuitem", "menuitemcheckbox", "tab", "option", "switch", "checkbox"].map(role => `[role=${role}]`),
+  "[data-track]", "button", "a", "summary", "select:not([aria-hidden=true])", "textarea", "input:not([type=hidden])",
+  ...["button", "link", "menuitem", "menuitemcheckbox", "tab", "option", "switch", "checkbox", "radio"].map(role => `[role=${role}]`),
 ].join(",");
-
 const ROLES: Record<string, Control> = {
-  a: "link", link: "link", summary: "button", select: "input", input: "checkbox", switch: "checkbox",
-  menuitemcheckbox: "menuitem", menuitem: "menuitem", tab: "tab", option: "option", checkbox: "checkbox",
+  a: "link", link: "link", summary: "button", select: "input", textarea: "input", input: "input",
+  switch: "checkbox", checkbox: "checkbox", radio: "checkbox", menuitemcheckbox: "menuitem", menuitem: "menuitem", tab: "tab", option: "option",
 };
+const TOKEN = /^[A-Za-z0-9._-]{1,80}$/;
+const token = (value?: string) => value && TOKEN.test(value) ? value : undefined;
+const controlTarget = (element: HTMLElement) => token(element.dataset.track ?? element.dataset.tTitle ?? element.dataset.t);
+const disabled = (element: HTMLElement) => element.matches(":disabled,[aria-disabled=true]");
+const controlArea = (element: HTMLElement) => token(element.closest<HTMLElement>("[data-track-area]")?.dataset.trackArea);
+export type UnidentifiedControl = { element: HTMLElement; missing: ("target" | "area")[] };
 
-/** Records every click on a control as its i18n key and the static region it sits in. Visible
- * text never leaves: a label is sent only as the catalog key whose translation it equals. */
-export function trackClicks(root: Document = document) {
-  const stable = new Set([...root.querySelectorAll("[id]")].map(el => el.id));
-  root.addEventListener("click", event => {
-    const el = (event.target as Element | null)?.closest?.(CONTROLS);
-    if (!el) return;
-    const role = el.getAttribute("role") ?? el.tagName.toLowerCase();
-    const area = el.closest("[role=menu]") ? "menu" : ancestorId(el, stable);
-    const target = (el as HTMLElement).dataset?.track ?? labelKey(el) ?? (stable.has(el.id) ? el.id : null);
-    track({ name: "ui_clicked", control: ROLES[role] ?? "button", target, area });
-  }, { capture: true });
+function unidentified(element: HTMLElement, target: string | undefined): UnidentifiedControl | undefined {
+  const missing: UnidentifiedControl["missing"] = [];
+  if (!target) missing.push("target");
+  if (!controlArea(element)) missing.push("area");
+  return missing.length ? { element, missing } : undefined;
 }
 
-function ancestorId(el: Element, stable: Set<string>): string | null {
-  for (let node = el.parentElement; node; node = node.parentElement) {
-    if (stable.has(node.id)) return node.id;
-  }
-  return null;
+/** Inspect enabled controls, including hidden states, without sending their text or DOM to analytics. */
+export function unidentifiedControls(root: ParentNode = document): UnidentifiedControl[] {
+  return [...root.querySelectorAll<HTMLElement>(`${CONTROLS},[data-track-double-click],[data-track-context-menu]`)].flatMap(element => {
+    if (disabled(element)) return [];
+    const targets = element.matches(CONTROLS) ? [controlTarget(element)] : [];
+    for (const attribute of ["trackDoubleClick", "trackContextMenu"] as const) {
+      if (element.dataset[attribute] !== undefined) targets.push(token(element.dataset[attribute]));
+    }
+    const missing = [...new Set(targets.flatMap(target => unidentified(element, target)?.missing ?? []))];
+    return missing.length ? [{ element, missing }] : [];
+  });
 }
 
-let catalog: Map<string, Key> | undefined;
-const squash = (text: string) => text.replace(/\s+/g, " ").trim();
-
-/** Built lazily from the active language; templates with parameters never match. */
-export function labelKey(el: Element): Key | null {
-  const html = el as HTMLElement;
-  const marked = html.dataset?.tTitle ?? html.dataset?.t;
-  if (marked && marked in PT) return marked as Key;
-  catalog ??= new Map(
-    (Object.keys(PT) as Key[]).filter(key => !PT[key].includes("{")).reverse().map(key => [squash(t(key)), key]),
-  );
-  const texts = [el.getAttribute("aria-label"), el.getAttribute("title"), el.querySelector(".ml")?.textContent, el.textContent];
-  for (const text of texts) {
-    const key = text && catalog.get(squash(text));
-    if (key) return key;
-  }
-  return null;
+/** Capture authored identities only. Missing coverage remains a local diagnostic, never a fabricated target. */
+export function trackClicks(root: Document = document, capture: (event: ClickEvent) => void = track) {
+  const listen = (kind: string, attribute?: "trackDoubleClick" | "trackContextMenu") => {
+    root.addEventListener(kind, event => {
+      const source = event.target as Element | null;
+      const element = source?.closest?.<HTMLElement>(attribute
+        ? `[data-${attribute === "trackDoubleClick" ? "track-double-click" : "track-context-menu"}]`
+        : CONTROLS);
+      if (!element || disabled(element)) return;
+      const target = attribute ? token(element.dataset[attribute]) : controlTarget(element);
+      const problem = unidentified(element, target);
+      if (problem) {
+        element.dataset.trackMissing = problem.missing.join(" ");
+        root.dispatchEvent(new CustomEvent("analytics-unidentified", { detail: problem }));
+        if (import.meta.env.DEV) console.warn("Missing authored analytics metadata", problem.missing, element);
+        return;
+      }
+      delete element.dataset.trackMissing;
+      const role = element.getAttribute("role") ?? element.tagName.toLowerCase();
+      const control = element.matches('input[type="checkbox"], input[type="radio"]') ? "checkbox" : ROLES[role] ?? "button";
+      capture({ name: "ui_clicked", control, target: target!, area: controlArea(element)! });
+    }, { capture: true });
+  };
+  listen("click");
+  listen("dblclick", "trackDoubleClick");
+  listen("contextmenu", "trackContextMenu");
 }

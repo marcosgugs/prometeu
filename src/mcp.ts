@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as ui from "./ui";
 import type { ResourceItem } from "./resources/model";
 import { invoke } from "./ipc";
@@ -174,7 +175,7 @@ export function flatLabel(ids: string[] | null): string {
 export function openDefaultPicker(p: {
   chosen: () => string[] | null;
   set: (ids: string[] | null) => void;
-  at: () => { x: number; y: number };
+  at: () => menu.Where;
 }) {
   const rows: toolPicker.Row[] = hub.map((server) => ({ id: server.id, label: server.id, hint: subtitle(server) }));
   const asSel = (): Selection | null => {
@@ -195,7 +196,7 @@ export function openDefaultPicker(p: {
 export function openGlobalPicker(p: {
   current: () => Selection | null;
   set: (sel: Selection | null) => void;
-  at: () => { x: number; y: number };
+  at: () => menu.Where;
 }) {
   const rows: toolPicker.Row[] = hub.map((server) => ({ id: server.id, label: server.id, hint: subtitle(server) }));
   toolPicker.openFlat({ rows, current: p.current, set: p.set, at: p.at, noneLabel: t("mcp.none") });
@@ -216,8 +217,8 @@ export function resourceItems(): ResourceItem[] {
 
 export function settingsActions(anchor: HTMLElement): menu.Item[] {
   return [
-    { label: t("mcp.add"), run: () => editor(null) },
-    { label: t("mcp.import"), run: () => void importer(anchor) },
+    { track: "mcp.add", label: t("mcp.add"), run: () => editor(null) },
+    { track: "mcp.import", label: t("mcp.import"), run: () => void importer(anchor) },
   ];
 }
 
@@ -242,17 +243,17 @@ function serverResource(server: McpServer): ResourceItem {
   const detail = connection.error || check?.steps.find(s => !s.ok)?.detail || check?.probe.detail;
   item.status = [t(status), detail ? fromBack(detail) : ""].filter(Boolean).join(" · ");
   item.busy = !!connection.pending;
-  item.actions.push({ label: t("mcp.check"), run: () => void connect(server, connection, "check") });
+  item.actions.push({ track: "mcp.check", label: t("mcp.check"), run: () => void connect(server, connection, "check") });
   if (kind(server) === "url") {
     if (check?.probe.auth || (!signedIn(server.id) && !check?.probe.ok)) {
-      item.actions.push({ label: t("mcp.authenticate"), run: () => void connect(server, connection, "login") });
+      item.actions.push({ track: "mcp.authenticate", label: t("mcp.authenticate"), run: () => void connect(server, connection, "login") });
     }
-    if (signedIn(server.id)) item.actions.push({ label: t("mcp.logout"), run: () => void connect(server, connection, "logout") });
+    if (signedIn(server.id)) item.actions.push({ track: "mcp.logout", label: t("mcp.logout"), run: () => void connect(server, connection, "logout") });
   }
   item.actions.push(
-    { label: t("mcp.edit"), run: () => editor(server) },
+    { track: "mcp.edit", label: t("mcp.edit"), run: () => editor(server) },
     ...catalog.resourceActions("mcp", server.id, ctx.say),
-    { label: t(catalog.shared("mcp", server.id) ? "catalog.delete" : "mcp.remove"), danger: true, run: () => void remove(server) },
+    { track: "mcp.remove", label: t(catalog.shared("mcp", server.id) ? "catalog.delete" : "mcp.remove"), danger: true, run: () => void remove(server) },
   );
   return item;
 }
@@ -266,12 +267,13 @@ async function connect(server: McpServer, connection: Connection, action: "check
   connection.check = undefined;
   announce();
   try {
-    if (action === "login") await invoke("mcp_login", { server });
-    if (action === "logout") await invoke("mcp_logout", { id: server.id });
+    if (action === "login") { await invoke("mcp_login", { server }); track({ name: "resource_action_used", kind: "mcp", action: "authenticate" }); }
+    if (action === "logout") { await invoke("mcp_logout", { id: server.id }); track({ name: "resource_action_used", kind: "mcp", action: "disconnect" }); }
     if (action !== "check") await refreshLogins();
     connection.pending = "mcp.check.doing";
     announce();
     connection.check = await invoke("mcp_check", { server });
+    if (action === "check") track({ name: "resource_action_used", kind: "mcp", action: "check" });
   } catch (e) {
     connection.error = fromBack(e);
   } finally {
@@ -300,6 +302,7 @@ async function remove(server: McpServer) {
   if (!await catalog.confirmRemoval("mcp", server.id)) return;
   try {
     hub = await invoke("mcp_remove", { id: server.id });
+    track({ name: "resource_action_used", kind: "mcp", action: "remove" });
     connections.delete(server.id);
     await catalog.load();
     announce();
@@ -310,6 +313,7 @@ async function remove(server: McpServer) {
 
 async function save(server: McpServer, revision = catalog.current().revision) {
   hub = await invoke("mcp_save", { server, revision });
+  track({ name: "resource_action_used", kind: "mcp", action: "save" });
   announce();
 }
 
@@ -371,6 +375,7 @@ function editor(server: McpServer | null) {
     "sheet hubedit",
     `<div class="sheettop"><b class="mt"></b></div><div class="mbody"></div><div class="sheetbar"></div>`,
   );
+  sheet.dataset.trackArea = "resources";
   const at = <T extends HTMLElement>(sel: string) => sheet.querySelector(sel) as T;
   const draft = toDraft(server);
   /// Reset the probe result when changing transport because it describes the previous server.
@@ -394,8 +399,10 @@ function editor(server: McpServer | null) {
   /// Both steps share footer layout and inline status.
   function foot(left: [Key, () => void], right: [Key, () => void]): HTMLButtonElement {
     const back = h("button", "ghost", t(left[0]));
+    back.dataset.track = left[0];
     back.addEventListener("click", left[1]);
     go = h("button", "pri", t(right[0])) as HTMLButtonElement;
+    go.dataset.track = right[0];
     go.addEventListener("click", right[1]);
     go.disabled = checking;
     at(".sheetbar").replaceChildren(back, hint, go);
@@ -437,6 +444,7 @@ function editor(server: McpServer | null) {
     const kinds = h("div", "mkind");
     const sw = (on: boolean, key: Key, pick: () => void) => {
       const b = template("button", `ghost sw${on ? " on" : ""}`, `<span></span><i class="knob"></i>`);
+      b.dataset.track = key;
       b.setAttribute("role", "switch");
       b.setAttribute("aria-checked", String(on));
       b.children[0].textContent = t(key);
@@ -520,6 +528,7 @@ function editor(server: McpServer | null) {
       "mhead",
       `<div class="txt"><b></b><span class="addr"></span><span class="said"></span></div><span class="pen"></span>`,
     );
+    row.dataset.track = "mcp.connection.edit";
     row.querySelector("b")!.textContent = draft.id.trim();
     row.querySelector(".addr")!.textContent = (draft.stdio ? draft.cmd : draft.url).trim();
     const said = check?.probe.ok
@@ -550,6 +559,7 @@ function editor(server: McpServer | null) {
     // Offer login for authentication-required or unprobed servers so attempting it can reveal a useful error.
     if (inside || open || !check) {
       const btn = h("button", "outline md", t(inside ? "mcp.logout" : "mcp.login")) as HTMLButtonElement;
+      btn.dataset.track = inside ? "mcp.logout" : "mcp.login";
       btn.addEventListener("click", () => void enter(btn));
       box.append(btn);
     }
@@ -562,6 +572,7 @@ function editor(server: McpServer | null) {
     if (signedIn(built.id)) {
       try {
         await invoke("mcp_logout", { id: built.id });
+        track({ name: "resource_action_used", kind: "mcp", action: "disconnect" });
       } catch (e) {
         return say(fromBack(e), true);
       }
@@ -582,6 +593,7 @@ function editor(server: McpServer | null) {
         await catalog.load(); revision = catalog.current().revision;
       }
       await invoke("mcp_login", { server: server ?? built });
+      track({ name: "resource_action_used", kind: "mcp", action: "authenticate" });
       connections.delete(built.id);
       await refreshLogins();
       say(t("mcp.login.ok"));
@@ -613,6 +625,7 @@ function editor(server: McpServer | null) {
     };
     paint();
     const add = template("button", "ghost md", `${icon("plus", 14)}<span></span>`);
+    add.dataset.track = "mcp.pairs.add";
     add.children[1].textContent = t("mcp.pairs.add");
     add.addEventListener("click", () => {
       draft.pairs.push(["", ""]);
@@ -645,12 +658,14 @@ function pairRow(pair: [string, string], drop: () => void): HTMLElement {
   const cell = (which: 0 | 1, place: Key) => {
     const input = h("input", "") as HTMLInputElement;
     input.spellcheck = false;
+    input.dataset.track = place;
     input.placeholder = t(place);
     input.value = pair[which];
     input.addEventListener("input", () => (pair[which] = input.value));
     return input;
   };
   const x = template("button", "ico sm", icon("x", 14));
+  x.dataset.track = "mcp.pairs.drop";
   x.title = t("mcp.pairs.drop");
   x.addEventListener("click", drop);
   row.append(cell(0, "mcp.pairs.key"), cell(1, "mcp.pairs.value"), x);
@@ -666,7 +681,7 @@ function field(o: {
   /// Probe after a changed field loses focus, not on each keystroke; probes start processes or access the network.
   done?: () => void;
 }): HTMLElement {
-  const input = ui.input(o.value);
+  const input = ui.input(o.value, false, o.label);
   input.spellcheck = false;
   const box = ui.field(t(o.label), input, t(o.hint));
   input.addEventListener("input", () => o.on(input.value));
@@ -732,19 +747,20 @@ async function importer(btn: HTMLElement) {
   let found: McpServer[] = [];
   try {
     found = await invoke("mcp_found");
+    track({ name: "resource_action_used", kind: "mcp", action: "discover" });
   } catch (e) {
     ctx.say(fromBack(e), true);
     return;
   }
   const at = btn.getBoundingClientRect();
   if (!found.length) {
-    menu.openAt({ x: at.left, y: at.bottom + 4 }, [{ label: t("mcp.import.none"), disabled: true }]);
+    menu.openAt({ x: at.left, y: at.bottom + 4, anchor: btn }, [{ label: t("mcp.import.none"), disabled: true }]);
     return;
   }
   menu.openAt(
-    { x: at.left, y: at.bottom + 4 },
+    { x: at.left, y: at.bottom + 4, anchor: btn },
     found.map((server) => ({
-      label: server.id,
+      track: "mcp.import.select", label: server.id,
       hint: server.note.trim() || t("mcp.origin.user"),
       run: () => {
         save(server).catch((e) => ctx.say(fromBack(e), true));

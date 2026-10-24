@@ -1,25 +1,29 @@
 import * as menu from "./menu.js";
 import { h } from "./dom.js";
+import { identifyControl, inheritTrackingArea } from "./tracking.js";
 
 export type SearchPickerItem = {
   key: string;
+  track?: string;
   label: string;
   detail?: string;
   searchText?: string;
   group?: string;
   checked?: boolean;
   disabled?: boolean;
-  secondary?: { label: string; pressed: boolean; run: () => void };
+  secondary?: { track?: string; label: string; pressed: boolean; run: () => void };
 };
 export type SearchPickerOptions = {
+  track?: string;
+  area?: string;
   label: string;
   searchPlaceholder: string;
   empty: string;
   items: SearchPickerItem[];
   select: (key: string) => void;
   status?: string;
-  refresh?: { label: string; run: () => void };
-  additional?: { label: string; checked: boolean; change: (checked: boolean) => void };
+  refresh?: { track?: string; label: string; run: () => void };
+  additional?: { track?: string; label: string; checked: boolean; change: (checked: boolean) => void };
   closed?: () => void;
   /** Remote search: the caller ranks results for each query and answers through `update`; the
    * picker then shows `items` as given instead of filtering them locally. */
@@ -39,7 +43,13 @@ export function searchablePicker(anchor: HTMLElement, options: SearchPickerOptio
   root.setAttribute("role", "region");
   root.setAttribute("aria-label", options.label);
   root.id = `ui-picker-${crypto.randomUUID()}`;
+  inheritTrackingArea(root, anchor, options.area);
+  const mark = (control: HTMLElement, suffix: string, override?: string) => {
+    const target = override ?? (options.track ? `${options.track}.${suffix}` : undefined);
+    if (target) identifyControl(control, target);
+  };
   const search = document.createElement("input");
+  mark(search, "search");
   search.type = "search"; search.className = "ui-input ui-search-picker-search";
   search.placeholder = options.searchPlaceholder; search.setAttribute("aria-label", options.searchPlaceholder);
   const list = h("div", "ui-search-picker-list");
@@ -66,6 +76,7 @@ export function searchablePicker(anchor: HTMLElement, options: SearchPickerOptio
       const row = h("div", "ui-search-picker-row");
       const choice = document.createElement("button");
       choice.type = "button"; choice.className = "ui-search-picker-choice"; choice.dataset.key = item.key;
+      mark(choice, "select", item.track);
       choice.disabled = pending || (item.disabled ?? false);
       choice.setAttribute("aria-pressed", String(item.checked ?? false));
       const text = h("span", "ui-search-picker-text");
@@ -79,6 +90,7 @@ export function searchablePicker(anchor: HTMLElement, options: SearchPickerOptio
       if (item.secondary) {
         const action = document.createElement("button");
         action.type = "button"; action.className = "ui-button ghost ui-search-picker-secondary";
+        mark(action, "secondary", item.secondary.track);
         action.dataset.key = item.key; action.dataset.secondary = "true";
         action.setAttribute("aria-label", item.secondary.label);
         action.setAttribute("aria-pressed", String(item.secondary.pressed));
@@ -99,12 +111,14 @@ export function searchablePicker(anchor: HTMLElement, options: SearchPickerOptio
   };
   if (options.refresh) {
     const refresh = document.createElement("button");
+    mark(refresh, "refresh", options.refresh.track);
     refresh.type = "button"; refresh.className = "ui-button ghost"; refresh.textContent = options.refresh.label;
     refresh.onclick = () => { refresh.focus(); options.refresh!.run(); }; footer.append(refresh);
   }
   if (options.additional) {
     const label = h("label", "ui-check");
     const check = document.createElement("input"); check.type = "checkbox"; check.checked = options.additional.checked;
+    mark(check, "filter", options.additional.track);
     check.onchange = () => options.additional!.change(check.checked);
     label.append(check, h("span", "", options.additional.label)); footer.append(label);
   }

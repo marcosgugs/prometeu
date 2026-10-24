@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import type { ConversationCommandV1 } from "../src/conversation";
 
 type RequestWindow = Window & {

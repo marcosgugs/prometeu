@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { catalogOf, descriptor, installed, isKnownModel, modelsOf, nativeEffort, onCatalogChange, refreshModels } from "./agents";
 import { choiceKey, effortLadder, favoriteChoices, isFavorite, modelLabel, sameChoice, toggleFavorite, type ModelChoice } from "./model-choice";
 import { current as locale, t, type Key } from "./i18n";
@@ -24,13 +25,13 @@ export function openModelPicker(at: HTMLElement, options: ModelPickerOptions): v
     const key = `${favorite ? "favorite:" : "model:"}${choiceKey(choice)}`;
     choices.set(key, choice);
     return {
-      key, label, group,
+      key, label, group, track: "model.select",
       detail: [descriptor(choice.agent).label, choice.model, model?.additional ? t("models.additionalBadge") : ""].filter(Boolean).join(" · "),
       checked: sameChoice(choice, options.current),
       secondary: choice.model ? {
         label: t(isFavorite(choice) ? "models.unfavorite" : "models.favorite", { model: `${label} · ${descriptor(choice.agent).label}` }),
-        pressed: isFavorite(choice),
-        run: () => { toggleFavorite(choice); draw(); },
+        track: isFavorite(choice) ? "model.unfavorite" : "model.favorite", pressed: isFavorite(choice),
+        run: () => { toggleFavorite(choice); track({ name: "model_favorite_changed", is_favorite: isFavorite(choice) }); draw(); },
       } : undefined,
     };
   };
@@ -66,12 +67,15 @@ export function openModelPicker(at: HTMLElement, options: ModelPickerOptions): v
     return messages.length ? [`${provider.label}: ${messages.join(" · ")}`] : [];
   }).join("\n");
   const refresh = (force = false) => { for (const provider of providers()) void refreshModels(provider.id, force); };
-  const picker = searchablePicker(at, {
-    label: t("models.choose"), searchPlaceholder: t("models.search"), empty: t("models.empty"), items: items(), status: status(),
+  const picker = searchablePicker(at, { area: "model",
+    track: "model.picker", label: t("models.choose"), searchPlaceholder: t("models.search"), empty: t("models.empty"), items: items(), status: status(),
     select: key => {
       if (key === "terminal") { options.terminal?.(); return; }
       const choice = choices.get(key);
-      if (choice && descriptor(choice.agent).installed && (!choice.model || isKnownModel(choice.agent, choice.model))) options.select(choice);
+      if (choice && descriptor(choice.agent).installed && (!choice.model || isKnownModel(choice.agent, choice.model))) {
+        options.select(choice);
+        if (!sameChoice(choice, options.current)) track({ name: "model_selection_changed", provider: choice.agent });
+      }
     },
     refresh: { label: t("models.refresh"), run: () => refresh(true) },
     additional: { label: t("models.additional"), checked: additional, change: value => { additional = value; draw(); } },
@@ -85,11 +89,14 @@ export function openModelPicker(at: HTMLElement, options: ModelPickerOptions): v
 export function openEffortPicker(at: HTMLElement, choice: ModelChoice, current: string, select: (effort: string) => void): void {
   const native = nativeEffort(choice.agent, current);
   const ladder = effortLadder(choice.model, choice.agent);
-  const items: menu.Item[] = ladder.map(([id, label]) => ({ label, checked: id === native, run: () => {
+  const items: menu.Item[] = ladder.map(([id, label]) => ({ label, track: "effort.select", checked: id === native, run: () => {
     // A catalog can refresh while this short menu is open; never submit a withdrawn option.
-    if (effortLadder(choice.model, choice.agent).some(([supported]) => supported === id)) select(id);
+    if (effortLadder(choice.model, choice.agent).some(([supported]) => supported === id)) {
+      select(id);
+      if (id !== native) track({ name: "effort_changed", provider: choice.agent });
+    }
   } }));
-  if (!ladder.some(([id]) => id === native)) items.unshift({ label: t("models.unavailableEffort", { effort: current }), checked: true, disabled: true }, "sep");
+  if (!ladder.some(([id]) => id === native)) items.unshift({ label: t("models.unavailableEffort", { effort: current }), track: "models.unavailableEffort", checked: true, disabled: true }, "sep");
   const box = at.getBoundingClientRect();
-  menu.openAt({ x: box.left, y: box.bottom + 4 }, items, undefined, undefined, true);
+  menu.openAt({ x: box.left, y: box.bottom + 4, anchor: at }, items, undefined, undefined, true);
 }

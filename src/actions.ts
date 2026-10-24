@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import defaultsText from "./action-defaults.json?raw";
 import { invoke } from "./ipc";
 import type { Board, Choice, Tab } from "./types";
@@ -47,6 +48,7 @@ export function findCommand(text: string, commands: Action[], provider: { name: 
 export const expand = (prompt: string, draft: string) => [prompt.trim(), draft.trim()].filter(Boolean).join("\n\n");
 export async function start(workspace: string, action: Action, context = "") {
   const tab = await invoke("action_start", { workspace, name: action.name, context });
+  track({ name: "action_used", kind: "agent" });
   await opened(workspace, tab);
   return tab;
 }

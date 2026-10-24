@@ -16,13 +16,13 @@ export function reviewNote(entry: ReviewEntry, actions: ReviewActions): HTMLElem
   heading.append(h("strong", "", anchorLabel(placement.kind === "attached" ? placement.anchor : note.anchor)), h("span", "review-state", t(`review.${note.state}`)), h("span", "review-placement", t(changedSinceSent ? "review.sinceSent" : `review.${placement.kind}`)));
   box.append(heading, h("p", "review-note-body", note.body));
   const tools = h("div", "review-note-tools");
-  if (actions.jump) tools.append(button(t("review.jump"), () => actions.jump!(entry), "ghost"));
-  tools.append(button(t("review.edit"), () => actions.edit(note), "ghost"), button(t("review.delete"), () => actions.remove(note), "ghost"), button(t(note.state === "resolved" ? "review.reopen" : "review.resolve"), () => actions.state(note, note.state === "resolved" ? "draft" : "resolved"), "ghost"));
-  if (note.state === "sent") tools.append(button(t("review.reopen"), () => actions.state(note, "draft"), "ghost"));
+  if (actions.jump) tools.append(button(t("review.jump"), () => actions.jump!(entry), "ghost", "review.jump"));
+  tools.append(button(t("review.edit"), () => actions.edit(note), "ghost", "review.edit"), button(t("review.delete"), () => actions.remove(note), "ghost", "review.delete"), button(t(note.state === "resolved" ? "review.reopen" : "review.resolve"), () => actions.state(note, note.state === "resolved" ? "draft" : "resolved"), "ghost", note.state === "resolved" ? "review.reopen" : "review.resolve"));
+  if (note.state === "sent") tools.append(button(t("review.reopen"), () => actions.state(note, "draft"), "ghost", "review.reopen"));
   box.append(tools); return box;
 }
 export function reviewEditor(anchor: ReviewAnchor, value: string, save: (body: string) => void | Promise<void>, cancel: () => void, changed: (body: string) => void = () => {}) {
-  const root = h("div", "review-editor"), text = input(value, true);
+  const root = h("div", "review-editor"), text = input(value, true, "review.note.input");
   text.required = true;
   text.oninput = () => changed(text.value);
   const error = h("p", "review-error"); error.setAttribute("role", "alert");
@@ -38,7 +38,7 @@ export function reviewEditor(anchor: ReviewAnchor, value: string, save: (body: s
     }
   };
   const tools = h("div", "review-note-tools");
-  tools.append(button(t("review.save"), submit, "pri"), button(t("review.cancel"), cancel, "ghost"));
+  tools.append(button(t("review.save"), submit, "pri", "review.save"), button(t("review.cancel"), cancel, "ghost", "review.cancel"));
   root.append(h("strong", "", anchorLabel(anchor)), field(t("review.note"), text), error, tools);
   root.addEventListener("keydown", event => {
     event.stopPropagation();

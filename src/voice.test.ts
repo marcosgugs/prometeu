@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
+vi.mock("./analytics", () => ({ track: vi.fn() }));
+import { track } from "./analytics";
 import { use } from "./i18n";
 import { available, choose, join, lang, listen } from "./voice";
 
@@ -7,10 +9,11 @@ class Fake {
   lang = "";
   interimResults = false;
   continuous = false;
+  onstart: (() => void) | null = null;
   onresult: ((e: unknown) => void) | null = null;
   onend: (() => void) | null = null;
   onerror: ((e: { error: string }) => void) | null = null;
-  start = vi.fn();
+  start = vi.fn(() => this.onstart?.());
   stop = vi.fn(() => this.onend?.());
   abort = vi.fn(() => { this.onerror?.({ error: "aborted" }); this.onend?.(); });
   constructor() { Fake.last = this; }
@@ -21,13 +24,14 @@ const result = (index: number, ...parts: [string, boolean][]) => ({
   results: parts.map(([transcript, isFinal]) => Object.assign([{ transcript }], { isFinal })),
 });
 
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); use("en"); });
+afterEach(() => { vi.clearAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); use("en"); });
 
 it("reports absence instead of throwing when the webview lacks recognition", () => {
   expect(available()).toBe(false);
   const end = vi.fn();
   listen(vi.fn(), end);
   expect(end).toHaveBeenCalledWith("unavailable");
+  expect(track).not.toHaveBeenCalled();
 });
 
 it("hands the caller newly settled text plus the interim tail, then ends once on stop", () => {
@@ -42,11 +46,14 @@ it("hands the caller newly settled text plus the interim tail, then ends once on
   expect(r.lang).toBe("en");
   expect(r.continuous && r.interimResults).toBe(true);
 
+  r.onresult!(result(0, ["hel", false]));
+  expect(track).toHaveBeenCalledExactlyOnceWith({ name: "dictation_started" });
   r.onresult!(result(0, ["hello ", true], ["wor", false]));
   expect(text).toHaveBeenLastCalledWith("hello ", "wor");
   // The results list is cumulative; resultIndex points at the first entry that changed.
   r.onresult!(result(1, ["hello ", true], ["world", true]));
   expect(text).toHaveBeenLastCalledWith("world", "");
+  expect(vi.mocked(track).mock.calls).toEqual([[{ name: "dictation_started" }], [{ name: "dictation_text_inserted" }]]);
 
   r.onerror!({ error: "no-speech" });
   stop();

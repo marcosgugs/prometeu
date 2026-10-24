@@ -16,7 +16,7 @@ export function openCleanup(say: (text: string, isError?: boolean) => void, only
   let rows: Cleanable[] = [];
   const marked = new Set<string>();
   let running = false;
-  const dialog = formDialog({
+  const dialog = formDialog({ track: "cleanup.dialog", area: "cleanup",
     title: t(only ? "clean.offer" : "clean.title"), save: t("clean.goEmpty"), cancel: t(only ? "clean.keep" : "clean.cancel"), error: fromBack,
     submit: async () => {
       running = true;
@@ -63,7 +63,7 @@ export function openCleanup(say: (text: string, isError?: boolean) => void, only
     list.replaceChildren();
     if (!rows.length) list.append(h("div", "cleanempty", t("clean.none")));
     for (const row of rows) {
-      const choice = checkbox(row.title, marked.has(row.id));
+      const choice = checkbox(row.title, marked.has(row.id), "cleanup.workspace.select");
       choice.label.classList.add("cleanrow");
       choice.label.classList.toggle("risk", !!row.blocked);
       choice.label.classList.toggle("on", choice.control.checked);

@@ -1,6 +1,7 @@
 //! Run workspace shells, setup, and development scripts with their reserved port. Repository
 //! configuration owns these commands.
 
+use crate::analytics::{self, Event, ProjectAction, ScriptKind};
 use crate::lock::lock;
 use crate::session::cwd_of;
 use crate::state::{Board, Workspace};
@@ -49,6 +50,7 @@ pub fn open_dock(
         let handle = pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())?;
         lock(&state.ptys).insert(key.clone(), handle);
         crate::machine::publish_counts(&app);
+        analytics::track(Event::TerminalOpened);
         return Ok(key);
     }
 
@@ -245,6 +247,13 @@ fn start_script(
     ptys.insert(key, handle);
     drop(ptys);
     crate::machine::publish_counts(app);
+    analytics::track(Event::ProjectScriptStarted {
+        kind: if kind == "setup" {
+            ScriptKind::Setup
+        } else {
+            ScriptKind::Run
+        },
+    });
     Ok(())
 }
 
@@ -379,7 +388,22 @@ pub fn open_run(app: AppHandle, state: State<AppState>, id: String) -> Result<()
 
 #[tauri::command]
 pub fn close_dock(state: State<AppState>, id: String, kind: String) {
-    pty::kill(&state, &format!("{id}:{kind}"));
+    let key = format!("{id}:{kind}");
+    let alive = lock(&state.ptys)
+        .get(&key)
+        .is_some_and(|process| process.alive());
+    pty::kill(&state, &key);
+    if alive {
+        match kind.as_str() {
+            "setup" => analytics::track(Event::ProjectScriptStopped {
+                kind: ScriptKind::Setup,
+            }),
+            "run" => analytics::track(Event::ProjectScriptStopped {
+                kind: ScriptKind::Run,
+            }),
+            _ => {}
+        }
+    }
 }
 
 /// Stop every workspace dock when archiving or removing the workspace so hidden servers cannot
@@ -455,6 +479,9 @@ pub fn create_scripts_file(state: State<AppState>, id: String) -> Result<String,
         .ok_or_else(|| i18n::t("err.session.badPath"))?;
     std::fs::create_dir_all(parent).map_err(i18n::io)?;
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    analytics::track(Event::ProjectActionUsed {
+        action: ProjectAction::Configure,
+    });
     Ok(rel)
 }
 

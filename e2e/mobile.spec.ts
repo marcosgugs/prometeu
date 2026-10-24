@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { build } from "vite";
 
 let assets: Record<string, string>;

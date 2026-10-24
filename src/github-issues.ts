@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "./ipc";
 import { fromBack, t } from "./i18n";
@@ -37,6 +38,7 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
     const control = issueTab(t(`github.${key}`), () => {
       scope = key; repository = ""; draw();
     });
+    control.dataset.track = `issues.github.scope.${key}`;
     control.id = `github-${key}`; control.setAttribute("aria-controls", list.id);
     controls.set(key, control); tabs.append(control);
   }
@@ -96,11 +98,11 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
     const error = errors.get(scope) ?? "";
     list.setAttribute("aria-busy", String(loading));
     if (!ctx.github().connected) {
-      list.append(empty(t("github.off.title"), t("github.off.body"), [t("github.connect"), ctx.toSettings]));
+      list.append(empty(t("github.off.title"), t("github.off.body"), [t("github.connect"), ctx.toSettings, "github.connect"]));
       return;
     }
     if (!snapshot) {
-      if (error) list.append(empty(t("github.unavailable"), error, [t("issues.failed.action"), () => void refresh(true)]));
+      if (error) list.append(empty(t("github.unavailable"), error, [t("issues.failed.action"), () => void refresh(true), "github.refresh"]));
       return;
     }
     if (snapshot.truncated) list.append(h("p", "ui-notice warning", t("github.truncated")));
@@ -125,7 +127,7 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
     const found = matching.filter(item => !repository || item.repository === repository);
     if (!found.length) {
       list.append(!installed.length && !query
-        ? empty(t("github.install.title"), t("github.install.body"), [t("github.install.action"), install])
+        ? empty(t("github.install.title"), t("github.install.body"), [t("github.install.action"), install, "github.install"])
         : empty(t("github.empty"), t(query || repository ? "issues.noMatch.body" : "github.empty.hint")));
       return;
     }
@@ -138,18 +140,20 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
       row.querySelector(".istate span")!.textContent = t(item.draft ? "github.draft" : scope === "reviews" ? "github.reviewRequested" : "github.open");
       (row.querySelector(".istate .dot") as HTMLElement).style.background = item.draft ? "var(--fg-3)" : "var(--done)";
       row.querySelector(".iago")!.textContent = new Date(item.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      const visit = () => void invoke("github_issue_open", { url: item.url }).catch(cause => ctx.say(fromBack(cause), true));
+      const visit = () => void invoke("github_issue_open", { url: item.url }).then(() => track({ name: "issue_action_used", integration: "github", action: "open_source" })).catch(cause => ctx.say(fromBack(cause), true));
+      row.dataset.track = "issues.github.open_source";
       row.onclick = visit;
       row.onkeydown = event => { if (event.key === "Enter" && event.target === row) visit(); };
       const available = scope === "available";
       const action = button(t(available ? "issues.claim" : "issues.open"), () => void (available ? claim(item) : launch(item)), "ghost");
+      action.dataset.track = available ? "issues.github.claim" : "issues.github.open_workspace";
       action.classList.add("sm"); action.dataset.focus = item.id;
       action.addEventListener("click", event => event.stopPropagation()); action.disabled = opening || claiming;
       row.querySelector(".iact")!.append(action); list.append(row);
     }
     if (installed.length && scope === "available") {
       const more = h("p", "ui-hint github-install-hint");
-      const link = button(t("github.install.more"), install, "ghost"); link.classList.remove("md"); link.classList.add("sm");
+      const link = button(t("github.install.more"), install, "ghost", "issues.github.install"); link.classList.remove("md"); link.classList.add("sm");
       more.append(t("github.install.count", { n: installed.length }), " ", link);
       list.append(more);
     }
@@ -164,6 +168,7 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
     claiming = true; drawList();
     try {
       const claimed = await invoke("github_claim", { url: item.url });
+      track({ name: "issue_action_used", integration: "github", action: "claim" });
       const mine = snapshots.get("mine"), available = snapshots.get("available");
       if (mine) snapshots.set("mine", { ...mine, items: [claimed, ...mine.items] });
       if (available) snapshots.set("available", { ...available, items: available.items.filter(other => other.id !== item.id) });
@@ -176,7 +181,7 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
   async function launch(item: GitHubItem) {
     if (opening) return;
     const existing = githubWorkspace(item, ctx.board().workspaces);
-    if (existing) { ctx.open(existing); return; }
+    if (existing) { ctx.open(existing); track({ name: "issue_action_used", integration: "github", action: "open_workspace" }); return; }
     opening = true; drawList();
     try {
       const mappings = await invoke("github_projects");
@@ -184,14 +189,14 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
       const options = ctx.board().projects.filter(project => matches.some(match => match.project === project.id));
       if (options.length === 1) { await start(options[0].id); return; }
       const picker = select(options[0]?.id ?? "", options.map(project => [project.id, `${project.name} · ${project.path}`]));
-      const dialog = formDialog({ title: t("github.project.choose"), save: t("issues.open"), cancel: t("actions.cancel"), error: fromBack,
+      const dialog = formDialog({ track: "issues.github.project", area: "issues", title: t("github.project.choose"), save: t("issues.open"), cancel: t("actions.cancel"), error: fromBack,
         submit: async () => {
           const project = picker.value;
           if (!project) throw new Error(t("github.project.required"));
           await start(project, dialog.close);
         },
       });
-      dialog.body.append(h("p", "ui-hint", t("github.project.hint", { repository: item.repository })), field(t("launcher.project"), picker.control));
+      dialog.body.append(h("p", "ui-hint", t("github.project.hint", { repository: item.repository })), field(t("launcher.project"), picker.control, undefined, "issues.github.project.select"));
       dialog.save.disabled = !options.length;
       const add = button(t("github.project.add"), async () => {
         try {
@@ -205,11 +210,13 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
           dialog.close(); await start(project.id);
         } catch (cause) { ctx.say(fromBack(cause), true); }
       });
+      add.dataset.track = "issues.github.add_project";
       dialog.body.append(add); dialog.open();
       async function start(project: string, before = () => {}) {
         const git = item.kind === "pr" ? await invoke("github_prepare", { project, url: item.url }) : undefined;
         before();
         ctx.create(item, project, git);
+        track({ name: "issue_action_used", integration: "github", action: "prepare_workspace" });
       }
     } catch (cause) { ctx.say(fromBack(cause), true); }
     finally { opening = false; drawList(); }

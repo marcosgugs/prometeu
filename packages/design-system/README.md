@@ -80,7 +80,7 @@ nativo: o seletor preserva validação e dados de `FormData`. `control` permanec
 compatível com as telas antigas que leem `value` e enviam comandos próprios.
 
 `formDialog` returns `root` (the native dialog), `body`, `save` (the submit
-button), `open`, and `close`. Consumers can compose content and adjust labels or
+button), `cancel`, `open`, and `close`. Consumers can compose content and adjust labels or
 availability through these elements while the shared form owns validation,
 focus, busy state, and cancellation. A pending submit blocks Escape and cancel;
 a rejected submit keeps the dialog open and displays its error.
@@ -95,6 +95,24 @@ As primitivas recebem texto, não templates HTML. Rótulos, ajuda e erros usam
 próprio código; nunca passe HTML de usuários. Componentes retornam elementos
 DOM e podem ser compostos dentro de qualquer host. Feche diálogos e menus ao
 remover a tela; chame o retorno de `enhance` ao desmontar um host dinâmico.
+
+## Authored interaction metadata
+
+Consumers can pass a static `track` identifier to controls (the final optional
+argument), `select` attributes, menu items, dialogs and searchable pickers.
+`identifyControl(element, target, area?)` and `identifyArea(element, area)` also
+annotate existing controls and surfaces. Menus copy their explicit `area` or
+anchor area into their portal; dialogs accept `area` or inherit it from the
+opener. Pass `anchor` or `area` to `menu.openAt`. Dialog `track` prefixes name
+`.save` and `.cancel`; picker prefixes name `.search`, `.select`, `.secondary`,
+`.refresh` and `.filter`. Item, secondary, refresh and filter metadata can
+override those names. Values must be authored product identifiers, never item
+IDs, translated text, field values or user content. The package carries DOM
+metadata only: the consuming product owns collection, delivery and coverage
+checks. Desktop coverage includes hidden but enabled controls. Native disabled
+controls and `aria-disabled="true"` controls are ineligible; the same checks
+apply when they become enabled. The desktop check is
+`node scripts/check-analytics.mjs`.
 
 ## Rails
 

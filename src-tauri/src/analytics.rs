@@ -1,6 +1,5 @@
 //! Anonymous product analytics sent to PostHog (ADR 0093). Only the closed `Event` vocabulary
-//! crosses the network: fields are enums, booleans or identifier tokens we author (i18n keys and
-//! static element IDs), never free text, paths, names or content. Builds without
+//! crosses the network: fields are enums, booleans or explicit identifier tokens we author, never free text, paths, names or content. Builds without
 //! `PROMETEU_POSTHOG_KEY` (development, tests, forks) send nothing.
 
 use crate::paths;
@@ -33,92 +32,438 @@ pub enum Event {
     ConversationCreated {
         provider: ProviderId,
     },
-    MessageAccepted {
-        provider: ProviderId,
-        is_action: bool,
-        is_delegated: bool,
+    SettingsSectionViewed {
+        section: SettingsSection,
     },
-    TurnFinished {
+    SettingsSearchUsed,
+    PreferenceChanged {
+        setting: PreferenceSetting,
+    },
+    ResourceActionUsed {
+        kind: ResourceKind,
+        action: ResourceAction,
+    },
+    ResourceSelectionChanged {
+        kind: ResourceKind,
+        scope: ResourceScope,
+    },
+    IntegrationActionUsed {
+        integration: IntegrationKind,
+        action: IntegrationAction,
+    },
+    ProviderAccountActionUsed {
         provider: ProviderId,
-        outcome: TurnOutcome,
-        is_action: bool,
-        is_delegated: bool,
-        has_agent_activity: bool,
+        action: ProviderAccountAction,
+    },
+    ActionConfigurationChanged {
+        kind: ActionConfigurationKind,
+        action: ConfigurationAction,
+    },
+    IssueActionUsed {
+        integration: IssueIntegration,
+        action: IssueAction,
+    },
+    NotificationActionUsed {
+        source: NotificationSource,
+        action: NotificationAction,
+    },
+    CollaborationActionUsed {
+        action: CollaborationAction,
+    },
+    UsageHistoryActionUsed {
+        action: UsageHistoryAction,
+    },
+    UpdateActionUsed {
+        action: UpdateAction,
+    },
+    ReleaseNotesViewed,
+    FeedbackActionUsed {
+        channel: FeedbackChannel,
+        action: FeedbackAction,
+        has_attachment: bool,
+    },
+    TrustDecisionMade {
+        approved: bool,
+    },
+    DeskLayoutChanged {
+        change: DeskLayoutChange,
+    },
+    ConversationOpened {
+        surface: ConversationSurface,
+    },
+    ConversationResumed,
+    AttachmentAdded,
+    ContextAttached,
+    OutputCopied {
+        kind: OutputKind,
+    },
+    RequestAnswered,
+    ApprovalSubmitted {
+        approved: bool,
+    },
+    ModelSelectionChanged {
+        provider: ProviderId,
+    },
+    ModelFavoriteChanged {
+        is_favorite: bool,
+    },
+    EffortChanged {
+        provider: ProviderId,
+    },
+    UsageSummaryViewed,
+    FileOpened {
+        kind: FileKind,
+    },
+    FileSearchUsed,
+    DiffViewed,
+    GitComparisonOpened,
+    ReviewNoteCreated,
+    ReviewNotesSent,
+    PreviewOpened,
+    BrowserContextAttached,
+    PreviewCaptureCreated,
+    DictationStarted,
+    DictationTextInserted,
+    ActionUsed {
+        kind: ActionKind,
+    },
+    MachinePanelOpened,
+    QuotaViewed,
+    ProjectActionUsed {
+        action: ProjectAction,
+    },
+    WorkspaceActionUsed {
+        action: WorkspaceAction,
+    },
+    FileOperationCompleted {
+        operation: FileOperation,
+    },
+    GitOperationCompleted {
+        operation: GitOperation,
+    },
+    TerminalOpened,
+    ProjectScriptStarted {
+        kind: ScriptKind,
+    },
+    ProjectScriptStopped {
+        kind: ScriptKind,
+    },
+    DelegationActionUsed {
+        action: DelegationAction,
+        client: DelegationClient,
     },
     UiClicked {
         control: Control,
-        target: Option<Token>,
-        area: Option<Token>,
+        target: Token,
+        area: Token,
     },
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum TurnOutcome {
-    Completed,
-    Failed,
-    Interrupted,
+pub enum SettingsSection {
+    General,
+    Agents,
+    Resources,
+    Actions,
+    Work,
 }
 
-/// Conversation context, not the identity of whoever submitted its latest message.
-#[derive(Clone, Copy, Default)]
-pub(crate) struct MessageContext {
-    pub is_action: bool,
-    pub is_delegated: bool,
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum PreferenceSetting {
+    Language,
+    DictationLanguage,
+    DefaultModel,
+    DefaultEffort,
+    Notifications,
 }
 
-/// Observe only live commands and canonical output. Provider turns and accepted messages are
-/// independent counts. The adapters own terminal deduplication: overlapping input can finish
-/// without intervening output, so activity cannot identify duplicate terminals here.
-pub(crate) struct ConversationCapture {
-    provider: ProviderId,
-    context: Option<MessageContext>,
-    has_agent_activity: bool,
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceKind {
+    Mcp,
+    Plugin,
+    Skill,
 }
 
-impl ConversationCapture {
-    pub fn new(provider: ProviderId) -> Self {
-        Self {
-            provider,
-            context: None,
-            has_agent_activity: false,
-        }
-    }
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceAction {
+    Save,
+    Remove,
+    Install,
+    Update,
+    Copy,
+    Share,
+    Authenticate,
+    Disconnect,
+    Check,
+    Discover,
+    Generate,
+}
 
-    pub fn accepted(&mut self, context: MessageContext) -> Event {
-        self.context = Some(context);
-        Event::MessageAccepted {
-            provider: self.provider,
-            is_action: context.is_action,
-            is_delegated: context.is_delegated,
-        }
-    }
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceScope {
+    Defaults,
+    Global,
+    Workspace,
+    Project,
+}
 
-    pub fn observe(&mut self, event: &Value) -> Option<Event> {
-        let context = self.context?;
-        match event["type"].as_str() {
-            Some("assistant.started" | "assistant.block") => {
-                self.has_agent_activity = true;
-                None
-            }
-            Some("turn.completed") => {
-                let outcome = match event["outcome"].as_str()? {
-                    "ok" => TurnOutcome::Completed,
-                    "error" => TurnOutcome::Failed,
-                    "interrupted" => TurnOutcome::Interrupted,
-                    _ => return None,
-                };
-                Some(Event::TurnFinished {
-                    provider: self.provider,
-                    outcome,
-                    is_action: context.is_action,
-                    is_delegated: context.is_delegated,
-                    has_agent_activity: std::mem::take(&mut self.has_agent_activity),
-                })
-            }
-            _ => None,
-        }
-    }
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationKind {
+    Linear,
+    Github,
+    Typesafe,
+    Cloud,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntegrationAction {
+    Connect,
+    Disconnect,
+    Configure,
+    Test,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAccountAction {
+    LoginStart,
+    LoginCancel,
+    Select,
+    Remove,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionConfigurationKind {
+    Command,
+    Profile,
+    Project,
+    PrAction,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigurationAction {
+    Save,
+    Remove,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum IssueIntegration {
+    Linear,
+    Github,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum IssueAction {
+    PrepareWorkspace,
+    Claim,
+    OpenSource,
+    OpenWorkspace,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationSource {
+    Github,
+    Team,
+    Local,
+    Island,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationAction {
+    Open,
+    Read,
+    ReadAll,
+    OpenSource,
+    OpenWorkspace,
+    Dismiss,
+    Answer,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum CollaborationAction {
+    SelectOrganization,
+    Share,
+    Unshare,
+    Grant,
+    Revoke,
+    CompanionEnable,
+    CompanionDisable,
+    Leave,
+    Readmit,
+    AllowInput,
+    DismissInput,
+    SendPending,
+    EditPending,
+    DiscardPending,
+    Comment,
+    Reply,
+    Resolve,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageHistoryAction {
+    View,
+    Refresh,
+    Filter,
+    Export,
+    Clear,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateAction {
+    Check,
+    Install,
+    Restart,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedbackChannel {
+    Private,
+    Public,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedbackAction {
+    Open,
+    Submit,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DeskLayoutChange {
+    Visibility,
+    Order,
+    Size,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ConversationSurface {
+    Desk,
+    Workspace,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputKind {
+    Message,
+    Code,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FileKind {
+    Text,
+    Markdown,
+    Image,
+    Csv,
+    Pdf,
+    Binary,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionKind {
+    Prompt,
+    Agent,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectAction {
+    Add,
+    Create,
+    Remove,
+    Reorder,
+    Group,
+    Configure,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceAction {
+    Rename,
+    Pin,
+    Unpin,
+    Stage,
+    Finish,
+    Archive,
+    Restore,
+    Remove,
+    Cleanup,
+    MarkRead,
+    MarkUnread,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FileOperation {
+    Save,
+    CreateFile,
+    CreateFolder,
+    Rename,
+    Move,
+    Trash,
+    Restore,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum GitOperation {
+    Stage,
+    Unstage,
+    Commit,
+    Fetch,
+    Pull,
+    Push,
+    Publish,
+    Discard,
+    Resolve,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScriptKind {
+    Setup,
+    Run,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DelegationAction {
+    Create,
+    Send,
+    Interrupt,
+    Inspect,
+    Files,
+    Setup,
+    Run,
+    Preview,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DelegationClient {
+    Internal,
+    External,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -293,7 +638,7 @@ mod tests {
 
     #[test]
     fn rejects_events_outside_the_vocabulary() {
-        assert!(parse(json!({ "name": "file_opened" })).is_err());
+        assert!(parse(json!({ "name": "unregistered_event" })).is_err());
         // Variants without fields ignore extras; the payload is rebuilt from the enum.
         let opened = parse(json!({ "name": "app_opened", "path": "/Users/someone/repo" })).unwrap();
         assert!(payload(opened, "id", Duration::ZERO)["properties"]
@@ -313,7 +658,7 @@ mod tests {
         let body = payload(click(json!("top.settings")).unwrap(), "id", Duration::ZERO);
         assert_eq!(body["event"], "ui_clicked");
         assert_eq!(body["properties"]["target"], "top.settings");
-        assert!(click(Value::Null).is_ok());
+        assert!(click(Value::Null).is_err());
         for text in [
             "Fix the login bug",
             "/Users/someone/repo",
@@ -341,134 +686,39 @@ mod tests {
     }
 
     #[test]
-    fn capture_counts_writes_and_observed_turns_without_inspecting_content() {
-        let mut capture = ConversationCapture::new(ProviderId::Codex);
-        let terminal = json!({"type":"turn.completed","outcome":"ok","message":"private result"});
-        let activity = json!({"type":"assistant.block","block":{"text":"private output"}});
-        assert!(capture.observe(&activity).is_none());
-        assert!(capture.observe(&terminal).is_none());
-
-        let context = MessageContext {
-            is_action: true,
-            is_delegated: true,
-        };
-        assert_eq!(
-            capture.accepted(context),
-            Event::MessageAccepted {
-                provider: ProviderId::Codex,
-                is_action: true,
-                is_delegated: true,
-            }
-        );
-        assert!(capture
-            .observe(&json!({"type":"user.message","text":"private echo"}))
-            .is_none());
-        assert!(capture
-            .observe(&json!({"type":"telemetry.usage","usage":{"input_tokens":123}}))
-            .is_none());
-        assert_eq!(
-            capture.observe(&terminal),
-            Some(Event::TurnFinished {
-                provider: ProviderId::Codex,
-                outcome: TurnOutcome::Completed,
-                is_action: true,
-                is_delegated: true,
-                has_agent_activity: false,
-            })
-        );
-        for terminals in [
-            [
-                ("ok", TurnOutcome::Completed),
-                ("error", TurnOutcome::Failed),
-            ],
-            [
-                ("error", TurnOutcome::Failed),
-                ("ok", TurnOutcome::Completed),
-            ],
-        ] {
-            capture.accepted(context);
-            capture.observe(&activity);
-            capture.accepted(context);
-            for (index, (reported, outcome)) in terminals.into_iter().enumerate() {
-                assert_eq!(
-                    capture.observe(&json!({"type":"turn.completed","outcome":reported})),
-                    Some(Event::TurnFinished {
-                        provider: ProviderId::Codex,
-                        outcome,
-                        is_action: true,
-                        is_delegated: true,
-                        has_agent_activity: index == 0,
-                    })
-                );
-            }
-        }
-        capture.observe(&json!({"type":"assistant.started"}));
-        capture.accepted(context);
-        assert_eq!(
-            capture.observe(&terminal),
-            Some(Event::TurnFinished {
-                provider: ProviderId::Codex,
-                outcome: TurnOutcome::Completed,
-                is_action: true,
-                is_delegated: true,
-                has_agent_activity: true,
-            })
-        );
-    }
-
-    #[test]
-    fn capture_requires_a_known_terminal_and_does_not_guess_process_exit() {
-        let mut capture = ConversationCapture::new(ProviderId::Claude);
-        for (reported, expected) in [
-            ("error", TurnOutcome::Failed),
-            ("interrupted", TurnOutcome::Interrupted),
-        ] {
-            capture.accepted(MessageContext::default());
-            assert!(capture
-                .observe(&json!({"type":"session.state","state":"stopped"}))
-                .is_none());
-            assert!(capture
-                .observe(&json!({"type":"turn.completed","outcome":"unknown"}))
-                .is_none());
-            assert_eq!(
-                capture.observe(&json!({"type":"turn.completed","outcome":reported})),
-                Some(Event::TurnFinished {
-                    provider: ProviderId::Claude,
-                    outcome: expected,
-                    is_action: false,
-                    is_delegated: false,
-                    has_agent_activity: false,
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn conversation_payloads_allow_only_closed_context_and_outcomes() {
-        let message = json!({"name":"message_accepted","provider":"codex","is_action":false,"is_delegated":true});
-        let terminal = json!({"name":"turn_finished","provider":"codex","outcome":"completed","is_action":false,"is_delegated":true,"has_agent_activity":true});
-        for value in [message, terminal] {
+    fn feature_vocabulary_accepts_only_authored_properties() {
+        let fixtures: Vec<Value> =
+            serde_json::from_str(include_str!("../tests/fixtures/product-analytics.json")).unwrap();
+        for value in fixtures {
             let event = parse(value.clone()).unwrap();
-            let mut properties = payload(event, "id", Duration::ZERO)["properties"].clone();
-            for key in [
-                "$geoip_disable",
-                "$lib",
-                "$process_person_profile",
-                "analytics_version",
-                "app_version",
-                "arch",
-                "os",
-            ] {
-                properties.as_object_mut().unwrap().remove(key);
+            let body = payload(event, "id", Duration::ZERO);
+            assert_eq!(body["event"], value["name"]);
+            for (key, expected) in value.as_object().unwrap() {
+                if key != "name" {
+                    assert_eq!(&body["properties"][key], expected);
+                }
             }
-            let mut expected = value.clone();
-            expected.as_object_mut().unwrap().remove("name");
-            assert_eq!(properties, expected);
-            let mut extra = value;
-            extra["text"] = json!("private prompt");
-            assert!(parse(extra).is_err());
+            let mut extra = value.clone();
+            extra["private_content"] = json!("private prompt");
+            if let Ok(event) = parse(extra) {
+                assert!(payload(event, "id", Duration::ZERO)["properties"]
+                    .get("private_content")
+                    .is_none());
+            }
+            for key in value
+                .as_object()
+                .unwrap()
+                .keys()
+                .filter(|key| key.as_str() != "name" && key.as_str() != "provider")
+            {
+                let mut invalid = value.clone();
+                invalid[key] = json!("private dynamic value");
+                assert!(parse(invalid).is_err(), "{}:{key}", value["name"]);
+            }
         }
-        assert!(parse(json!({"name":"turn_finished","provider":"codex","outcome":"private error","is_action":false,"is_delegated":false,"has_agent_activity":false})).is_err());
+        for retired in ["message_accepted", "turn_finished"] {
+            assert!(parse(json!({"name":retired})).is_err());
+        }
     }
 
     #[test]

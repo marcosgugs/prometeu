@@ -9,6 +9,8 @@ const ui = vi.hoisted(() => ({
   save: undefined as Parameters<typeof reviewEditor>[2] | undefined,
   close: vi.fn(), add: vi.fn(),
 }));
+vi.mock("./analytics", () => ({ track: vi.fn() }));
+import { track } from "./analytics";
 vi.mock("./ipc", () => ({ invoke: vi.fn() }));
 vi.mock("./review-store", () => ({ reviews: {
   list: () => [], blocked: () => false, subscribe: vi.fn(), add: ui.add,
@@ -27,7 +29,7 @@ vi.mock("./components/git/review-note", () => ({
 }));
 import { workspaceReview } from "./workspace-review";
 
-beforeEach(() => { vi.clearAllMocks(); ui.save = undefined; ui.summary = undefined; });
+beforeEach(() => { vi.clearAllMocks(); ui.add.mockResolvedValue(undefined); ui.save = undefined; ui.summary = undefined; });
 it("keeps a resumed draft when its workspace becomes non-writable before saving", async () => {
   const ws = { id: "ws", repos: [] } as unknown as Workspace;
   const say = vi.fn();
@@ -40,6 +42,7 @@ it("keeps a resumed draft when its workspace becomes non-writable before saving"
   ws.cleaned = true;
   await expect(ui.save!("Keep my note")).rejects.toThrow("review.readonly");
   expect(ui.add).not.toHaveBeenCalled();
+  expect(track).not.toHaveBeenCalled();
   expect(ui.close).not.toHaveBeenCalled();
   expect(review.count(ws.id)).toBe(1);
   expect(say).toHaveBeenCalled();
@@ -48,4 +51,16 @@ it("keeps a resumed draft when its workspace becomes non-writable before saving"
   expect(ui.add).toHaveBeenCalledWith("ws", anchor, "Keep my note");
   expect(review.count(ws.id)).toBe(0);
   expect(ui.close).toHaveBeenCalledOnce();
+  expect(track).toHaveBeenCalledExactlyOnceWith({ name: "review_note_created" });
+});
+
+
+it("does not report a review note as saved when storage rejects it", async () => {
+  const ws = { id: "ws", repos: [] } as unknown as Workspace;
+  const review = workspaceReview({ workspace: () => ws, changed() {}, say() {}, send() {}, jump() {} });
+  const snapshot = review.snapshot(ws, "api", "changes", "", [])!;
+  const anchor = anchorSelection("api", "a.ts", "changes", "@@ -0,0 +1 @@\n+x", 1, 1);
+  ui.add.mockRejectedValueOnce(new Error("review.storage.write"));
+  await snapshot.add(anchor, "Keep my note");
+  expect(track).not.toHaveBeenCalled();
 });

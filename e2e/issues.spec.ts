@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // The workspace journey needs a browser: row navigation must not swallow its nested action,
 // Provider tabs must retain focus and identical control geometry; native dialogs must restore focus

@@ -140,6 +140,8 @@ compatibility still in use stays documented in the current contracts.
 
 ## Quality and operations
 
+- [Product analytics coverage](quality/product-analytics-coverage.md): feature inventory, named interactions, observation boundaries and verification.
+
 - [Desktop Design System audit](quality/desktop-design-system-audit.md):
   baseline evidence, preserved identity and the implemented Settings pilot.
 - [`quality/provider-matrix.md`](quality/provider-matrix.md): support per agent

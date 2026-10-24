@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("context actions preserve the draft and return keyboard focus", { tag: "@webkit" }, async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("prometeu:idioma", "en"));

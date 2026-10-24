@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { invoke } from "./ipc";
 import { reviews } from "./review-store";
 import { place, reviewBatch, type ReviewAnchor, type ReviewDraft, type ReviewNote, type ReviewScope, type ReviewEditorDraft } from "./review-comments";
@@ -55,7 +56,7 @@ export function workspaceReview(context: {
   }
   function edit(ws: Workspace, note: ReviewNote) {
     editorDialog?.close();
-    const dialog = formDialog({ title: t("review.edit"), save: t("review.save"), cancel: t("review.cancel"), submit: async () => {}, error: reviewError });
+    const dialog = formDialog({ track: "review.edit", area: "review", title: t("review.edit"), save: t("review.save"), cancel: t("review.cancel"), submit: async () => {}, error: reviewError });
     editorDialog = dialog;
     dialog.save.remove();
     const editor = reviewEditor(note.anchor, note.body, async body => { await mutate(ws, () => reviews.edit(ws.id, note.id, body, note.revision)); dialog.close(); }, dialog.close);
@@ -91,7 +92,7 @@ export function workspaceReview(context: {
       return { scope, reference, ...actions(ws), closed: context.changed,
         drafts: draftsOf(ws.id), draftChanged: (anchor, body) => draftChanged(ws.id, anchor, body),
         entries: entries(ws, snapshot).filter(e => e.note.anchor.repo === repo && (e.placement.kind === "attached" || matches(snapshot, ws.id, e.note.anchor))),
-        add: (anchor, body) => mutate(ws, () => reviews.add(ws.id, anchor, body)),
+        add: (anchor, body) => mutate(ws, () => reviews.add(ws.id, anchor, body).then(() => track({ name: "review_note_created" }))),
       };
     },
     async open() {
@@ -115,11 +116,11 @@ export function workspaceReview(context: {
       summary = reviewSummary({ ...actions(ws), entries: entries(ws), blocked: reviews.blocked(ws.id), drafts: draftsOf(ws.id),
         resume: draft => {
           summary?.close(); editorDialog?.close();
-          const dialog = formDialog({ title: t("review.note"), save: t("review.save"), cancel: t("review.close"), submit: async () => {}, error: reviewError, closed: context.changed });
+          const dialog = formDialog({ track: "review.note", area: "review", title: t("review.note"), save: t("review.save"), cancel: t("review.close"), submit: async () => {}, error: reviewError, closed: context.changed });
           editorDialog = dialog;
           dialog.save.remove();
           const editor = reviewEditor(draft.anchor, draft.body, async body => {
-            await mutate(ws, () => reviews.add(ws.id, draft.anchor, body));
+            await mutate(ws, () => reviews.add(ws.id, draft.anchor, body).then(() => track({ name: "review_note_created" })));
             draftChanged(ws.id, draft.anchor, null); dialog.close();
           }, () => { draftChanged(ws.id, draft.anchor, null); dialog.close(); }, body => draftChanged(ws.id, draft.anchor, body));
           dialog.body.append(editor.root); dialog.open(); editor.focus();

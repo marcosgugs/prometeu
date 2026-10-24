@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import type { Board, ProjectTools, Selection, WorkspaceTools } from "../src/types";
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;

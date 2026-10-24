@@ -1,0 +1,3768 @@
+{
+  "description": "Source-derived inventory of explicit control identities and feature event schemas. Composed identities require runtime coverage; this is not a count of rendered controls. Regenerate with node scripts/analytics-catalog.mjs.",
+  "controls": [
+    {
+      "target": "account.actions",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.add",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.cancel",
+      "sources": [
+        "src/accounts.ts",
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "account.dialog",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.manage",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.method",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.reconnect",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.remove",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.select",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "account.usage",
+      "sources": [
+        "src/accounts.ts"
+      ]
+    },
+    {
+      "target": "action.select",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "actions.commandName",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.delivery_template",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.description",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.edit",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.editor",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.effort",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.inherit",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.instructions",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.kind",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.model",
+      "sources": [
+        "src/action-settings.ts",
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "actions.more",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.name",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.newCommand",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.newProfile",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.permission",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.pr_settings",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.prAction",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.profile",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.profile.remove",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.remove",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.scope",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.skills",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.text",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.title",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "actions.tool.select",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "actions.tools",
+      "sources": [
+        "src/action-settings.ts"
+      ]
+    },
+    {
+      "target": "app.update",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "archived.search",
+      "sources": [
+        "src/archived.ts"
+      ]
+    },
+    {
+      "target": "archived.workspace.open",
+      "sources": [
+        "src/archived.ts"
+      ]
+    },
+    {
+      "target": "catalog.copy",
+      "sources": [
+        "src/catalog.ts"
+      ]
+    },
+    {
+      "target": "catalog.copy.name",
+      "sources": [
+        "src/catalog.ts"
+      ]
+    },
+    {
+      "target": "catalog.dialog",
+      "sources": [
+        "src/catalog.ts"
+      ]
+    },
+    {
+      "target": "catalog.install",
+      "sources": [
+        "src/catalog.ts"
+      ]
+    },
+    {
+      "target": "catalog.manage",
+      "sources": [
+        "src/cloud.ts"
+      ]
+    },
+    {
+      "target": "catalog.remove",
+      "sources": [
+        "src/catalog.ts"
+      ]
+    },
+    {
+      "target": "catalog.replaceSource",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "catalog.share",
+      "sources": [
+        "src/catalog.ts"
+      ]
+    },
+    {
+      "target": "chat.addFile",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.ask.go",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.attachment.remove",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.browser_context",
+      "sources": [
+        "src/components/chat/content.ts"
+      ]
+    },
+    {
+      "target": "chat.browser_context.remove",
+      "sources": [
+        "src/components/chat/content.ts"
+      ]
+    },
+    {
+      "target": "chat.code.copy",
+      "sources": [
+        "src/components/chat/markdown.ts"
+      ]
+    },
+    {
+      "target": "chat.composer.input",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.context.group",
+      "sources": [
+        "src/components/chat/content.ts"
+      ]
+    },
+    {
+      "target": "chat.context.section",
+      "sources": [
+        "src/components/chat/content.ts"
+      ]
+    },
+    {
+      "target": "chat.context.usage",
+      "sources": [
+        "src/components/chat/usage.ts"
+      ]
+    },
+    {
+      "target": "chat.copy",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "chat.effort.open",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.error.details",
+      "sources": [
+        "src/components/chat/blocks.ts"
+      ]
+    },
+    {
+      "target": "chat.interrupted.continue",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "chat.model.open",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.notice.details",
+      "sources": [
+        "src/components/chat/blocks.ts"
+      ]
+    },
+    {
+      "target": "chat.path.folder",
+      "sources": [
+        "src/paths.ts"
+      ]
+    },
+    {
+      "target": "chat.path.select",
+      "sources": [
+        "src/paths.ts"
+      ]
+    },
+    {
+      "target": "chat.perm.always",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.perm.no",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.perm.yes",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.plan.ask",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.plan.feedback",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.plan.feedback.send",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.plan.go",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.plan.no",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.question.answer",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.question.freeform",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.question.select",
+      "sources": [
+        "src/components/chat/requests.ts"
+      ]
+    },
+    {
+      "target": "chat.review_context",
+      "sources": [
+        "src/components/chat/review-context.ts"
+      ]
+    },
+    {
+      "target": "chat.review_context.remove",
+      "sources": [
+        "src/components/chat/review-context.ts"
+      ]
+    },
+    {
+      "target": "chat.send",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.stop",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.task.watch",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.thinking.details",
+      "sources": [
+        "src/components/chat/blocks.ts"
+      ]
+    },
+    {
+      "target": "chat.tool.details",
+      "sources": [
+        "src/components/chat/blocks.ts"
+      ]
+    },
+    {
+      "target": "chat.tool.technical",
+      "sources": [
+        "src/components/chat/blocks.ts"
+      ]
+    },
+    {
+      "target": "chat.voice",
+      "sources": [
+        "src/chat.ts",
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "chat.voice.stop",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "chat.work.details",
+      "sources": [
+        "src/components/chat/blocks.ts"
+      ]
+    },
+    {
+      "target": "cleanup.dialog",
+      "sources": [
+        "src/cleanup.ts"
+      ]
+    },
+    {
+      "target": "cleanup.workspace.select",
+      "sources": [
+        "src/cleanup.ts"
+      ]
+    },
+    {
+      "target": "cloud.account",
+      "sources": [
+        "src/cloud.ts"
+      ]
+    },
+    {
+      "target": "cloud.cancel",
+      "sources": [
+        "src/cloud.ts"
+      ]
+    },
+    {
+      "target": "cloud.logout",
+      "sources": [
+        "src/cloud.ts"
+      ]
+    },
+    {
+      "target": "cloud.manage",
+      "sources": [
+        "src/cloud.ts"
+      ]
+    },
+    {
+      "target": "cloud.openBrowser",
+      "sources": [
+        "src/cloud.ts"
+      ]
+    },
+    {
+      "target": "cloud.refresh",
+      "sources": [
+        "src/cloud.ts"
+      ]
+    },
+    {
+      "target": "collaboration.comments.open",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "collaboration.share",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "command.select",
+      "sources": [
+        "src/commands.ts"
+      ]
+    },
+    {
+      "target": "content.link.open",
+      "sources": [
+        "src/components/chat/markdown.ts"
+      ]
+    },
+    {
+      "target": "desk.conversation.hide",
+      "sources": [
+        "src/desk.ts"
+      ]
+    },
+    {
+      "target": "desk.conversation.show",
+      "sources": [
+        "src/desk.ts"
+      ]
+    },
+    {
+      "target": "desk.min",
+      "sources": [
+        "src/desk.ts"
+      ]
+    },
+    {
+      "target": "desk.open",
+      "sources": [
+        "src/desk.ts"
+      ]
+    },
+    {
+      "target": "desk.size.reset",
+      "sources": [
+        "src/desk.ts"
+      ]
+    },
+    {
+      "target": "diff.foldAll",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "diff.next",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "diff.seenAll",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "dock.again",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "dock.ask",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.closeTerm",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "dock.collapse",
+      "sources": [
+        "index.html",
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.expand",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.killSetup",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.new",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "dock.pick",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "dock.run.hide",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.run.open",
+      "sources": [
+        "index.html",
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.run.start",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.run.stop",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.run.toggle",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "dock.script.select",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.settings",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.setup.hide",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.setup.open",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.setup.start",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "dock.write",
+      "sources": [
+        "src/dockbar.ts"
+      ]
+    },
+    {
+      "target": "effort.select",
+      "sources": [
+        "src/model-picker.ts"
+      ]
+    },
+    {
+      "target": "feedback.attachment.add",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.attachment.remove",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.blocked.action",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.capture",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.close",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.description",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.open",
+      "sources": [
+        "packages/design-system/src/feedback.ts",
+        "src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.public",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "feedback.submit",
+      "sources": [
+        "packages/design-system/src/feedback.ts"
+      ]
+    },
+    {
+      "target": "file.menu.attach",
+      "sources": [
+        "src/file-menu.ts"
+      ]
+    },
+    {
+      "target": "file.menu.copyAbsolute",
+      "sources": [
+        "src/file-menu.ts"
+      ]
+    },
+    {
+      "target": "file.menu.copyPath",
+      "sources": [
+        "src/file-menu.ts"
+      ]
+    },
+    {
+      "target": "file.menu.reveal",
+      "sources": [
+        "src/file-menu.ts",
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "files.editor",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "files.picker",
+      "sources": [
+        "src/quick-open.ts"
+      ]
+    },
+    {
+      "target": "git.actions",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.branch.create",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.branch.new",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.branch.open",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.branch.search",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.branches",
+      "sources": [
+        "src/workspace-changes.ts",
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "git.changes.open",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "git.commit.message",
+      "sources": [
+        "src/components/git/commit-form.ts"
+      ]
+    },
+    {
+      "target": "git.commit.submit",
+      "sources": [
+        "src/components/git/commit-form.ts"
+      ]
+    },
+    {
+      "target": "git.comparison.file",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.comparison.reference",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.conflict.manual",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.conflict.refresh",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.conflict.resolve",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.conflict.result",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.diff.file.open",
+      "sources": [
+        "src/components/git/diff-view.ts"
+      ]
+    },
+    {
+      "target": "git.diff.file.toggle",
+      "sources": [
+        "src/components/git/diff-view.ts"
+      ]
+    },
+    {
+      "target": "git.diff.repository.toggle",
+      "sources": [
+        "src/components/git/diff-view.ts"
+      ]
+    },
+    {
+      "target": "git.diff.reviewed",
+      "sources": [
+        "src/components/git/diff-view.ts"
+      ]
+    },
+    {
+      "target": "git.fetch",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.file.menu",
+      "sources": [
+        "src/components/git/file-row.ts"
+      ]
+    },
+    {
+      "target": "git.file.open",
+      "sources": [
+        "src/components/git/file-row.ts"
+      ]
+    },
+    {
+      "target": "git.file.select",
+      "sources": [
+        "src/components/git/file-row.ts"
+      ]
+    },
+    {
+      "target": "git.filter",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.filter.clear",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.group.toggle",
+      "sources": [
+        "src/components/git/group.ts"
+      ]
+    },
+    {
+      "target": "git.history.select",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.menu.diff",
+      "sources": [
+        "src/changes-menu.ts"
+      ]
+    },
+    {
+      "target": "git.menu.discard",
+      "sources": [
+        "src/changes-menu.ts"
+      ]
+    },
+    {
+      "target": "git.menu.discard.title",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.menu.resolve",
+      "sources": [
+        "src/changes-menu.ts"
+      ]
+    },
+    {
+      "target": "git.openFile",
+      "sources": [
+        "src/changes-menu.ts",
+        "src/components/git/diff-view.ts",
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.publish",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.pull",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.pull_request",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "git.push",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.refresh",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.remote",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.remote.select",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.repository",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.repository.select",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.reviewStaged",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.stage",
+      "sources": [
+        "src/changes-menu.ts",
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.stageAll",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.tab.compare",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.unstage",
+      "sources": [
+        "src/changes-menu.ts",
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "git.unstageAll",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "github.cancel",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "github.connect",
+      "sources": [
+        "src/github-issues.ts",
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "github.disconnect",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "github.install",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "github.open_browser",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "github.refresh",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "inline.rename",
+      "sources": [
+        "src/rename.ts"
+      ]
+    },
+    {
+      "target": "island.answer.option",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "island.answer.other",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "island.answer.submit",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "island.notice.open",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "island.open_app",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "island.permission.allow",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "island.permission.deny",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "island.workspace.open",
+      "sources": [
+        "src/island-view.ts"
+      ]
+    },
+    {
+      "target": "issues.action",
+      "sources": [
+        "src/issues-controls.ts"
+      ]
+    },
+    {
+      "target": "issues.available",
+      "sources": [
+        "src/issues.ts"
+      ]
+    },
+    {
+      "target": "issues.connect",
+      "sources": [
+        "src/issues.ts"
+      ]
+    },
+    {
+      "target": "issues.filter",
+      "sources": [
+        "src/issues-controls.ts"
+      ]
+    },
+    {
+      "target": "issues.github.add_project",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "issues.github.claim",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "issues.github.install",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "issues.github.open_source",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "issues.github.open_workspace",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "issues.github.project",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "issues.github.project.select",
+      "sources": [
+        "src/github-issues.ts"
+      ]
+    },
+    {
+      "target": "issues.group.toggle",
+      "sources": [
+        "src/issues.ts"
+      ]
+    },
+    {
+      "target": "issues.linear.claim",
+      "sources": [
+        "src/issues.ts"
+      ]
+    },
+    {
+      "target": "issues.linear.open_source",
+      "sources": [
+        "src/issues.ts"
+      ]
+    },
+    {
+      "target": "issues.linear.open_workspace",
+      "sources": [
+        "src/issues.ts"
+      ]
+    },
+    {
+      "target": "issues.refresh",
+      "sources": [
+        "src/issues-controls.ts",
+        "src/issues.ts"
+      ]
+    },
+    {
+      "target": "issues.search",
+      "sources": [
+        "src/issues-controls.ts"
+      ]
+    },
+    {
+      "target": "issues.tab",
+      "sources": [
+        "src/issues-controls.ts"
+      ]
+    },
+    {
+      "target": "launcher.account",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.account.label",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.addRepo.label",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.attach.label",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.attachment.remove",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.base.label",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.go",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.issue.label",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.issue.remove",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.mcp",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.newBranch",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.plan.start",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.plugins",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.project",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.prompt",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.repository.add",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.repository.remove",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.skill",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "launcher.worktree",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "linear.allow_assignment",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "linear.connect",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "linear.disconnect",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "mcp.add",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.authenticate",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.check",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.connection.edit",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.edit",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.field.command",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.field.name",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.field.note",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.field.url",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.import",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.import.select",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.login",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.logout",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.pairs.add",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.pairs.drop",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "mcp.remove",
+      "sources": [
+        "src/mcp.ts"
+      ]
+    },
+    {
+      "target": "menu.app.settings",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.file.close",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.file.newChat",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.file.newWorkspace",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.file.quickOpen",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.view.back",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.view.fwd",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.view.rail",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.view.run",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.ws.archive",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.ws.finish",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "menu.ws.note",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
+      "target": "model.favorite",
+      "sources": [
+        "src/model-picker.ts"
+      ]
+    },
+    {
+      "target": "model.picker",
+      "sources": [
+        "src/model-picker.ts"
+      ]
+    },
+    {
+      "target": "model.select",
+      "sources": [
+        "src/model-picker.ts"
+      ]
+    },
+    {
+      "target": "model.unfavorite",
+      "sources": [
+        "src/model-picker.ts"
+      ]
+    },
+    {
+      "target": "models.effort",
+      "sources": [
+        "src/launcher.ts"
+      ]
+    },
+    {
+      "target": "models.unavailableEffort",
+      "sources": [
+        "src/model-picker.ts"
+      ]
+    },
+    {
+      "target": "nav.back",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "nav.fwd",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "news.close",
+      "sources": [
+        "src/news.ts"
+      ]
+    },
+    {
+      "target": "news.open",
+      "sources": [
+        "src/news.ts"
+      ]
+    },
+    {
+      "target": "notes.back",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.cancel",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.comment.turn",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "notes.compose",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.context.open",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.filter.open",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.filter.resolved",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.mention",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.mention.select",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.new",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.quote.drop",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.quoteSelection",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "notes.reply",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.reply.send",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.resolve",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.send",
+      "sources": [
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notes.thread.open",
+      "sources": [
+        "src/chat.ts",
+        "src/notes.ts"
+      ]
+    },
+    {
+      "target": "notification.dismiss",
+      "sources": [
+        "src/notification-view.ts"
+      ]
+    },
+    {
+      "target": "notification.open",
+      "sources": [
+        "src/notification-view.ts"
+      ]
+    },
+    {
+      "target": "notifications.allow",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "notifications.connect",
+      "sources": [
+        "src/notification-center.ts"
+      ]
+    },
+    {
+      "target": "notifications.details",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "notifications.enabled",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "notifications.example",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "notifications.listen",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "notifications.mention.open",
+      "sources": [
+        "src/notification-center.ts"
+      ]
+    },
+    {
+      "target": "notifications.read_all",
+      "sources": [
+        "src/notification-center.ts"
+      ]
+    },
+    {
+      "target": "notifications.sound",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "notifications.test",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "notifications.thread.open",
+      "sources": [
+        "src/notification-center.ts"
+      ]
+    },
+    {
+      "target": "notifications.tone",
+      "sources": [
+        "src/notification-settings.ts"
+      ]
+    },
+    {
+      "target": "organization.manage",
+      "sources": [
+        "src/cloud.ts",
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "organization.select",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "plugin.add",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.cancel",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.edit",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.field.name",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.field.note",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.field.source",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.install",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.install.confirm",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.install.field",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.install.select",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.make",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.make.field.ask",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.make.field.name",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.make.start",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.make.stop",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.remove",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.save",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "plugin.update",
+      "sources": [
+        "src/plugins.ts"
+      ]
+    },
+    {
+      "target": "preview.url",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "project.folder.create",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "project.group.select",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "project.newWorkspace",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "project.trust",
+      "sources": [
+        "src/trust.ts"
+      ]
+    },
+    {
+      "target": "project.trust.reject",
+      "sources": [
+        "src/trust.ts"
+      ]
+    },
+    {
+      "target": "projects.add",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.create",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.destination",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.link",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.local",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.name",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.parent",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.select",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "projects.title",
+      "sources": [
+        "src/projects.ts"
+      ]
+    },
+    {
+      "target": "rail.add",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.addProject",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.agent",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.agents",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.archived.title",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.cleanup.title",
+      "sources": [
+        "src/archived.ts"
+      ]
+    },
+    {
+      "target": "rail.create.title",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.desk.title",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder.actions",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder.leave",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder.move",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder.new",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder.newWith",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder.rename",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.folder.ungroup",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.group",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.group.fold",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.hide",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "rail.issues",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.newIn",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.notifications",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.projectActions",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.projects.search",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.removeProject",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.show",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "rail.workspace",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "recovery",
+      "sources": [
+        "src/board-recovery.ts"
+      ]
+    },
+    {
+      "target": "remoteControl.disable",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "remoteControl.enable",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "remoteControl.label",
+      "sources": [
+        "src/components/chat/composer.ts"
+      ]
+    },
+    {
+      "target": "resources.add",
+      "sources": [
+        "src/components/resource-view.ts"
+      ]
+    },
+    {
+      "target": "resources.defaults",
+      "sources": [
+        "src/components/resource-view.ts"
+      ]
+    },
+    {
+      "target": "resources.more",
+      "sources": [
+        "src/components/resource-view.ts"
+      ]
+    },
+    {
+      "target": "resources.retry",
+      "sources": [
+        "src/components/resource-view.ts"
+      ]
+    },
+    {
+      "target": "resources.search",
+      "sources": [
+        "src/components/resource-view.ts"
+      ]
+    },
+    {
+      "target": "review.cancel",
+      "sources": [
+        "src/components/git/review-note.ts"
+      ]
+    },
+    {
+      "target": "review.chip",
+      "sources": [
+        "src/components/chat/review-context.ts"
+      ]
+    },
+    {
+      "target": "review.continue",
+      "sources": [
+        "src/components/git/review-summary.ts"
+      ]
+    },
+    {
+      "target": "review.conversation.select",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "review.delete",
+      "sources": [
+        "src/components/git/review-note.ts"
+      ]
+    },
+    {
+      "target": "review.edit",
+      "sources": [
+        "src/components/git/review-note.ts",
+        "src/workspace-review.ts"
+      ]
+    },
+    {
+      "target": "review.file",
+      "sources": [
+        "src/components/git/diff-review.ts"
+      ]
+    },
+    {
+      "target": "review.include",
+      "sources": [
+        "src/components/git/review-summary.ts"
+      ]
+    },
+    {
+      "target": "review.jump",
+      "sources": [
+        "src/components/git/review-note.ts"
+      ]
+    },
+    {
+      "target": "review.line.select",
+      "sources": [
+        "src/components/git/diff-review.ts"
+      ]
+    },
+    {
+      "target": "review.newConversation",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "review.note",
+      "sources": [
+        "src/workspace-review.ts"
+      ]
+    },
+    {
+      "target": "review.note.input",
+      "sources": [
+        "src/components/git/review-note.ts"
+      ]
+    },
+    {
+      "target": "review.note.select",
+      "sources": [
+        "src/components/git/review-summary.ts"
+      ]
+    },
+    {
+      "target": "review.notes.send",
+      "sources": [
+        "src/components/git/review-summary.ts"
+      ]
+    },
+    {
+      "target": "review.open",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "review.reopen",
+      "sources": [
+        "src/components/git/review-note.ts"
+      ]
+    },
+    {
+      "target": "review.resolve",
+      "sources": [
+        "src/components/git/review-note.ts"
+      ]
+    },
+    {
+      "target": "review.resolveChanged",
+      "sources": [
+        "src/components/git/review-summary.ts"
+      ]
+    },
+    {
+      "target": "review.save",
+      "sources": [
+        "src/components/git/review-note.ts"
+      ]
+    },
+    {
+      "target": "review.summary",
+      "sources": [
+        "src/components/git/review-summary.ts"
+      ]
+    },
+    {
+      "target": "review.title",
+      "sources": [
+        "src/workspace-changes.ts"
+      ]
+    },
+    {
+      "target": "settings.defaults.resources",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "settings.defaults.unset",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "settings.dictation_language",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "settings.language",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "settings.search",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "settings.search.result",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "share.all",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.confirm",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.control",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.control.toggle",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.leave",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "share.leave.title",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "share.on",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.readmit",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.send",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.send.toggle",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.stop",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "share.viewer.toggle",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "side.collapse",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "side.files",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "side.reveal",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "side.review.title",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "sidebar.hide",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "sidebar.show",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "skill.add",
+      "sources": [
+        "src/skills.ts"
+      ]
+    },
+    {
+      "target": "skill.content",
+      "sources": [
+        "src/skills.ts"
+      ]
+    },
+    {
+      "target": "skill.description",
+      "sources": [
+        "src/skills.ts"
+      ]
+    },
+    {
+      "target": "skill.edit",
+      "sources": [
+        "src/skills.ts"
+      ]
+    },
+    {
+      "target": "skill.editor",
+      "sources": [
+        "src/skills.ts"
+      ]
+    },
+    {
+      "target": "skill.name",
+      "sources": [
+        "src/skills.ts"
+      ]
+    },
+    {
+      "target": "skill.remove",
+      "sources": [
+        "src/skills.ts"
+      ]
+    },
+    {
+      "target": "status.cleanup",
+      "sources": [
+        "src/statusbar.ts"
+      ]
+    },
+    {
+      "target": "status.port.open",
+      "sources": [
+        "src/statusbar.ts"
+      ]
+    },
+    {
+      "target": "tab.browser",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.browser.close",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.changes.close",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.changes.title",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.close",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.conversation",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.file",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.file.close",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.menu",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.new",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.new.options",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.rename",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "tab.terminal",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "team.input.allow",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "team.input.later",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "team.leave",
+      "sources": [
+        "src/settings.ts"
+      ]
+    },
+    {
+      "target": "team.pending.discard",
+      "sources": [
+        "src/components/chat/pending.ts"
+      ]
+    },
+    {
+      "target": "team.pending.edit",
+      "sources": [
+        "src/components/chat/pending.ts"
+      ]
+    },
+    {
+      "target": "team.pending.send",
+      "sources": [
+        "src/components/chat/pending.ts"
+      ]
+    },
+    {
+      "target": "team.rights.gotIt",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "terminal.input",
+      "sources": [
+        "src/term.ts"
+      ]
+    },
+    {
+      "target": "tools.none",
+      "sources": [
+        "src/tool-picker.ts"
+      ]
+    },
+    {
+      "target": "tools.project",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "tools.reset",
+      "sources": [
+        "src/tool-picker.ts"
+      ]
+    },
+    {
+      "target": "tools.select",
+      "sources": [
+        "src/tool-picker.ts"
+      ]
+    },
+    {
+      "target": "tools.trust",
+      "sources": [
+        "src/tool-picker.ts"
+      ]
+    },
+    {
+      "target": "top.more",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "top.pr",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "top.pr.links",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "top.settings",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "top.side",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "tree.entry.menu",
+      "sources": [
+        "src/tree.ts"
+      ]
+    },
+    {
+      "target": "tree.file",
+      "sources": [
+        "src/tree.ts"
+      ]
+    },
+    {
+      "target": "tree.folder",
+      "sources": [
+        "src/tree.ts"
+      ]
+    },
+    {
+      "target": "tree.folder.toggle",
+      "sources": [
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "tree.menu.newFile",
+      "sources": [
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "tree.menu.newFolder",
+      "sources": [
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "tree.menu.open",
+      "sources": [
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "tree.menu.rename",
+      "sources": [
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "tree.menu.restore",
+      "sources": [
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "tree.menu.trash",
+      "sources": [
+        "src/tree-menu.ts"
+      ]
+    },
+    {
+      "target": "tree.trash.title",
+      "sources": [
+        "src/tree.ts"
+      ]
+    },
+    {
+      "target": "typesafe.key",
+      "sources": [
+        "src/typesafe-settings.ts"
+      ]
+    },
+    {
+      "target": "typesafe.remove",
+      "sources": [
+        "src/typesafe-settings.ts"
+      ]
+    },
+    {
+      "target": "typesafe.save",
+      "sources": [
+        "src/typesafe-settings.ts"
+      ]
+    },
+    {
+      "target": "typesafe.test",
+      "sources": [
+        "src/typesafe-settings.ts"
+      ]
+    },
+    {
+      "target": "update.check",
+      "sources": [
+        "src/update.ts"
+      ]
+    },
+    {
+      "target": "update.install",
+      "sources": [
+        "src/update.ts"
+      ]
+    },
+    {
+      "target": "update.notes",
+      "sources": [
+        "src/update.ts"
+      ]
+    },
+    {
+      "target": "update.restart",
+      "sources": [
+        "src/update.ts"
+      ]
+    },
+    {
+      "target": "usage_history.clear",
+      "sources": [
+        "src/telemetry-settings.ts"
+      ]
+    },
+    {
+      "target": "usage_history.export",
+      "sources": [
+        "src/telemetry-settings.ts"
+      ]
+    },
+    {
+      "target": "usage_history.from",
+      "sources": [
+        "src/telemetry-settings.ts"
+      ]
+    },
+    {
+      "target": "usage_history.refresh",
+      "sources": [
+        "src/telemetry-settings.ts"
+      ]
+    },
+    {
+      "target": "usage_history.through",
+      "sources": [
+        "src/telemetry-settings.ts"
+      ]
+    },
+    {
+      "target": "usage_history.workspace",
+      "sources": [
+        "src/telemetry-settings.ts"
+      ]
+    },
+    {
+      "target": "usage.compact",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "usage.contextReport",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "usage.newConversation",
+      "sources": [
+        "src/chat.ts"
+      ]
+    },
+    {
+      "target": "usage.summary",
+      "sources": [
+        "src/workspace-usage.ts"
+      ]
+    },
+    {
+      "target": "viewer.cancel",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "viewer.copyPath",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "viewer.edit",
+      "sources": [
+        "src/viewer.ts"
+      ]
+    },
+    {
+      "target": "viewer.find.close",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "viewer.find.next",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "viewer.find.prev",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "viewer.find.query",
+      "sources": [
+        "src/viewer.ts"
+      ]
+    },
+    {
+      "target": "viewer.preview",
+      "sources": [
+        "src/viewer.ts"
+      ]
+    },
+    {
+      "target": "viewer.save",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "web.addToChat",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.back",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "web.capture",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.copyHtml",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.dismiss",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.element",
+      "sources": [
+        "src/components/chat/content.ts"
+      ]
+    },
+    {
+      "target": "web.external",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "web.fwd",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "web.inspect",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.inspect.start",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.inspect.stop",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.reload",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "web.url",
+      "sources": [
+        "index.html"
+      ]
+    },
+    {
+      "target": "web.viewport",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "web.width",
+      "sources": [
+        "src/browser.ts"
+      ]
+    },
+    {
+      "target": "workspace.create",
+      "sources": [
+        "src/desk.ts"
+      ]
+    },
+    {
+      "target": "workspace.finish",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "workspace.menu",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "workspace.pr.create",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "workspace.pr.open",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "workspace.pr.update",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "workspace.repositories",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "workspace.repository.select",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "workspace.share",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "workspace.stage.select",
+      "sources": [
+        "src/sidebar.ts",
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.archive",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.cleanup",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.copyPath",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.drop",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.finish",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.pin",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.read",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.rename",
+      "sources": [
+        "src/sidebar.ts",
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.reveal",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.stage",
+      "sources": [
+        "src/sidebar.ts",
+        "src/workspace.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.unarchive",
+      "sources": [
+        "src/archived.ts",
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.unpin",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.menu.unread",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "ws.rename",
+      "sources": [
+        "src/workspace.ts"
+      ]
+    }
+  ],
+  "composed": [
+    {
+      "source": "packages/design-system/src/feedback.ts",
+      "expression": "`feedback.kind.${value}`"
+    },
+    {
+      "source": "packages/design-system/src/menu.ts",
+      "expression": "item.track"
+    },
+    {
+      "source": "packages/design-system/src/search-picker.ts",
+      "expression": "target"
+    },
+    {
+      "source": "packages/design-system/src/tracking.ts",
+      "expression": "target"
+    },
+    {
+      "source": "packages/design-system/src/ui.ts",
+      "expression": "`${track}.visibility`"
+    },
+    {
+      "source": "packages/design-system/src/ui.ts",
+      "expression": "attributes.track"
+    },
+    {
+      "source": "packages/design-system/src/ui.ts",
+      "expression": "btn.dataset.track ? `${btn.dataset.track}.option` : undefined"
+    },
+    {
+      "source": "packages/design-system/src/ui.ts",
+      "expression": "options.track"
+    },
+    {
+      "source": "packages/design-system/src/ui.ts",
+      "expression": "options.track ? `${options.track}.cancel` : undefined"
+    },
+    {
+      "source": "packages/design-system/src/ui.ts",
+      "expression": "options.track ? `${options.track}.save` : undefined"
+    },
+    {
+      "source": "packages/design-system/src/ui.ts",
+      "expression": "track"
+    },
+    {
+      "source": "src/action-settings.ts",
+      "expression": "key"
+    },
+    {
+      "source": "src/components/chat/composer.ts",
+      "expression": "track"
+    },
+    {
+      "source": "src/components/chat/usage.ts",
+      "expression": "action.track"
+    },
+    {
+      "source": "src/components/compositions.ts",
+      "expression": "options.track"
+    },
+    {
+      "source": "src/components/compositions.ts",
+      "expression": "state.retry.track"
+    },
+    {
+      "source": "src/components/git/file-row.ts",
+      "expression": "options.action.track"
+    },
+    {
+      "source": "src/components/git/group.ts",
+      "expression": "options.action.track"
+    },
+    {
+      "source": "src/components/icon-button.ts",
+      "expression": "options.track"
+    },
+    {
+      "source": "src/components/resource-view.ts",
+      "expression": "`resources.filter.${kind}`"
+    },
+    {
+      "source": "src/dockbar.ts",
+      "expression": "track"
+    },
+    {
+      "source": "src/github-issues.ts",
+      "expression": "`issues.github.scope.${key}`"
+    },
+    {
+      "source": "src/issues.ts",
+      "expression": "`issues.provider.${id}`"
+    },
+    {
+      "source": "src/launcher.ts",
+      "expression": "`${btn.dataset.track}.search`"
+    },
+    {
+      "source": "src/launcher.ts",
+      "expression": "`${btn.dataset.track}.select`"
+    },
+    {
+      "source": "src/launcher.ts",
+      "expression": "`launcher.${id.slice(2)}`"
+    },
+    {
+      "source": "src/mcp.ts",
+      "expression": "key"
+    },
+    {
+      "source": "src/mcp.ts",
+      "expression": "left[0]"
+    },
+    {
+      "source": "src/mcp.ts",
+      "expression": "o.label"
+    },
+    {
+      "source": "src/mcp.ts",
+      "expression": "place"
+    },
+    {
+      "source": "src/mcp.ts",
+      "expression": "right[0]"
+    },
+    {
+      "source": "src/notification-center.ts",
+      "expression": "`notifications.filter.${key}`"
+    },
+    {
+      "source": "src/notification-center.ts",
+      "expression": "target"
+    },
+    {
+      "source": "src/notification-settings.ts",
+      "expression": "`notifications.${kind}`"
+    },
+    {
+      "source": "src/notification-settings.ts",
+      "expression": "`notifications.style.${style}`"
+    },
+    {
+      "source": "src/plugins.ts",
+      "expression": "o.label"
+    },
+    {
+      "source": "src/settings.ts",
+      "expression": "item.title"
+    },
+    {
+      "source": "src/settings.ts",
+      "expression": "title"
+    },
+    {
+      "source": "src/statusbar.ts",
+      "expression": "`status.${which}`"
+    },
+    {
+      "source": "src/statusbar.ts",
+      "expression": "`status.awake.${mode}`"
+    },
+    {
+      "source": "src/util.ts",
+      "expression": "action[2]"
+    },
+    {
+      "source": "src/workspace-changes.ts",
+      "expression": "`diff.${layout}`"
+    },
+    {
+      "source": "src/workspace-changes.ts",
+      "expression": "`git.conflict.${key}`"
+    },
+    {
+      "source": "src/workspace-changes.ts",
+      "expression": "`git.tab.${mode}`"
+    },
+    {
+      "source": "src/workspace-changes.ts",
+      "expression": "track"
+    }
+  ],
+  "feature_events": [
+    {
+      "name": "action_configuration_changed",
+      "properties": {
+        "kind": "\"command\" | \"profile\" | \"project\" | \"pr_action\"",
+        "action": "\"save\" | \"remove\""
+      }
+    },
+    {
+      "name": "action_used",
+      "properties": {
+        "kind": "\"prompt\" | \"agent\""
+      }
+    },
+    {
+      "name": "approval_submitted",
+      "properties": {
+        "approved": "boolean"
+      }
+    },
+    {
+      "name": "attachment_added",
+      "properties": {}
+    },
+    {
+      "name": "browser_context_attached",
+      "properties": {}
+    },
+    {
+      "name": "collaboration_action_used",
+      "properties": {
+        "action": "\"select_organization\" | \"share\" | \"unshare\" | \"grant\" | \"revoke\" | \"companion_enable\" | \"companion_disable\" | \"leave\" | \"readmit\" | \"allow_input\" | \"dismiss_input\" | \"send_pending\" | \"edit_pending\" | \"discard_pending\" | \"comment\" | \"reply\" | \"resolve\""
+      }
+    },
+    {
+      "name": "context_attached",
+      "properties": {}
+    },
+    {
+      "name": "conversation_opened",
+      "properties": {
+        "surface": "\"desk\" | \"workspace\""
+      }
+    },
+    {
+      "name": "conversation_resumed",
+      "properties": {}
+    },
+    {
+      "name": "delegation_action_used",
+      "properties": {
+        "action": "\"create\" | \"send\" | \"interrupt\" | \"inspect\" | \"files\" | \"setup\" | \"run\" | \"preview\"",
+        "client": "\"internal\" | \"external\""
+      }
+    },
+    {
+      "name": "desk_layout_changed",
+      "properties": {
+        "change": "\"visibility\" | \"order\" | \"size\""
+      }
+    },
+    {
+      "name": "dictation_started",
+      "properties": {}
+    },
+    {
+      "name": "dictation_text_inserted",
+      "properties": {}
+    },
+    {
+      "name": "diff_viewed",
+      "properties": {}
+    },
+    {
+      "name": "effort_changed",
+      "properties": {
+        "provider": "ProviderId"
+      }
+    },
+    {
+      "name": "feedback_action_used",
+      "properties": {
+        "channel": "\"private\" | \"public\"",
+        "action": "\"open\" | \"submit\"",
+        "has_attachment": "boolean"
+      }
+    },
+    {
+      "name": "file_opened",
+      "properties": {
+        "kind": "\"text\" | \"markdown\" | \"image\" | \"csv\" | \"pdf\" | \"binary\""
+      }
+    },
+    {
+      "name": "file_operation_completed",
+      "properties": {
+        "operation": "\"save\" | \"create_file\" | \"create_folder\" | \"rename\" | \"move\" | \"trash\" | \"restore\""
+      }
+    },
+    {
+      "name": "file_search_used",
+      "properties": {}
+    },
+    {
+      "name": "git_comparison_opened",
+      "properties": {}
+    },
+    {
+      "name": "git_operation_completed",
+      "properties": {
+        "operation": "\"stage\" | \"unstage\" | \"commit\" | \"fetch\" | \"pull\" | \"push\" | \"publish\" | \"discard\" | \"resolve\""
+      }
+    },
+    {
+      "name": "integration_action_used",
+      "properties": {
+        "integration": "\"linear\" | \"github\" | \"typesafe\" | \"cloud\"",
+        "action": "\"connect\" | \"disconnect\" | \"configure\" | \"test\""
+      }
+    },
+    {
+      "name": "issue_action_used",
+      "properties": {
+        "integration": "\"linear\" | \"github\"",
+        "action": "\"claim\" | \"open_source\" | \"open_workspace\" | \"prepare_workspace\""
+      }
+    },
+    {
+      "name": "machine_panel_opened",
+      "properties": {}
+    },
+    {
+      "name": "model_favorite_changed",
+      "properties": {
+        "is_favorite": "boolean"
+      }
+    },
+    {
+      "name": "model_selection_changed",
+      "properties": {
+        "provider": "ProviderId"
+      }
+    },
+    {
+      "name": "notification_action_used",
+      "properties": {
+        "source": "\"github\" | \"team\" | \"local\" | \"island\"",
+        "action": "\"open\" | \"read\" | \"read_all\" | \"open_source\" | \"open_workspace\" | \"dismiss\" | \"answer\""
+      }
+    },
+    {
+      "name": "output_copied",
+      "properties": {
+        "kind": "\"message\" | \"code\""
+      }
+    },
+    {
+      "name": "preference_changed",
+      "properties": {
+        "setting": "\"language\" | \"dictation_language\" | \"default_model\" | \"default_effort\" | \"notifications\""
+      }
+    },
+    {
+      "name": "preview_capture_created",
+      "properties": {}
+    },
+    {
+      "name": "preview_opened",
+      "properties": {}
+    },
+    {
+      "name": "project_action_used",
+      "properties": {
+        "action": "\"add\" | \"create\" | \"remove\" | \"reorder\" | \"group\" | \"configure\""
+      }
+    },
+    {
+      "name": "project_script_started",
+      "properties": {
+        "kind": "\"setup\" | \"run\""
+      }
+    },
+    {
+      "name": "project_script_stopped",
+      "properties": {
+        "kind": "\"setup\" | \"run\""
+      }
+    },
+    {
+      "name": "provider_account_action_used",
+      "properties": {
+        "provider": "ProviderId",
+        "action": "\"login_start\" | \"login_cancel\" | \"select\" | \"remove\""
+      }
+    },
+    {
+      "name": "quota_viewed",
+      "properties": {}
+    },
+    {
+      "name": "release_notes_viewed",
+      "properties": {}
+    },
+    {
+      "name": "request_answered",
+      "properties": {}
+    },
+    {
+      "name": "resource_action_used",
+      "properties": {
+        "kind": "\"mcp\" | \"plugin\" | \"skill\"",
+        "action": "\"save\" | \"remove\" | \"install\" | \"update\" | \"copy\" | \"share\" | \"authenticate\" | \"disconnect\" | \"check\" | \"discover\" | \"generate\""
+      }
+    },
+    {
+      "name": "resource_selection_changed",
+      "properties": {
+        "kind": "\"mcp\" | \"plugin\" | \"skill\"",
+        "scope": "\"defaults\" | \"global\" | \"workspace\" | \"project\""
+      }
+    },
+    {
+      "name": "review_note_created",
+      "properties": {}
+    },
+    {
+      "name": "review_notes_sent",
+      "properties": {}
+    },
+    {
+      "name": "settings_search_used",
+      "properties": {}
+    },
+    {
+      "name": "settings_section_viewed",
+      "properties": {
+        "section": "\"general\" | \"agents\" | \"resources\" | \"actions\" | \"work\""
+      }
+    },
+    {
+      "name": "terminal_opened",
+      "properties": {}
+    },
+    {
+      "name": "trust_decision_made",
+      "properties": {
+        "approved": "boolean"
+      }
+    },
+    {
+      "name": "update_action_used",
+      "properties": {
+        "action": "\"check\" | \"install\" | \"restart\""
+      }
+    },
+    {
+      "name": "usage_history_action_used",
+      "properties": {
+        "action": "\"view\" | \"refresh\" | \"filter\" | \"export\" | \"clear\""
+      }
+    },
+    {
+      "name": "usage_summary_viewed",
+      "properties": {}
+    },
+    {
+      "name": "workspace_action_used",
+      "properties": {
+        "action": "\"rename\" | \"pin\" | \"unpin\" | \"stage\" | \"finish\" | \"archive\" | \"restore\" | \"remove\" | \"cleanup\" | \"mark_read\" | \"mark_unread\""
+      }
+    }
+  ]
+}

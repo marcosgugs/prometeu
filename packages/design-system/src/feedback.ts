@@ -1,5 +1,5 @@
 import { h } from "./dom.js";
-import { button, field, input } from "./ui.js";
+import { button, field, input, identifyArea, identifyControl } from "./ui.js";
 
 export type Feedback = { kind: "problem" | "idea" | "other"; description: string; image?: File };
 export type FeedbackLabels = Record<"trigger" | "title" | "kind" | "problem" | "idea" | "other" | "description" | "attach" | "capture" | "remove" | "send" | "close" | "privacy" | "publicReport" | "publicReportHint" | "invalidImage" | "empty" | "success", string>;
@@ -15,7 +15,7 @@ export function feedbackWidget(options: {
   blocked?: () => { message: string; label: string; run: () => void } | undefined;
 }) {
   const labels = options.labels;
-  const root = h("div", "ui-feedback");
+  const root = identifyArea(h("div", "ui-feedback"), "feedback");
   if (typeof root.showPopover === "function") root.popover = "manual";
   const panel = h("section", "ui-feedback-panel");
   panel.hidden = true;
@@ -26,11 +26,11 @@ export function feedbackWidget(options: {
   const heading = h("div", "ui-feedback-heading");
   let busy = false;
   const close = () => { if (!busy) { cancelAttachment(); panel.hidden = true; trigger.setAttribute("aria-expanded", "false"); trigger.focus(); } };
-  heading.append(h("b", "", labels.title), button(labels.close, close, "ghost"));
+  heading.append(h("b", "", labels.title), button(labels.close, close, "ghost", "feedback.close"));
   const publicReport = h("div", "ui-feedback-public");
   publicReport.hidden = !options.publicIssue;
   if (options.publicIssue) {
-    const link = h("a", "ui-button outline md", labels.publicReport) as HTMLAnchorElement;
+    const link = identifyControl(h("a", "ui-button outline md", labels.publicReport), "feedback.public") as HTMLAnchorElement;
     link.href = options.publicIssue; link.target = "_blank"; link.rel = "noopener noreferrer";
     const hint = h("p", "ui-hint", labels.publicReportHint);
     hint.id = `feedback-public-${crypto.randomUUID()}`; link.setAttribute("aria-describedby", hint.id);
@@ -43,14 +43,14 @@ export function feedbackWidget(options: {
     const choice = button(labels[value], () => {
       kind = value;
       for (const control of kinds.children) control.setAttribute("aria-pressed", String(control === choice));
-    });
+    }, "outline", `feedback.kind.${value}`);
     choice.setAttribute("aria-pressed", String(value === kind)); kinds.append(choice);
   }
-  const description = input("", true);
+  const description = input("", true, "feedback.description");
   description.required = true;
   description.maxLength = 4000;
   description.oninput = () => description.setCustomValidity("");
-  const upload = input();
+  const upload = input("", false, "feedback.attachment.add");
   upload.type = "file";
   upload.accept = "image/png,image/jpeg,image/webp";
   const preview = document.createElement("img");
@@ -92,7 +92,7 @@ export function feedbackWidget(options: {
       if (revision === attachmentRevision) { upload.value = ""; setLoading(false); }
     }
   };
-  const remove = button(labels.remove, () => { void attach(); });
+  const remove = button(labels.remove, () => { void attach(); }, "outline", "feedback.attachment.remove");
   remove.hidden = true;
   upload.onchange = () => attach(upload.files?.[0]);
   panel.ondragover = event => {
@@ -126,9 +126,9 @@ export function feedbackWidget(options: {
         if (file) { setImage(file); upload.value = ""; }
       } catch (cause) { error.textContent = options.error(cause); }
       finally { root.classList.remove("ui-feedback-capturing"); setBusy(false); }
-    }));
+    }, "outline", "feedback.capture"));
   }
-  const send = button(labels.send, () => {}, "pri");
+  const send = button(labels.send, () => {}, "pri", "feedback.submit");
   send.type = "submit";
   form.append(kinds, field(labels.description, description), attachments,
     h("p", "ui-hint", labels.privacy), error, status, send);
@@ -153,11 +153,11 @@ export function feedbackWidget(options: {
     notice.replaceChildren();
     notice.hidden = !stop;
     form.hidden = !!stop;
-    if (stop) notice.append(h("p", "ui-hint", stop.message), button(stop.label, stop.run, "pri"));
+    if (stop) notice.append(h("p", "ui-hint", stop.message), button(stop.label, stop.run, "pri", "feedback.blocked.action"));
     panel.hidden = false; status.textContent = "";
     trigger.setAttribute("aria-expanded", "true");
     (stop ? notice.querySelector("button")! : description).focus();
-  }, "pri");
+  }, "pri", "feedback.open");
   trigger.classList.add("ui-feedback-trigger");
   trigger.setAttribute("aria-controls", panel.id);
   trigger.setAttribute("aria-expanded", "false");

@@ -75,9 +75,9 @@ export function init(context: Ctx) {
   $("run-pick").addEventListener("click", (e) => {
     const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const chosen = runName ?? info.scripts.runs[0]?.name;
-    menu.openAt({ x: at.left - 40, y: at.bottom + 4 }, [
+    menu.openAt({ area: "dockbar", x: at.left - 40, y: at.bottom + 4 }, [
       ...info.scripts.runs.map((r) => ({
-        label: r.name,
+        label: r.name, track: "dock.script.select",
         hint: r.command.length > 36 ? `${r.command.slice(0, 35)}…` : r.command,
         checked: chosen === r.name,
         run: async () => {
@@ -90,7 +90,7 @@ export function init(context: Ctx) {
       "sep",
       {
         // Editing inherited settings first copies them into the worktree; label this action explicitly.
-        label: t(info.scripts.inherited ? "dock.settings.copy" : "dock.settings.open"),
+        label: t(info.scripts.inherited ? "dock.settings.copy" : "dock.settings.open"), track: "dock.settings",
         glyph: icon("file", 14),
         run: writeScriptsFile,
       },
@@ -253,6 +253,8 @@ async function killPane(kind: DockKind) {
 export function draw() {
   $("dock").classList.toggle("closed", !open);
   $("dock-toggle").innerHTML = icon(open ? "chevron-down" : "chevron-right");
+  $("dock-toggle").dataset.tTitle = open ? "dock.collapse" : "dock.expand";
+  $("dock-toggle").dataset.track = open ? "dock.collapse" : "dock.expand";
   $("dock-toggle").title = t(open ? "dock.collapse" : "dock.expand");
   drawStrip();
   // Backend dock changes also update center shell tabs.
@@ -264,6 +266,7 @@ export function draw() {
   $("run-pick").hidden = info.scripts.runs.length < 2;
   $("run-go").innerHTML = `${icon(up ? "square" : "play", 13)}<span></span><kbd>${keys("⌘R")}</kbd>`;
   $("run-go").querySelector("span")!.textContent = t(up ? "dock.stop" : "dock.run");
+  $("run-go").dataset.track = up ? "dock.run.stop" : "dock.run.start";
 
   // Offer browser opening only with a running script and reserved local port.
   const goOpen = $("run-open");
@@ -291,6 +294,9 @@ function drawStrip() {
   for (const kind of order()) {
     const b = document.createElement("button");
     b.className = "docktab" + (pane === kind ? " on" : "");
+    b.dataset.track = open && pane === kind
+      ? kind === "setup" ? "dock.setup.hide" : "dock.run.hide"
+      : kind === "setup" ? "dock.setup.open" : "dock.run.open";
     // Animate the live indicator even when a different script tab is selected.
     if (isUp(kind)) b.insertAdjacentHTML("beforeend", wave());
     const name = document.createElement("span");
@@ -305,6 +311,7 @@ function drawStrip() {
       x.className = "tabx ico sm";
       x.innerHTML = icon("x", 12);
       x.title = t("dock.killSetup");
+      x.dataset.track = "dock.killSetup";
       x.addEventListener("click", (e) => {
         e.stopPropagation();
         void killPane(kind);
@@ -324,9 +331,10 @@ function drawEmpty() {
   glyph.className = "glyph";
   $("dockempty").classList.toggle("idle", pane === null);
 
-  const button = (label: string, cls: string, run: () => void, key?: string) => {
+  const button = (label: string, cls: string, run: () => void, track: string, key?: string) => {
     const b = document.createElement("button");
     b.className = cls;
+    b.dataset.track = track;
     b.innerHTML = `<span></span>${key ? `<kbd>${key}</kbd>` : ""}`;
     b.firstElementChild!.textContent = label;
     b.addEventListener("click", run);
@@ -347,8 +355,8 @@ function drawEmpty() {
   if (!declares(pane)) {
     title(t(pane === "setup" ? "dock.noSetup.title" : "dock.noRun.title"));
     $("empty-sub").textContent = t(pane === "setup" ? "dock.noSetup.body" : "dock.noRun.body");
-    button(t("dock.ask"), "outline", askForScripts);
-    button(t("dock.write"), "ghost", writeScriptsFile);
+    button(t("dock.ask"), "outline", askForScripts, "dock.ask");
+    button(t("dock.write"), "ghost", writeScriptsFile, "dock.write");
     return;
   }
 
@@ -364,6 +372,7 @@ function drawEmpty() {
     t(setup ? "dock.setup.start" : "dock.run.start"),
     "outline",
     () => setDock(pane, true),
+    setup ? "dock.setup.start" : "dock.run.start",
     setup ? undefined : keys("⌘R"),
   );
   $("empty-sub").textContent = setup

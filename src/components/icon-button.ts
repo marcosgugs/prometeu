@@ -3,10 +3,11 @@ import { icon, type IconName } from "./icons";
 
 /** Decorative glyph with a mandatory accessible name. Callbacks stay in the consumer. */
 export function iconButton(options: {
+  track?: string;
   label: string; glyph: IconName; run: () => void; disabled?: boolean;
   variant?: ButtonVariant; size?: number;
 }) {
-  const control = button("", options.run, options.variant ?? "ghost");
+  const control = button("", options.run, options.variant ?? "ghost", options.track);
   control.classList.add("icon-button");
   control.innerHTML = icon(options.glyph, options.size ?? 14);
   control.title = options.label;

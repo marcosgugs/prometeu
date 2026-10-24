@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { fileURLToPath } from "node:url";
 
 const inspectorPath = fileURLToPath(new URL("../src/browser-inspector.js", import.meta.url));

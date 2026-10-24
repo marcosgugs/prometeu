@@ -214,16 +214,16 @@ The first version has no Cloud synchronization or analytics upload. See the
 
 ## Product analytics
 
-`analytics.rs` sends anonymous feature events to PostHog, separate from local
-telemetry. A closed Rust enum is the only vocabulary. The desktop conversation
-host records accepted commands and observed main-turn outcomes through the
-common capture gate, using independent in-memory state without reading the
-local telemetry store. Counts are per installation; messages and turns are not
-one-to-one. `src/analytics.ts` retains generic click capture by authored tokens,
-i18n keys and static regions, never visible text. A background thread batches
-deliveries with capture-time offsets and an analytics version.
-Only release builds compiled with the project key send events. See the
-[contract](docs/contracts/product-analytics.md) and
+`analytics.rs` sends content-free product events to PostHog, separate from local
+telemetry. A closed Rust vocabulary accepts named control activations and
+explicit feature-use facts from the desktop application paths. `src/analytics.ts`
+captures authored control and surface identities; translated text is never used
+to infer an identity. Shared controls propagate metadata without importing the
+analytics service. A generated catalog and runtime checks expose missing coverage.
+Counts are per installation. A background thread batches deliveries with timing
+offsets and an analytics version; only builds compiled with the key send events.
+See the [contract](docs/contracts/product-analytics.md),
+[coverage map](docs/quality/product-analytics-coverage.md) and
 [ADR 0093](docs/decisions/0093-anonymous-product-analytics.md).
 
 ## Internal public boundaries

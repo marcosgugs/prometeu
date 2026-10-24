@@ -1,15 +1,18 @@
 import { icon } from "./icons.js";
 import * as menu from "./menu.js";
 import { h } from "./dom.js";
+import { identifyControl, identifyArea, inheritTrackingArea } from "./tracking.js";
+export { identifyControl, identifyArea } from "./tracking.js";
 
 // Presentation primitives receive already-translated labels from their caller.
 export type ButtonVariant = "outline" | "pri" | "ghost" | "danger";
 
-export function button(label: string, run: () => void = () => {}, variant: ButtonVariant = "outline") {
+export function button(label: string, run: () => void = () => {}, variant: ButtonVariant = "outline", track?: string) {
   const control = document.createElement("button");
   control.className = `ui-button ${variant} md`;
   control.type = "button";
   control.textContent = label;
+  if (track) identifyControl(control, track);
   control.onclick = () => { control.focus(); run(); };
   return control;
 }
@@ -27,22 +30,24 @@ export function avatar(image?: string, kind: "person" | "organization" = "person
   return root;
 }
 
-export function input(value?: string, multiline?: false): HTMLInputElement;
-export function input(value: string | undefined, multiline: true): HTMLTextAreaElement;
-export function input(value?: string, multiline?: boolean): HTMLInputElement | HTMLTextAreaElement;
-export function input(value = "", multiline = false) {
+export function input(value?: string, multiline?: false, track?: string): HTMLInputElement;
+export function input(value: string | undefined, multiline: true, track?: string): HTMLTextAreaElement;
+export function input(value?: string, multiline?: boolean, track?: string): HTMLInputElement | HTMLTextAreaElement;
+export function input(value = "", multiline = false, track?: string) {
   const control = document.createElement(multiline ? "textarea" : "input");
   control.className = "ui-input";
   control.value = value;
+  if (track) identifyControl(control, track);
   if (control instanceof HTMLTextAreaElement) control.rows = 5;
   return control;
 }
 
-export function field(label: string, control: HTMLElement, hint = "") {
+export function field(label: string, control: HTMLElement, hint = "", track?: string) {
   const root = h("div", "ui-field");
   const target = control.matches("input, textarea, select, button") ? control : control.querySelector<HTMLElement>("input, textarea, select, button")!;
   if (!target.id) target.id = `ui-field-${crypto.randomUUID()}`;
   target.setAttribute("aria-label", label);
+  if (track) identifyControl(target, track);
   const title = h("label", "ui-label", label);
   title.setAttribute("for", target.id);
   root.append(title, control);
@@ -55,25 +60,26 @@ export function field(label: string, control: HTMLElement, hint = "") {
   return root;
 }
 
-export function checkbox(label: string, checked: boolean) {
+export function checkbox(label: string, checked: boolean, track?: string) {
   const control = document.createElement("input");
   control.type = "checkbox";
   control.checked = checked;
+  if (track) identifyControl(control, track);
   const root = h("label", "ui-check");
   root.append(control, h("span", "", label));
   return { control, label: root };
 }
 
 /** A native checkbox with switch semantics keeps keyboard and form behavior. */
-export function toggle(label: string, checked: boolean) {
-  const result = checkbox(label, checked);
+export function toggle(label: string, checked: boolean, track?: string) {
+  const result = checkbox(label, checked, track);
   result.label.classList.add("ui-switch");
   result.control.setAttribute("role", "switch");
   return result;
 }
 
-export function radio(label: string, name: string, value: string, checked: boolean) {
-  const result = checkbox(label, checked);
+export function radio(label: string, name: string, value: string, checked: boolean, track?: string) {
+  const result = checkbox(label, checked, track);
   result.control.type = "radio";
   result.control.name = name;
   result.control.value = value;
@@ -100,10 +106,10 @@ export function dropdown(btn: HTMLButtonElement, groups: () => Group[], get: () 
       if (n) items.push("sep");
       if (block.head && blocks.length > 1) items.push({ label: block.head, disabled: true });
       for (const [id, name] of block.items) items.push({
-        label: name, checked: id === get(), run: () => { set(id); draw(); btn.focus(); },
+        label: name, track: btn.dataset.track ? `${btn.dataset.track}.option` : undefined, checked: id === get(), run: () => { set(id); draw(); btn.focus(); },
       });
     });
-    menu.openAt({ x: at.left, y: at.bottom + 4 }, items, "ui-select-menu", () => btn.setAttribute("aria-expanded", "false"), true);
+    menu.openAt({ x: at.left, y: at.bottom + 4, anchor: btn }, items, "ui-select-menu", () => btn.setAttribute("aria-expanded", "false"), true);
     btn.setAttribute("aria-expanded", "true");
   });
   btn.addEventListener("keydown", event => {
@@ -115,9 +121,11 @@ export function dropdown(btn: HTMLButtonElement, groups: () => Group[], get: () 
   return draw;
 }
 
-export function select(value: string, options: [string, string][], attributes: { name?: string; required?: boolean; disabled?: boolean } = {}) {
+export function select(value: string, options: [string, string][], attributes: { name?: string; required?: boolean; disabled?: boolean; track?: string; area?: string } = {}) {
   const control = button("", () => {});
   control.className = "ui-select pick";
+  if (attributes.track) identifyControl(control, attributes.track, attributes.area);
+  else if (attributes.area) identifyArea(control, attributes.area);
   control.append(h("span", ""));
   control.insertAdjacentHTML("beforeend", icon("chevron-down", 14));
   const native = document.createElement("select");
@@ -159,6 +167,7 @@ export function formDialog(options: {
   title: string; save: string; cancel: string; variant?: ButtonVariant;
   submit: () => Promise<void>; error: (error: unknown) => string;
   closed?: () => void;
+  track?: string; area?: string;
 }) {
   let previousFocus: HTMLElement | null = null;
   const dialog = document.createElement("dialog");
@@ -185,9 +194,9 @@ export function formDialog(options: {
     }
     target?.focus();
   };
-  const save = button(options.save, () => {}, options.variant ?? "pri");
+  const save = button(options.save, () => {}, options.variant ?? "pri", options.track ? `${options.track}.save` : undefined);
   save.type = "submit";
-  const cancel = button(options.cancel, close);
+  const cancel = button(options.cancel, close, "outline", options.track ? `${options.track}.cancel` : undefined);
   footer.append(cancel, error, save);
   form.append(header, body, footer);
   dialog.append(form);
@@ -212,10 +221,11 @@ export function formDialog(options: {
     else if (!event.shiftKey && (document.activeElement === last || document.activeElement === title)) { event.preventDefault(); first?.focus(); }
   });
   return {
-    root: dialog, body, save, close,
+    root: dialog, body, save, cancel, close,
     open() {
       if (dialog.isConnected) return;
       previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      inheritTrackingArea(dialog, previousFocus, options.area);
       document.body.append(dialog); dialog.showModal();
       const first = body.querySelector<HTMLElement>('input:not([type="hidden"]):enabled, textarea:enabled, button:enabled, select:enabled');
       // Start typing in forms; action and selection dialogs start at their title.
@@ -225,12 +235,12 @@ export function formDialog(options: {
   };
 }
 
-export function confirmDialog(options: { title: string; message: string; accept: string; cancel: string; signal?: AbortSignal }) {
+export function confirmDialog(options: { title: string; message: string; accept: string; cancel: string; signal?: AbortSignal; track?: string; area?: string }) {
   if (options.signal?.aborted) return Promise.resolve(false);
   return new Promise<boolean>(resolve => {
     let confirmed = false;
     const dialog = formDialog({
-      title: options.title, save: options.accept, cancel: options.cancel, variant: "danger",
+      title: options.title, save: options.accept, cancel: options.cancel, variant: "danger", track: options.track, area: options.area,
       submit: async () => { confirmed = true; }, error: String,
       closed: () => { options.signal?.removeEventListener("abort", cancel); resolve(confirmed); },
     });
@@ -241,14 +251,14 @@ export function confirmDialog(options: { title: string; message: string; accept:
   });
 }
 
-export function menuButton(label: string, items: () => menu.Item[]) {
+export function menuButton(label: string, items: () => menu.Item[], track?: string) {
   const control = button(label, () => {
     if (control.getAttribute("aria-expanded") === "true") { menu.close(); return; }
     const at = control.getBoundingClientRect();
-    menu.openAt({ x: at.left, y: at.bottom + 4 }, items(), undefined,
+    menu.openAt({ x: at.left, y: at.bottom + 4, anchor: control }, items(), undefined,
       () => control.setAttribute("aria-expanded", "false"), true);
     control.setAttribute("aria-expanded", "true");
-  }, "ghost");
+  }, "ghost", track);
   control.setAttribute("aria-haspopup", "menu");
   control.setAttribute("aria-expanded", "false");
   control.addEventListener("keydown", event => {
@@ -260,24 +270,25 @@ export function menuButton(label: string, items: () => menu.Item[]) {
 }
 
 /** Enhance an existing input without replacing its value, name, validation or focus. */
-export function passwordToggle(control: HTMLInputElement, labels: { show: string; hide: string }) {
+export function passwordToggle(control: HTMLInputElement, labels: { show: string; hide: string }, track?: string) {
   const toggle = button(labels.show, () => {
     const reveal = control.type === "password";
     control.type = reveal ? "text" : "password";
     toggle.textContent = reveal ? labels.hide : labels.show;
     toggle.setAttribute("aria-pressed", String(reveal));
   }, "ghost");
+  if (track) identifyControl(toggle, `${track}.visibility`);
   toggle.setAttribute("aria-pressed", "false");
   if (!control.id) control.id = `ui-password-${crypto.randomUUID()}`;
   toggle.setAttribute("aria-controls", control.id);
   return toggle;
 }
 
-export function password(value: string, labels: { show: string; hide: string }) {
-  const control = input(value) as HTMLInputElement;
+export function password(value: string, labels: { show: string; hide: string }, track?: string) {
+  const control = input(value, false, track) as HTMLInputElement;
   control.type = "password";
   const root = h("div", "ui-password");
-  root.append(control, passwordToggle(control, labels));
+  root.append(control, passwordToggle(control, labels, track));
   return { control, root };
 }
 

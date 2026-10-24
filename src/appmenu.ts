@@ -1,6 +1,7 @@
 /// Native menu accelerators keep shortcuts working while an embedded webview owns focus. Dispatch the same actions as main.ts; document handlers preventDefault to avoid double execution. Override Tauri's default Command-W window closure with tab closure.
 import { Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/menu";
 import { t, type Key } from "./i18n";
+import { track } from "./analytics";
 
 /// Shared action names for native-menu and document-keyboard dispatch.
 export type Action =
@@ -36,7 +37,10 @@ export function useApplicationMenu(menu: ApplicationMenu) { applicationMenu = me
 
 export async function install(run: (a: Action) => void) {
   const our = (id: Action, key: Key, accelerator: string) =>
-    MenuItem.new({ id, text: t(key), accelerator, action: () => run(id) });
+    MenuItem.new({ id, text: t(key), accelerator, action: () => {
+      track({ name: "ui_clicked", control: "menuitem", target: key, area: "native_menu" });
+      run(id);
+    } });
   // The Mac implements system actions such as copy, quit, and full screen; localize their labels here.
   const os = (item: Native, key?: Key) =>
     PredefinedMenuItem.new(key ? { item, text: t(key) } : { item });

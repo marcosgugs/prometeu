@@ -84,38 +84,32 @@ Verification additions shared by the existing features:
 
 ## Product analytics
 
-[ADR 0093](../decisions/0093-anonymous-product-analytics.md) uses the same desktop
-capture path for all three providers, separate from the local telemetry store.
-The [contract](../contracts/product-analytics.md) defines the closed properties
-and measurement limits.
+[ADR 0093](../decisions/0093-anonymous-product-analytics.md) separates named
+control activations from explicit feature use. The
+[contract](../contracts/product-analytics.md) defines triggers and the
+[coverage map](product-analytics-coverage.md) inventories product modules.
 
 | Measurement | Claude | Codex | Antigravity |
 | --- | --- | --- | --- |
-| Accepted conversation commands | Common successful-command boundary; input can arrive during a turn | Common successful-command boundary; streaming input can produce later turns | Common successful-command boundary; messages are idle-only |
-| Observed main-turn outcome | Canonical completion, failure or interruption | Same canonical outcomes | Same canonical outcomes |
-| Background children after main completion | May still be running | May still be running | No child-task signal |
+| Named controls and navigation | Shared desktop UI | Shared desktop UI | Shared desktop UI |
+| Files, Git, review, terminal and preview | Shared feature paths | Shared feature paths | Shared feature paths |
+| Model and effort selection | Available choices only | Available choices only | Available choices only |
+| Requests and approvals | Only capabilities exposed by the adapter | Only capabilities exposed by the adapter | Interactive approval and plan controls unavailable |
+| Resource setup and actions | Configuration/use separated | Configuration/use separated | Only supported resources/actions |
 
-`message_accepted` and `turn_finished` are independent counts. Queued prompts
-can combine, and successive streaming terminals may have no intermediate
-assistant activity. Every live canonical terminal after the first accepted
-input is recorded; native identity deduplication stays in the provider adapters.
-`has_agent_activity` reports activity since the previous recorded terminal or
-the start of accepted-input capture. Accepted commands do not reset it. A local
-slash completion can have no activity, but overlapping input/output prevents
-exact activity attribution to a turn. Process exit without a canonical terminal
-stays unknown. Action and delegation flags describe the conversation, not the
-sender's identity. Replay is excluded.
+Product events no longer observe canonical turn completion or assistant output.
+Feature availability remains governed by the capability matrix; absence of an
+unsupported control is not evidence of non-use. No provider payload or content
+is sent.
 
-`src-tauri/src/analytics.rs` tests cover capture transitions, successive terminals
-without intermediate activity, closed payloads, content exclusion and capture-time offsets. Existing
-`src-tauri/crates/core/src/session/output.rs` and `session/pump/tests.rs` tests
-cover successful/failed command capture and ordering. `src/analytics.test.ts`
-covers the unchanged generic click and screen behavior. These are synthetic
-contract checks, not live PostHog delivery or every CLI version.
+Native analytics tests and shared fixtures validate the closed event schema;
+TypeScript tests check parity, identity capture and feature triggers. The
+real-DOM analytics check verifies metadata on shared controls and portals.
+These checks do not certify live PostHog delivery or every CLI version.
 
-Only macOS/Linux desktop builds compiled with the analytics key send events.
-Windows/WSL, the browser mock and mobile do not. Missing data on those shells
-does not imply missing usage.
+Only macOS/Linux desktop builds compiled with the key send events. Windows/WSL,
+the browser mock and mobile do not. Missing events from those shells must not
+be counted as missing usage.
 
 ## Legend
 

@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { mountFeedback } from "./feedback-client";
 import { current, fromBack, t } from "./i18n";
 import * as cloud from "./cloud";
@@ -11,7 +12,10 @@ export function init() {
   widget = mountFeedback({
     source: "desktop", locale: current(), version, error: fromBack,
     origin: () => cloud.current().origin || "https://app.prometeu.co",
-    send: report => invoke("feedback_send", { report }),
+    send: async report => {
+      await invoke("feedback_send", { report });
+      track({ name: "feedback_action_used", channel: "private", action: "submit", has_attachment: !!report.image });
+    },
     // Checked when the panel opens, so connecting an account and opening it again shows the form.
     blocked: () => cloud.current().user ? undefined
       : { message: t("feedback.needAccount"), label: t("feedback.connect"), run: cloud.connect },
@@ -22,6 +26,15 @@ export function init() {
     },
   });
   widget.trigger.id = "feedback";
+  widget.trigger.dataset.track = "feedback.open";
+  widget.root.dataset.trackArea = "feedback";
+  widget.root.addEventListener("click", event => {
+    if ((event.target as Element | null)?.closest("[data-track=\"feedback.public\"]"))
+      track({ name: "feedback_action_used", channel: "public", action: "open", has_attachment: false });
+  });
+  widget.trigger.addEventListener("click", () => {
+    if (widget?.trigger.getAttribute("aria-expanded") === "true") track({ name: "feedback_action_used", channel: "private", action: "open", has_attachment: false });
+  });
   widget.trigger.className = "ui-button ghost sm";
   widget.trigger.title = t("feedback.trigger");
   widget.trigger.setAttribute("aria-label", t("feedback.trigger"));

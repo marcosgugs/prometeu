@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as accountUI from "./accounts";
 import * as actions from "./actions";
 import * as actionSettings from "./action-settings";
@@ -122,19 +123,36 @@ const initial = settingsDestination(localStorage.getItem(PAGE_KEY));
 let open: SettingsPage = initial.page;
 let targetSection = initial.section;
 let searchQuery = "";
+let observedPage: SettingsPage | undefined;
+let historyObserver: IntersectionObserver | undefined;
+let historyViewed = false;
 if (initial.filter) setResourceFilter(initial.filter);
 
 export function showAccounts() { open = "agentes"; targetSection = "accounts"; searchQuery = ""; localStorage.setItem(PAGE_KEY, open); }
 export function showLinear() { open = "trabalho"; targetSection = "integrations"; searchQuery = ""; localStorage.setItem(PAGE_KEY, open); }
 
+export function hide() {
+  observedPage = undefined;
+  historyObserver?.disconnect(); historyObserver = undefined;
+  historyViewed = false;
+}
+
 function navigate(page: SettingsPage, section?: string) {
   open = page; targetSection = section; searchQuery = "";
-  localStorage.setItem(PAGE_KEY, open); draw();
+  localStorage.setItem(PAGE_KEY, open);
+  draw();
 }
 
 export function draw() {
   const view = $("settingsView");
   if (view.hidden) return;
+  if (observedPage !== open) {
+    historyObserver?.disconnect(); historyObserver = undefined;
+    historyViewed = false;
+    observedPage = open;
+    const sections = { geral: "general", agentes: "agents", recursos: "resources", acoes: "actions", trabalho: "work" } as const;
+    track({ name: "settings_section_viewed", section: sections[open] });
+  }
   // Close snapshot menus before recording their restored trigger focus.
   if (menu.isOpen() && !document.querySelector("dialog[open]") && $("veil").hidden) menu.close();
   const previous = document.activeElement instanceof HTMLElement && view.contains(document.activeElement) ? document.activeElement : null;
@@ -146,10 +164,10 @@ export function draw() {
   view.dataset.settingsPage = open;
   const page = PAGES.find(item => item.id === open)!;
   const nav = h("nav", "setnav"); nav.setAttribute("aria-label", t("settings.title"));
-  const search = input(searchQuery); search.type = "search"; search.placeholder = t("settings.search");
+  const search = input(searchQuery, false, "settings.search"); search.type = "search"; search.placeholder = t("settings.search");
   search.setAttribute("aria-label", t("settings.search")); search.dataset.focus = "settings-search";
   for (const item of PAGES) {
-    const control = button(t(item.title), () => navigate(item.id), "ghost");
+    const control = button(t(item.title), () => navigate(item.id), "ghost", item.title);
     control.classList.add("setnavitem"); control.dataset.focus = `settings-nav-${item.id}`;
     control.insertAdjacentHTML("afterbegin", `<span class="ic">${icon(item.glyph, 16)}</span>`);
     if (item.id === page.id && !searchQuery.trim()) { control.classList.add("on"); control.setAttribute("aria-current", "page"); }
@@ -164,6 +182,7 @@ export function draw() {
   const content = h("div", "settings-content");
   body.append(header, content);
   function paintBody() {
+    historyObserver?.disconnect(); historyObserver = undefined;
     content.replaceChildren();
     heading.textContent = t(searchQuery.trim() ? "settings.searchResults" : page.title);
     breadcrumb.textContent = `${t("settings.title")} / ${heading.textContent}`;
@@ -173,7 +192,7 @@ export function draw() {
       for (const candidate of PAGES) for (const section of candidate.sections) {
         const words = [t(candidate.title), t(section.title), ...(section.keywords ?? []).map(key => t(key)), section.id === "accounts" ? "Claude Codex Antigravity" : "", section.id === "integrations" ? "Linear GitHub TypeSafe" : ""];
         if (!matchesSettings(searchQuery, words.join(" "))) continue;
-        const result = button("", () => navigate(candidate.id, section.id), "ghost");
+        const result = button("", () => navigate(candidate.id, section.id), "ghost", "settings.search.result");
         result.classList.add("settings-result");
         result.append(h("b", "", t(section.title)), h("span", "ui-hint", t(candidate.title)));
         results.append(result);
@@ -189,8 +208,19 @@ export function draw() {
       if (page.id === "recursos" || page.id === "acoes") { title.hidden = true; panel.classList.add("settings-unboxed"); }
       group.append(title, panel); content.append(group);
     }
+    const history = content.querySelector<HTMLElement>(".telemetry-settings");
+    if (history && !historyViewed) {
+      historyObserver = new IntersectionObserver(entries => {
+        if (view.hidden || !history.isConnected || !entries.some(entry => entry.isIntersecting)) return;
+        historyViewed = true;
+        track({ name: "usage_history_action_used", action: "view" });
+        historyObserver?.disconnect(); historyObserver = undefined;
+      }, { root: body });
+      historyObserver.observe(history);
+    }
   }
   search.oninput = () => {
+    if (!searchQuery.trim() && search.value.trim()) track({ name: "settings_search_used" });
     searchQuery = search.value;
     nav.querySelectorAll(".setnavitem").forEach(control => {
       const current = !searchQuery.trim() && control.getAttribute("data-focus") === `settings-nav-${open}`;
@@ -256,7 +286,8 @@ function langRow(): HTMLElement {
 
   const choice = select(picked ?? "", options.map(([id, label]) => [id ?? "", label]));
   choice.control.setAttribute("aria-label", t("settings.lang"));
-  choice.onchange = () => choose(choice.value === "" ? null : choice.value as Lang);
+  choice.control.dataset.track = "settings.language";
+  choice.onchange = () => { choose(choice.value === "" ? null : choice.value as Lang); track({ name: "preference_changed", setting: "language" }); };
   row.querySelector(".act")!.append(choice.control);
   return row;
 }
@@ -276,7 +307,8 @@ function voiceRow(): HTMLElement {
   ];
   const choice = select(voice.chosen() ?? "", options.map(([id, label]) => [id ?? "", label]));
   choice.control.setAttribute("aria-label", t("settings.voice"));
-  choice.onchange = () => voice.choose(choice.value || null);
+  choice.control.dataset.track = "settings.dictation_language";
+  choice.onchange = () => { voice.choose(choice.value || null); track({ name: "preference_changed", setting: "dictation_language" }); };
   row.querySelector(".act")!.append(choice.control);
   return row;
 }
@@ -287,6 +319,7 @@ function voiceRow(): HTMLElement {
 /// does not change the starting configuration of future workspaces.
 function defaultsRows(): HTMLElement[] {
   const resources = disclosure(t("settings.initialResources"), mcpRow(), pluginRow());
+  resources.querySelector("summary")!.dataset.track = "settings.defaults.resources";
   resources.dataset.settingsDisclosure = "defaults-resources";
   return [modelRow(), effortRow(), resources, h("p", "ui-hint settings-section-note", t("settings.defaults.hint"))];
 }
@@ -305,7 +338,7 @@ function pickRow(
   );
   row.querySelector(".txt b")!.textContent = t(title);
   row.querySelector(".txt span")!.textContent = t(body);
-  const btn = button("", () => {});
+  const btn = button("", () => {}, undefined, title);
   btn.classList.add("pick"); btn.append(h("span", ""));
   btn.insertAdjacentHTML("beforeend", icon("chevron-down", 12));
   btn.setAttribute("aria-label", t(title));
@@ -332,6 +365,7 @@ function modelRow(): HTMLElement {
         const previous = choice ? defaultEffort(choice) : "";
         const effort = fitsEffort(selected.model, previous, selected.agent);
         setDefaultChoice(selected);
+        track({ name: "preference_changed", setting: "default_model" });
         setDefaultEffort(effort);
         defaultEffortAdjusted = effort !== previous;
         paintDefaultModel(); paintDefaultEffort();
@@ -356,6 +390,7 @@ function effortRow(): HTMLElement {
     if (!choice) return;
     openEffortPicker(btn, choice, defaultEffort(choice), effort => {
       setDefaultEffort(effort);
+      track({ name: "preference_changed", setting: "default_effort" });
       defaultEffortAdjusted = false;
       paintDefaultModel(); paintDefaultEffort();
     });
@@ -365,7 +400,7 @@ function effortRow(): HTMLElement {
 
 function mcpRow(): HTMLElement {
   const { row, btn } = pickRow("plug", "settings.defaults.mcp", "settings.defaults.mcp.body");
-  const unset = button(t("settings.defaults.unset"), () => {}, "ghost");
+  const unset = button(t("settings.defaults.unset"), () => {}, "ghost", "settings.defaults.unset");
   unset.title = t("settings.defaults.unset.title");
   const paintRow = () => {
     const chosen = defaultMcp();
@@ -378,13 +413,15 @@ function mcpRow(): HTMLElement {
       chosen: defaultMcp,
       set: (ids) => {
         setDefaultMcp(ids);
+        track({ name: "resource_selection_changed", kind: "mcp", scope: "defaults" });
         paintRow();
       },
-      at: () => ({ x: at.left, y: at.bottom + 4 }),
+      at: () => ({ x: at.left, y: at.bottom + 4, anchor: btn }),
     });
   });
   unset.addEventListener("click", () => {
     setDefaultMcp(null);
+    track({ name: "resource_selection_changed", kind: "mcp", scope: "defaults" });
     paintRow();
   });
   row.querySelector(".act")!.prepend(unset);
@@ -394,7 +431,7 @@ function mcpRow(): HTMLElement {
 
 function pluginRow(): HTMLElement {
   const { row, btn } = pickRow("puzzle", "settings.defaults.plugins", "settings.defaults.plugins.body");
-  const unset = button(t("settings.defaults.unset"), () => {}, "ghost");
+  const unset = button(t("settings.defaults.unset"), () => {}, "ghost", "settings.defaults.unset");
   unset.title = t("settings.defaults.unset.title");
   const paintRow = () => {
     const chosen = defaultPlugins();
@@ -407,13 +444,15 @@ function pluginRow(): HTMLElement {
       chosen: defaultPlugins,
       set: (ids) => {
         setDefaultPlugins(ids);
+        track({ name: "resource_selection_changed", kind: "plugin", scope: "defaults" });
         paintRow();
       },
-      at: () => ({ x: at.left, y: at.bottom + 4 }),
+      at: () => ({ x: at.left, y: at.bottom + 4, anchor: btn }),
     });
   });
   unset.addEventListener("click", () => {
     setDefaultPlugins(null);
+    track({ name: "resource_selection_changed", kind: "plugin", scope: "defaults" });
     paintRow();
   });
   row.querySelector(".act")!.prepend(unset);
@@ -435,6 +474,7 @@ function linearRow() {
     draw();
     try {
       status = await invoke("linear_connect");
+      track({ name: "integration_action_used", integration: "linear", action: "connect" });
     } catch (e) {
       status = { ...status, busy: false };
       ctx.say(fromBack(e), true);
@@ -453,17 +493,20 @@ function linearRow() {
     if (!status.can_assign) {
       text.append(` · ${t("linear.readOnly")}`);
       const upgrade = h("button", "outline md", t("linear.allowAssignment")) as HTMLButtonElement;
+      upgrade.dataset.track = "linear.allow_assignment";
       upgrade.disabled = status.busy;
       upgrade.addEventListener("click", () => void connect(upgrade));
       act.append(upgrade);
     }
 
     const off = h("button", "ghost md", t("linear.disconnect")) as HTMLButtonElement;
+    off.dataset.track = "linear.disconnect";
     off.title = t("linear.disconnect.title");
     off.addEventListener("click", async () => {
       off.disabled = true;
       try {
         status = await invoke("linear_disconnect");
+        track({ name: "integration_action_used", integration: "linear", action: "disconnect" });
       } catch (e) {
         ctx.say(fromBack(e), true);
       }
@@ -476,6 +519,7 @@ function linearRow() {
   text.textContent = t(status.busy ? "linear.waiting" : "linear.pitch");
 
   const on = template("button", "outline md", `<span></span> ${icon("external-link", 12)}`) as HTMLButtonElement;
+  on.dataset.track = "linear.connect";
   on.children[0].textContent = t("linear.connect");
   on.disabled = status.busy;
   on.title = t("linear.connect.title");
@@ -494,11 +538,15 @@ function githubRow() {
   const act = row.querySelector(".act")!;
   const run = async (connect: boolean, control: HTMLButtonElement) => {
     control.disabled = true;
-    try { githubStatus = await (connect ? invoke("github_connect") : invoke("github_disconnect")); } catch (e) { ctx.say(fromBack(e), true); }
+    try {
+      githubStatus = await (connect ? invoke("github_connect") : invoke("github_disconnect"));
+      if (!connect || githubStatus.connected) track({ name: "integration_action_used", integration: "github", action: connect ? "connect" : "disconnect" });
+    } catch (e) { ctx.say(fromBack(e), true); }
     draw();
   };
   const external = (label: string, url: string) => {
     const control = template("button", "ghost md", `<span></span> ${icon("external-link", 12)}`) as HTMLButtonElement;
+    control.dataset.track = "github.open_browser";
     control.children[0].textContent = label;
     control.addEventListener("click", () => void invoke("open_external", { url }).catch(e => ctx.say(fromBack(e), true)));
     return control;
@@ -511,6 +559,7 @@ function githubRow() {
     text.querySelector("b")!.textContent = githubStatus.code;
     if (githubStatus.url) act.append(external(t("github.openDevice"), githubStatus.url));
     const cancel = h("button", "ghost md", t("actions.cancel")) as HTMLButtonElement;
+    cancel.dataset.track = "github.cancel";
     cancel.addEventListener("click", () => void run(false, cancel));
     act.append(cancel);
     return row;
@@ -522,12 +571,14 @@ function githubRow() {
     text.querySelector("b")!.textContent = `@${githubStatus.login ?? ""}`;
     act.append(external(t("github.install.action"), githubStatus.install_url));
     const off = h("button", "ghost md", t("linear.disconnect")) as HTMLButtonElement;
+    off.dataset.track = "github.disconnect";
     off.addEventListener("click", () => void run(false, off));
     act.append(off);
     return row;
   }
   text.textContent = t(githubStatus.busy ? "github.opening" : "github.pitch");
   const on = template("button", "outline md", `<span></span> ${icon("external-link", 12)}`) as HTMLButtonElement;
+  on.dataset.track = "github.connect";
   on.children[0].textContent = t("github.connect");
   on.disabled = githubStatus.busy;
   on.addEventListener("click", () => void run(true, on));
@@ -549,6 +600,7 @@ function teamRows(): HTMLElement[] {
     const path = st.config?.cloud ? `/orgs/${encodeURIComponent(st.config.cloud.slug)}` : "/settings/organizations";
     void invoke("open_external", { url: `${st.account.origin || "https://app.prometeu.co"}${path}` }).catch(e => ctx.say(fromBack(e), true));
   });
+  manage.dataset.track = "organization.manage";
   row.querySelector(".act")!.append(manage);
   rows.push(row);
   if (st.organizations.length) {
@@ -556,9 +608,10 @@ function teamRows(): HTMLElement[] {
       ["", t("organization.none")],
       ...st.organizations.map(org => [org.id, org.name] as [string, string]),
     ]);
+    choices.control.dataset.track = "organization.select";
     choices.onchange = () => {
       const value = choices.value;
-      void (value ? team.selectOrganization(value) : team.leave()).catch(e => ctx.say(fromBack(e), true));
+      void (value ? team.selectOrganization(value).then(() => track({ name: "collaboration_action_used", action: "select_organization" })) : team.leave()).catch(e => ctx.say(fromBack(e), true));
     };
     rows.push(field(t("organization.active"), choices.control, t("organization.scopeHint")));
   }
@@ -566,7 +619,7 @@ function teamRows(): HTMLElement[] {
     const legacy = h("div", "setrow");
     legacy.append(h("p", "ui-hint", t("organization.legacy")), button(t("team.leave"), () => {
       void team.leave().catch(e => ctx.say(fromBack(e), true));
-    }, "ghost"));
+    }, "ghost", "team.leave"));
     rows.push(legacy);
   }
   // One chip per person: companion devices fold into their member and only lend it their online state.

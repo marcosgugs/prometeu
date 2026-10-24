@@ -10,12 +10,12 @@ export function pendingCard(message: { name: string; text: string }, actions: Pe
   const root = h("section", "ask pending");
   const title = t("team.pending.title", { name: message.name });
   root.setAttribute("aria-label", title);
-  const send = button(t("team.pending.send"), actions.send, "pri");
+  const send = button(t("team.pending.send"), actions.send, "pri", "team.pending.send");
   send.title = t("team.pending.send.title", { name: message.name });
-  const edit = button(t("team.pending.edit"), actions.edit);
+  const edit = button(t("team.pending.edit"), actions.edit, "outline", "team.pending.edit");
   edit.title = t("team.pending.edit.title");
   const row = h("div", "row");
-  row.append(h("span", "spacer"), button(t("team.pending.discard"), actions.discard, "ghost"), edit, send);
+  row.append(h("span", "spacer"), button(t("team.pending.discard"), actions.discard, "ghost", "team.pending.discard"), edit, send);
   root.append(h("h4", "", title), h("p", "ui-hint", t("team.pending.hint")), h("p", "pending-text", message.text), row);
   return root;
 }

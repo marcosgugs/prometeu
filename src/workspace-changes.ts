@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { workspaceReview } from "./workspace-review";
 import type { ReviewDraft } from "./review-comments";
 import { gitGroup } from "./components/git/group";
@@ -43,6 +44,8 @@ let pendingNote = "";
 
 export function init(ctx: Context) {
   context = ctx;
+  $("diffview").dataset.trackArea = "git";
+  $("difflist").dataset.trackArea = "git";
   reviewNotes = workspaceReview({ workspace: ctx.workspace, say: ctx.say, send: ctx.sendReview,
     changed: () => { sidebarSignature = ""; diff.invalidate(); drawSidebar(); if (!$("diffview").hidden) void drawEditor(); },
     jump: (anchor, note) => {
@@ -52,12 +55,13 @@ export function init(ctx: Context) {
       pendingFocus = anchor.path; pendingNote = note; void drawEditor();
     },
   });
-  const notes = uiButton(t("review.title", { n: 0 }), () => void reviewNotes.open(), "ghost");
+  const notes = uiButton(t("review.title", { n: 0 }), () => void reviewNotes.open(), "ghost", "review.title");
   notes.id = "dreview"; $("dnext").after(notes);
   $("dlayout").setAttribute("aria-label", t("diff.layout"));
   for (const layout of ["unified", "split"] as const) {
     const control = uiButton(t(`diff.${layout}`), () => { state().layout = layout; void drawEditor(); }, "ghost");
     control.dataset.layout = layout;
+    control.dataset.track = `diff.${layout}`;
     $("dlayout").append(control);
   }
   $("dnext").append(uiButton(t("diff.next"), () => {
@@ -70,7 +74,7 @@ export function init(ctx: Context) {
     view.selection = { path: next.file.path, scope: view.mode === "staged" ? "staged" : "changes" };
     drawSidebar();
     void drawEditor();
-  }, "ghost"));
+  }, "ghost", "diff.next"));
   $("dfold").onclick = () => { diff.foldAll(diff.keys(review)); void drawEditor(); };
   $("dseen").onclick = () => {
     const ws = context.workspace();
@@ -129,7 +133,7 @@ export function fail(id: string, error: unknown) {
   if (existing) update(id, existing.map(repo => ({ ...repo, error: String(error) })));
   else if (ws?.id === id) {
     $("difflist").replaceChildren(h("div", "git-error", fromBack(error)));
-    $("difflist").append(button(t("git.refresh"), () => void context.refresh()));
+    $("difflist").append(button(t("git.refresh"), () => void context.refresh(), undefined, undefined, "git.refresh"));
   }
 }
 
@@ -144,6 +148,8 @@ export function show(mode?: Mode) {
   }
   clearEditor();
   if (mode === "compare") state().reference = current()?.base ?? "";
+  if (state().mode !== "branches") track({ name: "diff_viewed" });
+  if (mode === "compare") track({ name: "git_comparison_opened" });
   context.show(); drawSidebar(); void drawEditor();
 }
 
@@ -151,15 +157,15 @@ export function selectRepo(index: number) {
   state().repo = index; state().selection = null; state().reference = ""; pendingFocus = ""; show("changes");
 }
 
-function button(label: string, click: () => void, disabled = false, className = "") {
-  const node = uiButton(label, click, className === "pri" ? "pri" : "ghost");
+function button(label: string, click: () => void, disabled = false, className = "", track?: string) {
+  const node = uiButton(label, click, className === "pri" ? "pri" : "ghost", track);
   if (className) node.classList.add(...className.split(" "));
   node.disabled = disabled;
   return node;
 }
 
-function iconButton(label: string, glyph: Parameters<typeof icon>[0], click: () => void, disabled = false) {
-  const node = componentIconButton({ label, glyph, run: click, disabled });
+function iconButton(label: string, glyph: Parameters<typeof icon>[0], click: () => void, disabled = false, track?: string) {
+  const node = componentIconButton({ label, glyph, run: click, disabled, track });
   node.classList.add("git-icon");
   return node;
 }
@@ -202,14 +208,15 @@ function drawSidebar() {
   picker.append(template("span", "", avatar(repo?.name ?? ws.repo_name)));
   const select = button(repo?.name ?? ws.repos[view.repo]?.name ?? ws.repo_name, () => {
     const at = select.getBoundingClientRect();
-    menu.openAt({ x: at.left, y: at.bottom + 4 }, ws.repos.map((item, index) => ({
-      label: item.name, glyph: avatar(item.name), checked: index === view.repo,
+    menu.openAt({ area: "git", x: at.left, y: at.bottom + 4 }, ws.repos.map((item, index) => ({
+      label: item.name, track: "git.repository.select", glyph: avatar(item.name), checked: index === view.repo,
       run: () => selectRepo(index),
     })));
   });
   select.setAttribute("aria-label", t("git.repository"));
+  select.dataset.track = "git.repository";
   select.append(template("span", "spacer", ""), template("span", "", icon("chevron-down", 12)));
-  picker.append(select, h("span", "spacer"), iconButton(t("git.refresh"), "rotate", () => { editorSignature = ""; void context.refresh(); }, busy)); list.append(picker);
+  picker.append(select, h("span", "spacer"), iconButton(t("git.refresh"), "rotate", () => { editorSignature = ""; void context.refresh(); }, busy, "git.refresh")); list.append(picker);
   if (!repo) { list.append(h("div", "none", t("git.loading"))); return; }
   const target = { id: ws.id, repo: view.repo, index: repo.index };
   const act = (operation: GitAction, paths: string[] = [], remote?: string) => perform(target, operation, paths, remote);
@@ -222,6 +229,7 @@ function drawSidebar() {
   // A blocked operation already shows its progress or error in the panel; only the agent needs saying.
   const refused = (why: Refusal) => { if (why === "agent") context.say(t("err.git.agent"), true); };
   const branch = button(repo.branch ?? t("git.detached"), () => show("branches"), false, "ghost git-branch");
+  branch.dataset.track = "git.branches";
   branch.prepend(template("span", "", icon("git-branch", 13)));
   branch.title = `${repo.branch ?? t("git.detached")} · ${t("git.branches")}`;
   branch.append(template("span", "", icon("chevron-down", 12)));
@@ -231,38 +239,39 @@ function drawSidebar() {
   const tools = h("div", "git-tools");
   const pullDisabled = disabled || !repo.branch || !repo.upstream || !!repo.conflicts.length || !!repo.staged.length || !!repo.changes.length || ws.tabs.some(tab => tab.status === "rodando");
   const pull = button(`↓${repo.behind}`, () => void act("pull"), pullDisabled, "ghost");
+  pull.dataset.track = "git.pull";
   pull.setAttribute("aria-label", t("git.pull", { n: repo.behind }));
   pull.title = ws.tabs.some(tab => tab.status === "rodando") ? t("err.git.agent") : repo.staged.length || repo.changes.length ? t("err.git.dirtyPull") : t("git.pull.hint");
   tools.append(pull);
   if (repo.upstream) {
-    const push = button(t("git.push", { n: repo.ahead }), () => void act("push"), disabled || !repo.branch || !repo.ahead, "ghost");
+    const push = button(t("git.push", { n: repo.ahead }), () => void act("push"), disabled || !repo.branch || !repo.ahead, "ghost", "git.push");
     push.setAttribute("aria-label", t("git.push", { n: repo.ahead }));
     push.title = `${t("git.push.hint")} · ${repo.upstream}`; tools.append(push);
   } else {
     tools.append(button(t("git.publish"), () => {
       const remote = view.remotes.get(view.repo) ?? repo.remotes[0];
       void act("publish", [], remote);
-    }, disabled || !repo.branch || !repo.has_head || !repo.remotes.length, "ghost"));
+    }, disabled || !repo.branch || !repo.has_head || !repo.remotes.length, "ghost", "git.publish"));
   }
   meta.append(tools);
   const more = iconButton(t("git.actions"), "ellipsis", () => {
     const at = more.getBoundingClientRect();
-    menu.openAt({ x: at.right, y: at.bottom + 4 }, [
-      { label: t("git.fetch"), hint: t("git.fetch.hint"), disabled: disabled || !repo.remotes.length, run: () => void act("fetch") },
-      { label: t("git.pull", { n: repo.behind }), disabled: pullDisabled, run: () => void act("pull") },
-      { label: t("git.push", { n: repo.ahead }), disabled: disabled || !repo.branch || !repo.upstream || !repo.ahead, run: () => void act("push") },
-      "sep", { label: t("git.branches"), run: () => show("branches") },
+    menu.openAt({ area: "git", x: at.right, y: at.bottom + 4 }, [
+      { label: t("git.fetch"), track: "git.fetch", hint: t("git.fetch.hint"), disabled: disabled || !repo.remotes.length, run: () => void act("fetch") },
+      { label: t("git.pull", { n: repo.behind }), track: "git.pull", disabled: pullDisabled, run: () => void act("pull") },
+      { label: t("git.push", { n: repo.ahead }), track: "git.push", disabled: disabled || !repo.branch || !repo.upstream || !repo.ahead, run: () => void act("push") },
+      "sep", { label: t("git.branches"), track: "git.branches", run: () => show("branches") },
     ]);
-  });
+  }, undefined, "git.actions");
   picker.append(more);
   if (!repo.upstream && repo.remotes.length > 1) {
     const remotes = button(view.remotes.get(view.repo) ?? repo.remotes[0], () => {
       const at = remotes.getBoundingClientRect();
-      menu.openAt({ x: at.left, y: at.bottom + 4 }, repo.remotes.map(remote => ({
-        label: remote, checked: remote === (view.remotes.get(view.repo) ?? repo.remotes[0]),
+      menu.openAt({ area: "git", x: at.left, y: at.bottom + 4 }, repo.remotes.map(remote => ({
+        label: remote, track: "git.remote.select", checked: remote === (view.remotes.get(view.repo) ?? repo.remotes[0]),
         run: () => { view.remotes.set(view.repo, remote); drawSidebar(); },
       })));
-    }, busy, "git-remotes");
+    }, busy, "git-remotes", "git.remote");
     remotes.id = "git-remote"; remotes.setAttribute("aria-label", t("git.remote")); list.append(remotes);
   }
   const destination = repo.upstream ?? (repo.remotes.length && repo.branch ? `${view.remotes.get(view.repo) ?? repo.remotes[0]}/${repo.branch}` : t("git.noUpstream"));
@@ -271,7 +280,7 @@ function drawSidebar() {
   const nav = h("div", "git-nav");
   nav.setAttribute("aria-label", t("git.scope"));
   for (const mode of ["changes", "staged", "history", "compare"] as const) {
-    const item = button(t(`git.tab.${mode}`), () => show(mode), false, "ghost");
+    const item = button(t(`git.tab.${mode}`), () => show(mode), false, "ghost", `git.tab.${mode}`);
     item.dataset.mode = mode; item.setAttribute("aria-current", String(mode === activeMode));
     if (mode === "changes" || mode === "staged") item.append(h("span", "git-count", String(repo[mode].length)));
     nav.append(item);
@@ -281,13 +290,13 @@ function drawSidebar() {
   if (activeMode === "history") {
     list.append(h("div", "git-history-list", t("git.loading")));
   } else if (local || activeMode === "compare") {
-    const search = uiInput(view.filter); search.type = "search"; search.id = "git-filter";
+    const search = uiInput(view.filter, false, "git.filter"); search.type = "search"; search.id = "git-filter";
     search.placeholder = t("git.filter"); search.setAttribute("aria-label", t("git.filter"));
     search.oninput = () => { view.filter = search.value; drawSidebar(); void drawEditor(); };
     const filter = h("div", "git-filter"); filter.append(search);
     const clear = iconButton(t("git.filter.clear"), "x", () => {
       view.filter = ""; drawSidebar(); void drawEditor(); $("git-filter").focus();
-    });
+    }, undefined, "git.filter.clear");
     clear.hidden = !view.filter; filter.append(clear); list.append(filter);
   }
   if (activeMode === "compare") list.append(h("div", "git-comparison-files"));
@@ -301,7 +310,7 @@ function drawSidebar() {
       collapsed: view.collapsed.has(groupKey),
       changed: collapsed => { if (collapsed) view.collapsed.add(groupKey); else view.collapsed.delete(groupKey); },
       action: scope === "conflict" ? undefined : {
-        label: t(scope === "staged" ? "git.unstageAll" : "git.stageAll"), disabled: disabled || !group.length,
+        track: scope === "staged" ? "git.unstageAll" : "git.stageAll", label: t(scope === "staged" ? "git.unstageAll" : "git.stageAll"), disabled: disabled || !group.length,
         run: () => void act(scope === "staged" ? "unstage" : "stage", group.map(file => file.path)),
       },
     });
@@ -314,7 +323,7 @@ function drawSidebar() {
         open: file.status !== "D" ? () => context.openFile(repo.name, file.path) : undefined,
         contextMenu: event => {
         const host = context.fileHost(repo.name);
-        menu.openAt({ x: event.clientX, y: event.clientY }, changesMenu(file, {
+        menu.openAt({ area: "git", x: event.clientX, y: event.clientY }, changesMenu(file, {
           ...host, scope, availability,
           hooks: {
             ...host.hooks, refused,
@@ -327,7 +336,7 @@ function drawSidebar() {
         }));
         },
         action: scope !== "conflict" ? {
-          label: t(scope === "staged" ? "git.unstage.short" : "git.stage.short"),
+          track: scope === "staged" ? "git.unstage" : "git.stage", label: t(scope === "staged" ? "git.unstage.short" : "git.stage.short"),
           description: `${t(scope === "staged" ? "git.unstage" : "git.stage")}: ${file.path}`, disabled,
           run: () => void act(scope === "staged" ? "unstage" : "stage", [file.path]),
         } : undefined,
@@ -352,7 +361,7 @@ function drawSidebar() {
       }));
     } else {
       composer.append(h("strong", "", repo.staged.length ? tn(repo.staged.length, "git.ready") : t("git.prepare")), h("p", "git-hint", t("git.stage.hint")));
-      if (repo.staged.length || repo.merging) composer.append(button(t("git.reviewStaged"), () => show("staged")));
+      if (repo.staged.length || repo.merging) composer.append(button(t("git.reviewStaged"), () => show("staged"), undefined, undefined, "git.reviewStaged"));
     }
     list.append(composer);
   }
@@ -366,7 +375,7 @@ function drawSidebar() {
 
 /// Discarding loses work Git cannot bring back, so it always asks first.
 async function discard(path: string, run: () => Promise<void>) {
-  const confirmed = await confirmDialog({
+  const confirmed = await confirmDialog({ track: "git.menu.discard.title", area: "git",
     title: t("git.menu.discard.title", { path }), message: t("git.menu.discard.body"),
     accept: t("git.menu.discard"), cancel: t("actions.cancel"),
   });
@@ -442,7 +451,7 @@ function renderReview(ws: Workspace, repo: GitStatus, result: GitDiff, caption: 
       files.replaceChildren(...filtered[0].files.map(file => {
         const pick = button(file.path, () => {
           pendingFocus = file.path; void drawEditor();
-        }, false, "git-file-name");
+        }, false, "git-file-name", "git.comparison.file");
         pick.dataset.path = file.path; pick.title = file.path;
         const notes = reviewNotes.count(ws.id, repo.name, file.path);
         if (notes) pick.append(h("span", "review-count", String(notes)));
@@ -473,7 +482,7 @@ async function drawEditor() {
       if (editorSignature === `${ws.id}/${view.repo}/branches`) return;
       const branches = await invoke("workspace_git_branches", args); if (!valid()) return;
       heading(t("git.branches"));
-      const box = h("div", "git-page"), search = uiInput(); search.classList.add("git-search");
+      const box = h("div", "git-page"), search = uiInput("", false, "git.branch.search"); search.classList.add("git-search");
       search.placeholder = t("git.branch.search"); search.setAttribute("aria-label", t("git.branch.search"));
       const list = h("div", "git-branches");
       const render = () => {
@@ -481,16 +490,16 @@ async function drawEditor() {
         for (const branch of branches.filter(branch => branch.name.toLowerCase().includes(search.value.toLowerCase()))) {
           const row = h("div", "git-branch-row"); row.append(h("code", "", branch.name), h("span", "spacer"));
           if (branch.current) row.append(h("span", "git-badge", t("git.branch.current")));
-          else if (branch.workspace) row.append(button(t("git.branch.open"), () => context.openWorkspace(branch.workspace!)));
+          else if (branch.workspace) row.append(button(t("git.branch.open"), () => context.openWorkspace(branch.workspace!), undefined, undefined, "git.branch.open"));
           else if (branch.worktree) { const label = h("span", "git-hint", t("git.branch.occupied")); label.title = branch.worktree; row.append(label); }
-          else row.append(button(t("git.branch.create"), () => context.launchBranch(ws.repos[args.repo].path, branch.name, branch.remote ? undefined : branch.name)));
+          else row.append(button(t("git.branch.create"), () => context.launchBranch(ws.repos[args.repo].path, branch.name, branch.remote ? undefined : branch.name), undefined, undefined, "git.branch.create"));
           if (branch.remote) row.append(h("span", "git-badge", t("git.branch.remote")));
           list.append(row);
         }
         if (!list.children.length) list.append(h("div", "none", t("git.branch.none")));
       };
       search.oninput = render; render();
-      box.append(search, list, button(t("git.branch.new"), () => context.launchBranch(ws.repos[args.repo].path, repo.branch ?? "HEAD")), h("p", "git-hint", t("git.branch.hint")));
+      box.append(search, list, button(t("git.branch.new"), () => context.launchBranch(ws.repos[args.repo].path, repo.branch ?? "HEAD"), undefined, undefined, "git.branch.new"), h("p", "git-hint", t("git.branch.hint")));
       host.replaceChildren(box); editorSignature = `${ws.id}/${view.repo}/branches`; return;
     }
     if (mode === "history") {
@@ -505,6 +514,7 @@ async function drawEditor() {
           const list = host.querySelector<HTMLElement>(".git-review-list"); if (list) list.scrollTop = 0;
           void drawEditor();
         }, false, "git-history-row");
+        row.dataset.track = "git.history.select";
         row.dataset.oid = commit.oid; row.setAttribute("aria-current", String(commit.oid === view.reference));
         const description = h("div", ""); description.append(h("strong", "", commit.subject), h("small", "", `${commit.oid.slice(0,7)} · ${commit.author} · ${new Date(commit.date).toLocaleString()}`));
         row.append(h("span", "git-history-node"), description, h("span", "spacer"));
@@ -518,7 +528,7 @@ async function drawEditor() {
     if (mode === "compare" || mode === "history") {
       heading(mode === "compare" ? t("git.compare") : t("git.saved"), true);
       if (mode === "compare") {
-        const base = uiInput(view.reference || repo.base); base.classList.add("git-base"); base.setAttribute("aria-label", t("git.base"));
+        const base = uiInput(view.reference || repo.base, false, "git.comparison.reference"); base.classList.add("git-base"); base.setAttribute("aria-label", t("git.base"));
         const apply = () => {
           view.reference = base.value; base.blur(); editorSignature = "";
           void drawEditor().then(() => {
@@ -526,7 +536,7 @@ async function drawEditor() {
           });
         };
         base.onkeydown = e => { if (e.key === "Enter") apply(); };
-        $("dcrumb").append(base, button(t("git.tab.compare"), apply));
+        $("dcrumb").append(base, button(t("git.tab.compare"), apply, undefined, undefined, "git.tab.compare"));
       }
       if (!repo.has_head) { host.replaceChildren(h("div", "none", t("git.history.empty"))); return; }
       const result = await invoke("workspace_git_diff", { ...args, scope: mode === "compare" ? "compare" : "commit", path: null, reference: view.reference || null }); if (!valid()) return;
@@ -545,11 +555,11 @@ async function drawEditor() {
       const saved = draft;
       heading(`${t("git.conflicts")} · ${selected.path}`);
       const box = h("div", "git-page"), sides = h("div", "git-conflict-sides");
-      const input = uiInput("", true); input.classList.add("git-conflict-result");
+      const input = uiInput("", true, "git.conflict.result"); input.classList.add("git-conflict-result");
       input.value = saved.text; input.oninput = () => { saved.text = input.value; }; input.setAttribute("aria-label", t("git.conflict.result")); input.spellcheck = false;
       for (const [text, key] of [[saved.source.ours, "ours"], [saved.source.theirs, "theirs"]] as const) {
         const side = h("section", "git-conflict-side");
-        side.append(h("h4", "", t(key === "ours" ? "git.conflict.current" : "git.conflict.incoming", { branch: repo.branch ?? "HEAD" })), h("pre", "", text ?? t("git.conflict.deleted")), button(t(`git.conflict.${key}`), () => { input.value = text!; saved.text = text!; }, text === null)); sides.append(side);
+        side.append(h("h4", "", t(key === "ours" ? "git.conflict.current" : "git.conflict.incoming", { branch: repo.branch ?? "HEAD" })), h("pre", "", text ?? t("git.conflict.deleted")), button(t(`git.conflict.${key}`), () => { input.value = text!; saved.text = text!; }, text === null, undefined, `git.conflict.${key}`)); sides.append(side);
       }
       const resolve = button(t("git.conflict.resolve"), () => {
         if (busy || context.workspace()?.id !== args.id || state().repo !== args.repo || current()?.error) return; busy = true; resolve.disabled = true; drawSidebar();
@@ -557,11 +567,11 @@ async function drawEditor() {
           view.conflicts.delete(draftKey);
           if (context.workspace()?.id === ws.id && state().repo === args.repo) { view.mode = "staged"; view.selection = { scope: "staged", path: selected.path }; editorSignature = ""; }
         }).catch(error => context.say(fromBack(error), true)).finally(async () => { busy = false; resolve.disabled = false; await context.refresh(); });
-      }, busy, "pri");
+      }, busy, "pri", "git.conflict.resolve");
       if (saved.source.current !== result.current) {
-        box.append(h("p", "git-error", t("err.git.changed")), button(t("git.conflict.refresh"), () => { saved.source = result; editorSignature = ""; void drawEditor(); }));
+        box.append(h("p", "git-error", t("err.git.changed")), button(t("git.conflict.refresh"), () => { saved.source = result; editorSignature = ""; void drawEditor(); }, undefined, undefined, "git.conflict.refresh"));
       }
-      box.append(sides, h("label", "git-hint", t("git.conflict.result")), input, resolve, button(t("git.conflict.manual"), () => void act("stage", [selected.path]), busy), h("p", "git-hint", t("git.conflict.hint")));
+      box.append(sides, h("label", "git-hint", t("git.conflict.result")), input, resolve, button(t("git.conflict.manual"), () => void act("stage", [selected.path]), busy, undefined, "git.conflict.manual"), h("p", "git-hint", t("git.conflict.hint")));
       host.replaceChildren(box); editorSignature = signature; return;
     }
     heading(t(view.mode === "staged" ? "git.tab.staged" : "git.tab.changes"), true);
@@ -585,7 +595,7 @@ async function drawEditor() {
     host.replaceChildren(h("div", "git-error", fromBack(error)));
     if (mode === "conflict" && view.selection) {
       const path = view.selection.path;
-      host.append(button(t("git.openFile"), () => context.openFile(repo.name, path)), button(t("git.conflict.manual"), () => void act("stage", [path]), busy));
+      host.append(button(t("git.openFile"), () => context.openFile(repo.name, path), undefined, undefined, "git.openFile"), button(t("git.conflict.manual"), () => void act("stage", [path]), busy, undefined, "git.conflict.manual"));
     }
   }
 }
