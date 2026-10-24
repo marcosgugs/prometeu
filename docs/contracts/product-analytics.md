@@ -1,7 +1,8 @@
 # Anonymous product analytics
 
-Prometeu sends anonymous feature events to PostHog so we can tell which features
-are used. The decision and its trade-offs are in
+Prometeu optionally sends anonymous feature events to PostHog so we can tell which
+features are used. Tracking is off until the person enables it in
+Settings / General / Privacy. The decision and its trade-offs are in
 [ADR 0093](../decisions/0093-anonymous-product-analytics.md). This is separate
 from the [local telemetry](telemetry.md), which never leaves the machine.
 
@@ -115,24 +116,40 @@ with a new one.
 
 ## Delivery and configuration
 
+- Tracking defaults to off for new and existing installations. An existing
+  `analytics-id` is not consent. The preference is a JSON boolean in the private,
+  atomically written `<root>/analytics-enabled.json`; missing, unreadable or
+  malformed values mean off. Explicitly saving a choice replaces that value.
+- `analytics_enabled` takes no arguments and returns a boolean.
+  `analytics_set_enabled` takes `{ enabled: boolean }`, persists it and returns
+  the saved boolean. A write failure rejects with `err.analytics.storage` and
+  leaves the running preference unchanged. These commands are additive; the
+  `analytics_track` payload remains compatible.
+- The backend checks consent before initializing delivery or queuing any event,
+  including app startup and events emitted by native use cases. Settings changes
+  take effect without restarting. Delivery rechecks consent after the batch
+  window, dropping pending events from before a disable even if tracking has
+  since been enabled again. Events dropped while off are never replayed.
+  Requests already handed to the HTTP transport may finish; disabling does not
+  erase events already received by PostHog or the local installation ID.
 - One background thread collects events for 5 seconds after the first one, then
   posts the batch with a 10-second timeout. Failures, and a batch still waiting
   when the app quits, are dropped; there is no offline queue.
-- Only builds compiled with a non-empty `PROMETEU_POSTHOG_KEY` send events. Release CI reads
+- Only opted-in builds compiled with a non-empty `PROMETEU_POSTHOG_KEY` send events. Release CI reads
   it from the `PROMETEU_POSTHOG_KEY` repository variable; other builds send
   nothing.
 - The PostHog project is in the US region; a key from another region is
   rejected silently. **Discard client IP data** must be enabled, because US
   projects record the request IP by default and the client cannot remove it.
-- There is no opt-in or opt-out control in this version.
+- This preference does not change the local telemetry store or its capture.
 
 ## Coverage
 
 | Shell | Sends events |
 | --- | --- |
-| macOS and Linux desktop | Yes, release builds with the key |
-| Native Windows (WSL runtime) | No; `analytics_track` is unsupported and ignored |
-| Browser mock | No; the handler ignores events |
+| macOS and Linux desktop | Only with explicit consent and the build key |
+| Native Windows (WSL runtime) | No; analytics commands are unsupported; Settings disables the control |
+| Browser mock | No; events are ignored; the preference persists in mock localStorage |
 | Mobile shell | No |
 
 ## Verification
@@ -140,7 +157,12 @@ with a new one.
 The tests in [`analytics.rs`](../../src-tauri/src/analytics.rs) check that the
 payload contains only the event's fields plus the fixed metadata, that unknown
 events are rejected, that extra or unknown values are dropped, and that click
-tokens reject sentences, paths and URLs. [`src/analytics.test.ts`](../../src/analytics.test.ts)
+tokens reject sentences, paths and URLs. They also cover default-off upgrades,
+invalid/unreadable preferences, persistence across restarts, failed writes and
+pending event rejection across disable/enable cycles.
+[`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) covers
+loading and changing consent, pending saves, error recovery and unsupported
+backends. [`src/analytics.test.ts`](../../src/analytics.test.ts)
 checks that only catalog keys become click targets, that captured clicks carry
 the right control, target and region, that `data-track` tokens name dynamic
 controls and their nested parts, and that repeated screens are not counted. The IPC parity

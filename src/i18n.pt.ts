@@ -100,6 +100,12 @@ export const PT = {
   "usage.coverage": "{measured} de {turns} turnos medidos · {partial} parciais",
 
   "telemetry.title": "Histórico local",
+  "analytics.privacy": "Privacidade",
+  "analytics.title": "Estatísticas de uso",
+  "analytics.enabled": "Compartilhar dados de uso",
+  "analytics.description": "Eventos anônimos opcionais de uso de recursos e cliques enviados ao PostHog para melhorar o Prometeu. Sem prompts, código, caminhos ou respostas dos agentes. Desativado por padrão; o histórico local permanece neste dispositivo.",
+  "analytics.unavailable": "As configurações de estatísticas de uso estão indisponíveis neste backend.",
+  "err.analytics.storage": "Não foi possível salvar a preferência de estatísticas de uso. Sua escolha anterior foi mantida.",
   "telemetry.all": "Todos os workspaces",
   "telemetry.unknown": "Não observado",
   "telemetry.first": "Primeiro evento no período",

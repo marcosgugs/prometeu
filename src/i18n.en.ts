@@ -102,6 +102,12 @@ export const EN: Record<keyof typeof pt.PT, string> = {
   "usage.coverage": "{measured} of {turns} turns measured · {partial} partial",
 
   "telemetry.title": "Local history",
+  "analytics.privacy": "Privacy",
+  "analytics.title": "Usage analytics",
+  "analytics.enabled": "Share usage data",
+  "analytics.description": "Optional anonymous feature and click events sent to PostHog to improve Prometeu. No prompts, code, paths or agent output. Off by default; local history stays on this device.",
+  "analytics.unavailable": "Usage analytics settings are unavailable on this backend.",
+  "err.analytics.storage": "Could not save the analytics preference. Your previous choice is unchanged.",
   "telemetry.all": "All workspaces",
   "telemetry.unknown": "Not observed",
   "telemetry.first": "First event in period",

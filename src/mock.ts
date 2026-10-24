@@ -2584,6 +2584,8 @@ const mockCommands: IpcHandlers = {
   },
   // The browser preview never sends product analytics.
   analytics_track() {},
+  analytics_enabled() { return localStorage.getItem("mock:analyticsEnabled") === "true"; },
+  analytics_set_enabled({ enabled }) { localStorage.setItem("mock:analyticsEnabled", String(enabled)); return enabled; },
   telemetry_summary({ filter }) { return telemetry.summary(filter); },
   telemetry_insights({ filter }) { return telemetry.insights(filter); },
   telemetry_turns({ conversation, messageIds }) { return telemetry.turns(conversation, messageIds); },

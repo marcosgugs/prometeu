@@ -189,6 +189,8 @@ fn main() {
         .manage(machine::Service::new())
         .invoke_handler(tauri::generate_handler![
             analytics::analytics_track,
+            analytics::analytics_enabled,
+            analytics::analytics_set_enabled,
             background::background_context,
             notifications::notification_permission,
             notifications::notification_show,
