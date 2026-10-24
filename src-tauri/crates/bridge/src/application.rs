@@ -75,6 +75,13 @@ impl NativeApplication {
                 args["path"] = Value::String(self.paths.linux(target, path)?);
                 client.application(command, args)
             }
+            "create_project" => {
+                let directory = args["directory"]
+                    .as_str()
+                    .ok_or("project directory is required")?;
+                args["directory"] = Value::String(self.paths.linux(target, directory)?);
+                client.application(command, args)
+            }
             "plugin_look" | "plugin_save" => {
                 let source = match command.as_str() {
                     "plugin_save" => args
@@ -307,6 +314,20 @@ mod tests {
         assert_eq!(
             client.requests.last().unwrap().1,
             json!({"path":"/drive/project"})
+        );
+        app.request(
+            &target,
+            &mut client,
+            "create_project".into(),
+            json!({"directory":r"D:\project", "name":"New project"}),
+        )
+        .unwrap();
+        assert_eq!(
+            client.requests.last().unwrap(),
+            &(
+                "create_project".into(),
+                json!({"directory":"/drive/project", "name":"New project"})
+            )
         );
         client.reply = Ok(json!({"board":true}));
         assert_eq!(

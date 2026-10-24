@@ -35,6 +35,7 @@ export type Commands = {
   action_start: { args: { workspace: string; name: string; context: string }; result: T.Tab };
   actions_save: { args: { catalog: Catalog }; result: void };
   add_project: { args: { path: string }; result: T.Project };
+  create_project: { args: { directory: string; name: string }; result: T.Project };
   agents: { args: undefined; result: { providers: AgentDescriptor[] } };
   archive_workspace: { args: { id: string; archived: boolean }; result: void };
   browser_back: { args: { id: string }; result: void };

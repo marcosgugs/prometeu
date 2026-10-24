@@ -71,3 +71,35 @@ test("Git projects clone in a batch, retain success and retry only failures", as
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("mock:catalog")!).revision)).toBe(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("mock:catalog")!).projects)).toHaveLength(1);
 });
+
+// Protect the project-to-conversation journey and typed input across nested dialog failure/retry.
+// Rust tests cover filesystem behavior; only the browser proves focus and launcher wiring.
+test("a new project preserves its name on failure and starts its first workspace without a worktree", async ({ page }) => {
+  const projects = page.getByRole("dialog", { name: "Projects", exact: true });
+  await projects.getByRole("button", { name: "Create new project" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create new project", exact: true });
+  const name = dialog.getByRole("textbox", { name: "Project name" });
+  await expect(name).toBeFocused();
+  await name.fill("prometeu");
+  await page.evaluate(() => localStorage.setItem("mock:directory", "/Users/gustavo/dev"));
+  await dialog.getByRole("button", { name: "Parent folder" }).click();
+  await name.press("Enter");
+  await expect(dialog.getByRole("alert")).toContainText("already exists");
+  await expect(name).toHaveValue("prometeu");
+  await name.fill("New project");
+  await page.evaluate(() => localStorage.setItem("mock:directory", "/tmp/projects"));
+  await dialog.getByRole("button", { name: "Parent folder" }).click();
+  await name.press("Enter");
+  await expect(dialog).not.toBeVisible();
+  await expect(projects).not.toBeVisible();
+  await page.getByRole("button", { name: "New workspace in New project", exact: true }).click();
+  await expect(page.locator("#d-project")).toContainText("New project");
+  await expect(page.locator("#d-wt")).toBeDisabled();
+  await expect(page.locator("#d-wt")).not.toBeChecked();
+  await expect(page.locator("#d-nb")).toBeDisabled();
+  await expect(page.locator("#d-repo-hint")).toContainText("no commits yet");
+  await page.locator("#d-prompt").fill("Start my new project");
+  await page.locator("#d-prompt").press("Enter");
+  await expect(page.locator("#crumb")).toContainText("Start my new project");
+  await expect(page.locator("#chatwrap .composer textarea")).toBeVisible();
+});

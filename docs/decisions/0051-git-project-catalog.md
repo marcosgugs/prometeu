@@ -51,3 +51,32 @@ The [catalog contract](../contracts/cloud-catalog.md) specifies wire behavior.
 fixture for cloning, retry, existing-folder registration and file preservation.
 [Browser tests](../../e2e/projects.spec.ts) cover selection, partial failure and
 retry in Chromium, plus a representative layout and focus check in WebKit.
+
+## Local creation
+
+The same Projects dialog also creates a local project without a Cloud account.
+It accepts a name and parent directory, initializes a new empty Git repository
+through the shared native Git adapter, and reuses board registration. Desktop
+and WSL expose the additive `create_project` command described in the
+[IPC contract](../contracts/ipc.md). Existing registration and catalog formats
+are unchanged.
+
+Creation refuses existing paths instead of initializing or overwriting them.
+Git templates and inherited repository-location overrides cannot populate or
+redirect the new repository. Failed initialization registers nothing; cleanup
+only removes an empty directory, preserving partial state or concurrent writes.
+An initialized directory remains on disk if subsequent registration fails.
+
+No initial commit is invented: that would require an identity or write authored
+history on the person's behalf. The launcher opens a repository without branch
+references directly in its project folder until the first commit, preserving
+the saved worktree preference for subsequent launches. No setup, remote,
+dependencies or provider process starts during project creation.
+
+Tests in `crates/git/src/tests.rs` cover empty initialization, invalid names,
+existing paths and symlinks. The resident runtime test covers registration,
+rejection without a board change and restart persistence; the bridge test checks
+Windows parent-path conversion. `e2e/projects.spec.ts` adds the project-to-first-
+conversation journey, including focus and retention of typed input after a
+creation failure. Existing clone scenarios do not exercise this nested dialog or
+its launcher integration; native tests cannot prove browser focus behavior.

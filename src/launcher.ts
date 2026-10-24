@@ -278,8 +278,8 @@ export function openLauncher(board: Board, opts: Open) {
   const drawExtras = () => {
     more.hidden = board.projects.length < 2;
     // Multiple repositories require Git-backed worktrees.
-    more.disabled = !!git?.source || !others().length || !isGit;
-    more.title = t(!isGit ? "launcher.noGit" : others().length ? "launcher.addRepo" : "launcher.addRepo.none");
+    more.disabled = !!git?.source || !others().length || !!branchProblem;
+    more.title = branchProblem || t(others().length ? "launcher.addRepo" : "launcher.addRepo.none");
     reposBox.hidden = !draft.extras.length;
     reposBox.replaceChildren(
       ...draft.extras.map((id) => {
@@ -322,8 +322,8 @@ export function openLauncher(board: Board, opts: Open) {
   const wt = worktree.control;
   const nb = newBranch.control;
 
-  // Disable branch/worktree controls for non-Git directories after reference discovery confirms their status.
-  let isGit = true;
+  // Branches and worktrees need a repository with a committed base.
+  let branchProblem = "";
 
   const drawSwitches = () => {
     for (const [el, on] of [
@@ -332,11 +332,11 @@ export function openLauncher(board: Board, opts: Open) {
     ] as const) {
       el.checked = on;
     }
-    nb.disabled = !!git?.source || !!draft.extras.length || !isGit;
-    nb.title = t(!isGit ? "launcher.noGit" : draft.extras.length ? "launcher.nb.locked" : "launcher.nb.off");
-    wt.disabled = !!git || draft.extras.length > 0 || !isGit;
-    wt.title = t(!isGit ? "launcher.noGit" : draft.extras.length ? "launcher.wt.locked" : draft.worktree ? "launcher.wt.on" : "launcher.wt.off");
-    $("d-repo-hint").textContent = t(!isGit ? "launcher.noGit" : draft.worktree ? "launcher.wt.on" : draft.newBranch ? "launcher.wt.off" : "launcher.nb.off");
+    nb.disabled = !!git?.source || !!draft.extras.length || !!branchProblem;
+    nb.title = branchProblem || t(draft.extras.length ? "launcher.nb.locked" : "launcher.nb.off");
+    wt.disabled = !!git || draft.extras.length > 0 || !!branchProblem;
+    wt.title = branchProblem || t(draft.extras.length ? "launcher.wt.locked" : draft.worktree ? "launcher.wt.on" : "launcher.wt.off");
+    $("d-repo-hint").textContent = branchProblem || t(draft.worktree ? "launcher.wt.on" : draft.newBranch ? "launcher.wt.off" : "launcher.nb.off");
     const branchLabel = t(draft.worktree && !draft.newBranch ? "launcher.branch.label" : "launcher.base.label");
     branchField.querySelector("label")!.textContent = branchLabel;
     baseBtn.setAttribute("aria-label", branchLabel);
@@ -600,7 +600,7 @@ export function openLauncher(board: Board, opts: Open) {
     existingRef = "";
     draft.source = undefined;
     if (draft.worktree && !draft.newBranch) draft.branch = "";
-    isGit = true;
+    branchProblem = "";
     baseBtn.disabled = true;
     baseName.textContent = t("launcher.loading");
     drawHint();
@@ -613,12 +613,14 @@ export function openLauncher(board: Board, opts: Open) {
         existingRef = fromGit.source;
         draft.source = fromGit.source;
       }
-      isGit = got.git;
-      // A non-Git directory opens directly without branch operations.
-      if (!isGit) {
+      branchProblem = !got.git ? t("launcher.noGit") : !got.all.length ? t("launcher.noCommits") : "";
+      // Empty repositories and non-Git folders start directly, without inventing an initial commit.
+      if (branchProblem) {
         draft.worktree = false;
         draft.newBranch = false;
+        draft.extras = [];
       }
+      drawExtras();
       drawSwitches();
       // Refresh generated names after loading repository references while preserving explicit Git or issue selections.
       if (!seed) generatedBranch = fromGit?.branch || freshBranch(branches);
@@ -626,7 +628,7 @@ export function openLauncher(board: Board, opts: Open) {
       setBase(fromGit?.base ?? got.default);
     } catch {
       if (draft.project !== loadingProject) return;
-      // A newly initialized repository without references branches from its current HEAD.
+      // Preserve the selected base when reference discovery fails.
       setBase(fromGit?.base ?? "");
       drawSwitches();
     }

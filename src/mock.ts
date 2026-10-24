@@ -144,6 +144,7 @@ const ws = (
   active: tabs[0]?.id ?? null,
 });
 
+const emptyProjects = new Set<string>();
 const board: Board = {
   actions: initializeDefaults(JSON.parse(localStorage.getItem("mock:actions") ?? "null") ?? emptyCatalog()),
   stages: ["Preparando", "Fazendo", "Code review", "Travado", "Feito"],
@@ -2257,7 +2258,8 @@ const mockCommands: IpcHandlers = {
       ports: [{ id: "0831-1714", title: "App icon", port: 3100 }],
     };
   },
-  list_branches() {
+  list_branches({ project }) {
+    if (emptyProjects.has(project)) return { all: [], local: [], default: "", git: true };
     return {
       all: [
         "origin/main", "main", "entire/checkpoints/v1", "manual-sleep-button",
@@ -2281,6 +2283,10 @@ const mockCommands: IpcHandlers = {
     const repo = String(draft.project).split("/").pop() ?? "repo";
     const fresh = ws(id, draft.project, repo, draft.title || draft.branch, draft.stage, []);
     fresh.branch = draft.branch || "main";
+    if (!draft.worktree) {
+      fresh.repo = fresh.worktree = board.projects.find(project => project.id === draft.project)?.path ?? draft.project;
+      fresh.repos = [{ path: fresh.repo, name: repo, worktree: fresh.worktree, base: draft.base, pr: null }];
+    }
     fresh.preserve_branches = draft.worktree && draft.newBranch === false ? [draft.project] : [];
     // Multiple repositories share a parent directory with one worktree each.
     const extras: string[] = draft.extras ?? [];
@@ -2551,6 +2557,20 @@ const mockCommands: IpcHandlers = {
     if (existing) return existing;
     const project = { id: args.path, name: args.path.split("/").pop() ?? args.path, path: args.path };
     board.projects.push(project);
+    emit("board", board);
+    return project;
+  },
+  create_project({ directory, name }) {
+    name = name.trim();
+    if (!name || [".", "..", ".git"].includes(name.toLowerCase()) || /[\/\\\u0000-\u001f\u007f-\u009f]/.test(name))
+      throw 'i18n:{"code":"err.project.name"}';
+    if (!directory.startsWith("/")) throw 'i18n:{"code":"err.project.directory"}';
+    const path = `${directory.replace(/\/+$/, "")}/${name}`;
+    if (board.projects.some(project => project.path === path))
+      throw `i18n:${JSON.stringify({ code: "err.project.pathExists", args: { path } })}`;
+    const project = { id: path, name, path };
+    board.projects.push(project);
+    emptyProjects.add(path);
     emit("board", board);
     return project;
   },

@@ -61,6 +61,24 @@ Local Rust workspaces omit `remote`. The TypeScript presentation field is
 optional (or null for browser fixtures); collaboration supplies it only for
 remote workspaces. No backend field or persisted format is added.
 
+`create_project` receives `{ directory: string, name: string }` and returns the
+existing `Project` shape. The parent must be an existing absolute directory
+(desktop expands `~/`; Windows converts the selected parent to a WSL path).
+The trimmed name must be one directory component: empty names, `.`, `..`, `.git`
+(case-insensitive), slashes, backslashes and control characters are rejected.
+The native Git adapter canonicalizes the parent and exclusively creates the child,
+rejecting existing files, folders and symlinks without altering them. It runs
+`git init --template=` with repository-location environment overrides removed,
+then registers the result and publishes `board`. It creates no commit, remote,
+workspace or project files. No Git identity or Cloud account is required.
+On Git failure, registration does not occur; cleanup removes only an empty child,
+preserving any partial Git state or concurrently written files for inspection.
+If later registration fails, the initialized directory remains available for
+**Add local folder**. Existing `add_project` behavior and persisted formats stay
+unchanged. Native tests are in `crates/git/src/tests.rs`; runtime registration,
+failure and restart coverage is in `crates/runtime/tests/resident.rs`, and Windows
+argument conversion is in `crates/bridge/src/application.rs`.
+
 `reorder_projects` receives `{ ids: string[] }`, returns empty and reorders the
 board's `projects` to match. Projects absent from `ids` keep their relative
 order after the listed ones and unknown IDs are ignored, so a project registered
@@ -458,6 +476,12 @@ creation behavior for older callers. With a worktree and `newBranch: false`,
 `source` must identify an existing local branch or remote ref. The backend
 refuses missing refs before publishing a workspace card.
 
+When reference discovery finds a Git repository with no branches, the launcher
+starts in the project directory with `worktree: false` and `newBranch: false`.
+Branch, worktree and additional-repository controls remain disabled for that
+launch. Prometeu does not create an initial commit or change the saved worktree
+preference. Reopening the launcher after the first commit restores those options.
+
 ## Starting from a skill
 
 - `plugin_skills`: no arguments; returns `{ plugin, name, description }[]` for
@@ -616,7 +640,7 @@ optional `pty_buffer` snapshot) and limits are in the
   through unchanged.
 - `pty_write` calls are serialized per terminal; a failed write rejects its
   queued suffix without replay. Both are covered in `src/windows/transport.test.ts`.
-- Folder selections are converted to Linux paths before `add_project`; other
+- Folder selections are converted to Linux paths before `add_project` or `create_project`; other
   distributions reject before registration.
 - Host-only commands typed in `src/windows/host.ts`, outside this registry and
   the mock: `application_open({ previous })` discovers the default WSL, installs
