@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { invoke } from "./ipc";
 import type { ProviderId } from "./types";
+import type { RequestResponse } from "./conversation";
 import type { FeatureEvent } from "./analytics-events";
 
 /** Product events contain only authored identifiers and closed context (ADR 0093). */
@@ -18,6 +19,12 @@ export type AnalyticsEvent =
 /** Fire and forget: analytics never delays or fails a feature. */
 export function track(event: AnalyticsEvent) {
   invoke("analytics_track", { event }).catch(() => {});
+}
+
+/** Call after the response is accepted; plans and tool permissions share allow/deny outcomes. */
+export function trackRequestResponse(outcome: RequestResponse["outcome"]) {
+  if (outcome === "answer") track({ name: "request_answered" });
+  else track({ name: "approval_submitted", approved: outcome === "allow" });
 }
 
 let shown: Screen | undefined;

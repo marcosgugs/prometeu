@@ -1,4 +1,4 @@
-import { track, trackClicks } from "./analytics";
+import { track, trackClicks, trackRequestResponse } from "./analytics";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "./ipc";
 import type { IslandSnapshot } from "./island";
@@ -15,7 +15,12 @@ let snapshot: IslandSnapshot = { tabs: [], usage: [] };
 let layout: IslandLayout = { expanded: false, top: 32 };
 let notice: Notice | null = null;
 const open = (tab: string) => void invoke("island_open", { tab }).then(() => track({ name: "notification_action_used", source: "island", action: "open_workspace" })).catch(console.error);
-const panels = requestPanels((session, frame) => invoke("chat_control", { session, frame }).then(() => track({ name: "notification_action_used", source: "island", action: "answer" })), open);
+const panels = requestPanels((session, frame) => invoke("chat_control", { session, frame }).then(() => {
+  if (frame.type === "request.respond") {
+    trackRequestResponse(frame.response.outcome);
+    track({ name: "notification_action_used", source: "island", action: "answer" });
+  }
+}), open);
 const actions = {
   open,
   panel: panels.panel,

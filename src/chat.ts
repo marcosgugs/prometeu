@@ -1,4 +1,4 @@
-import { track } from "./analytics";
+import { track, trackRequestResponse } from "./analytics";
 import { reviewContextChip } from "./components/chat/review-context";
 import { mergeReviewDraft, type ReviewDraft } from "./review-comments";
 import { encodeReviewContext, reviewContext } from "./review-context";
@@ -748,9 +748,7 @@ export class ChatView {
 
   private respond(ask: Ask, response: RequestResponse) {
     void this.control({ v: 1, type: "request.respond", requestId: ask.id, response }).then(sent => {
-      if (!sent) return;
-      if (ask.requestKind === "approval") track({ name: "approval_submitted", approved: response.outcome === "allow" });
-      else track({ name: "request_answered" });
+      if (sent) trackRequestResponse(response.outcome);
     });
     this.sync(new Set(this.tl.answer(ask.id)));
     this.paintComposer();

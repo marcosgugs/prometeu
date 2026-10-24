@@ -18,7 +18,7 @@ control identities. Repeated items share an authored action token.
 | Desk | `desk_layout_changed`, `conversation_opened`; panel controls and resize completion |
 | Conversation tabs | Existing additional-tab creation, explicit tab/desk opening and Continue use; no turn-end event |
 | Composer/context | New attachments and structured context; named send/stop/attachment controls; keyboard, paste/drop share attachment paths |
-| Output/requests | Copied message/code, accepted request/approval response; named detail, link and decision controls |
+| Output/requests | Copied message/code, accepted question responses and tool/plan decisions from conversation or island; named detail, link and decision controls |
 | Models/effort/favorites | Explicit selection/change events; static model picker and option identities |
 | Provider accounts | Login start/cancel, selection, removal, quota opening; account data excluded |
 | Usage/context tools | Summary/quota views; named compact/report/new-conversation controls; automatic usage updates excluded |
@@ -82,7 +82,11 @@ claim of exhaustive real-device or third-party content coverage.
 Relevant permanent tests:
 
 - [`src/analytics.test.ts`](../../src/analytics.test.ts): explicit metadata,
-  nested control resolution, missing/invalid identities, screen changes.
+  nested control resolution, missing/invalid identities, screen changes and
+  shared question/approval outcome classification.
+- [`src/notification-window.test.ts`](../../src/notification-window.test.ts):
+  island feature counts after accepted responses, failure/non-response exclusion
+  and request-content privacy.
 - [`src/analytics-events.test.ts`](../../src/analytics-events.test.ts) and
   [`analytics.rs`](../../src-tauri/src/analytics.rs): frontend/native vocabulary,
   closed fields, content exclusion, non-null identities, batch offsets and consent.

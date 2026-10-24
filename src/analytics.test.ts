@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./ipc", () => ({ invoke: vi.fn(() => Promise.resolve()) }));
 
 import { invoke } from "./ipc";
-import { trackClicks, unidentifiedControls, viewScreen, type ClickEvent } from "./analytics";
+import { trackClicks, trackRequestResponse, unidentifiedControls, viewScreen, type ClickEvent } from "./analytics";
 
 beforeEach(() => vi.mocked(invoke).mockClear());
 
@@ -134,5 +134,16 @@ describe("screen views", () => {
     viewScreen("desk"); viewScreen("desk"); viewScreen("workspace"); viewScreen("workspace"); viewScreen("desk");
     const screens = vi.mocked(invoke).mock.calls.map(([, args]) => (args as { event: { screen: string } }).event.screen);
     expect(screens).toEqual(["desk", "workspace", "desk"]);
+  });
+});
+
+describe("accepted request responses", () => {
+  it.each([
+    ["allow", { name: "approval_submitted", approved: true }],
+    ["deny", { name: "approval_submitted", approved: false }],
+    ["answer", { name: "request_answered" }],
+  ] as const)("classifies %s using only the closed outcome", (outcome, event) => {
+    trackRequestResponse(outcome);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("analytics_track", { event });
   });
 });

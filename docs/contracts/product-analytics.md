@@ -88,7 +88,8 @@ The generated catalog defines all property types. This table defines meaning:
 | `conversation_resumed` | Continue sends its command successfully; not model execution |
 | `attachment_added`, `context_attached` | Adding new attachment files or structured draft context, including selected file references; not free-text inspection |
 | `output_copied` | Successful copying of a message or code block |
-| `request_answered`, `approval_submitted` | Accepted local or relayed response to a request; the answer itself is excluded |
+| `request_answered` | An accepted question response from the conversation or island, locally or through the relay; answers are excluded |
+| `approval_submitted` | An accepted allow/deny decision for a tool approval or plan from the conversation or island; only the approval boolean is recorded |
 | `model_selection_changed`, `effort_changed`, `model_favorite_changed` | Explicit picker selection or favorite change; not automatic catalog refresh |
 | `usage_summary_viewed`, `quota_viewed`, `machine_panel_opened` | Opening the respective panel, not its periodic updates |
 | `file_opened` | Explicit viewer opening after successful reading, by closed viewer kind; refreshing or selecting the already active file does not count |
