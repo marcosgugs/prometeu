@@ -478,9 +478,12 @@ refuses missing refs before publishing a workspace card.
 
 When reference discovery finds a Git repository with no branches, the launcher
 starts in the project directory with `worktree: false` and `newBranch: false`.
-Branch, worktree and additional-repository controls remain disabled for that
-launch. Prometeu does not create an initial commit or change the saved worktree
-preference. Reopening the launcher after the first commit restores those options.
+Branch, worktree and additional-repository controls remain disabled while that
+project is selected. Selecting a project with branches in the same launcher
+restores the worktree and new-branch choices from before the restriction, including
+choices edited during that launch. Prometeu does not create an initial commit or
+change the saved worktree preference. Reopening the launcher after the first
+commit also restores those options.
 
 ## Starting from a skill
 

@@ -324,6 +324,7 @@ export function openLauncher(board: Board, opts: Open) {
 
   // Branches and worktrees need a repository with a committed base.
   let branchProblem = "";
+  let branchChoices: Pick<Draft, "worktree" | "newBranch"> | null = null;
 
   const drawSwitches = () => {
     for (const [el, on] of [
@@ -616,9 +617,13 @@ export function openLauncher(board: Board, opts: Open) {
       branchProblem = !got.git ? t("launcher.noGit") : !got.all.length ? t("launcher.noCommits") : "";
       // Empty repositories and non-Git folders start directly, without inventing an initial commit.
       if (branchProblem) {
+        branchChoices ??= { worktree: draft.worktree, newBranch: draft.newBranch };
         draft.worktree = false;
         draft.newBranch = false;
         draft.extras = [];
+      } else if (branchChoices) {
+        Object.assign(draft, branchChoices);
+        branchChoices = null;
       }
       drawExtras();
       drawSwitches();
