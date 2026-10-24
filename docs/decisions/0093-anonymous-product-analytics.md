@@ -57,8 +57,15 @@ and payload. The core choices are:
 - Only builds compiled with `PROMETEU_POSTHOG_KEY` send events. Development,
   tests, forks and local builds send nothing. Release CI supplies the key from a
   repository variable; a PostHog project key is write-only and public by design.
-- This first delivery has no opt-in or opt-out control. That is a product decision
-  revisited before the vocabulary grows beyond feature usage.
+- Tracking requires explicit opt-in in Settings / General / Privacy. New and
+  existing installations default to off; a pre-existing installation ID is not
+  consent. Rust persists the choice and enforces it before queuing and before
+  delivery. Disabling also invalidates pending events across later opt-ins;
+  already-started HTTP requests cannot be recalled. A delivery gate serializes
+  dispatch and consent changes through HTTP completion; saving may wait up to
+  the request timeout on a background thread, while event capture stays independent
+  of that gate. This trades immediate save completion for a guarantee that stale
+  batches cannot start after disabling succeeds. Local telemetry is independent.
 
 ## Consequences
 
@@ -81,11 +88,20 @@ events.
 
 The local telemetry of ADR 0059 is unchanged and remains local.
 
+Opt-in reduces coverage and introduces selection bias, but gives people control
+over external product tracking. The preference belongs in the backend so startup
+and native use cases follow the same choice before the webview loads. An unreadable
+preference disables tracking; a failed save keeps the previous running choice
+and surfaces an error instead of claiming success.
+
 ## Evidence
 
 - [Vocabulary, payload and delivery](../../src-tauri/src/analytics.rs), with tests
   for the payload's key allowlist, rejection of unknown events, normalization of
   unknown provider text and rejection of non-identifier click tokens.
+- Consent persistence and pending batch invalidation are tested in
+  [`analytics.rs`](../../src-tauri/src/analytics.rs); Settings saves and failure
+  recovery are covered by [`analytics-settings.test.ts`](../../src/analytics-settings.test.ts).
 - [Click and screen capture](../../src/analytics.ts), with
   [tests](../../src/analytics.test.ts) that only catalog keys become targets,
   and the typed command in [`src/ipc.ts`](../../src/ipc.ts); the existing IPC

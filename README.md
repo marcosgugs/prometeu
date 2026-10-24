@@ -323,10 +323,11 @@ See the [persistence contract](docs/contracts/persistence.md) for paths and
 ownership.
 
 Token and context history stays on your computer. macOS and Linux release builds
-configured with a project analytics key send feature and interface-use events
-to PostHog with a random installation ID. Prompts, transcripts, paths,
-project names and agent output are excluded; there is currently no analytics
-switch in the app. Windows, the browser mock and the mobile shell do not send
+configured with a project analytics key can send feature and interface-use events
+to PostHog with a random installation ID. This is off by default, including after
+upgrades; enable or disable **Share usage data** in **Settings → General → Privacy**.
+The choice persists and takes effect without restarting. Prompts, transcripts,
+paths, project names and agent output are excluded. Windows, the browser mock and the mobile shell do not send
 these events. See the [analytics contract](docs/contracts/product-analytics.md).
 
 A Prometeu Cloud account adds organizations, shared tool catalogs, live

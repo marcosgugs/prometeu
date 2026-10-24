@@ -1,14 +1,16 @@
 //! Anonymous product analytics sent to PostHog (ADR 0093). Only the closed `Event` vocabulary
 //! crosses the network: fields are enums, booleans or identifier tokens we author (i18n keys and
-//! static element IDs), never free text, paths, names or content. Builds without
+//! static element IDs), never free text, paths, names or content. Explicit opt-in is required.
+//! Builds without
 //! `PROMETEU_POSTHOG_KEY` (development, tests, forks) send nothing.
 
-use crate::paths;
+use crate::{i18n, paths};
 use prometeu_core::board::ProviderId;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 /// The project lives in PostHog US Cloud; keys only work against their own region.
@@ -85,10 +87,118 @@ impl TryFrom<String> for Token {
     }
 }
 
-static QUEUE: OnceLock<Option<Sender<Event>>> = OnceLock::new();
+static QUEUE: OnceLock<Option<Sender<(u64, Event)>>> = OnceLock::new();
+static DELIVERY: OnceLock<Delivery> = OnceLock::new();
 
-/// Never blocks or fails the caller; delivery problems drop the event.
+struct Delivery {
+    consent: Mutex<Consent>,
+    sending: Mutex<()>,
+}
+
+impl Delivery {
+    fn new(path: &Path) -> Self {
+        Self {
+            consent: Mutex::new(Consent::load(path)),
+            sending: Mutex::new(()),
+        }
+    }
+
+    fn save(&self, path: &Path, enabled: bool) -> Result<bool, String> {
+        let _sending = self.sending.lock().unwrap_or_else(|e| e.into_inner());
+        self.consent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .save(path, enabled)
+    }
+
+    fn send_batch(&self, events: Vec<(u64, Event)>, id: &str, send: impl FnOnce(Vec<Value>)) {
+        // Hold the delivery gate through HTTP completion, but never hold the capture lock
+        // across network I/O. A successful disable cannot be followed by a stale send.
+        let _sending = self.sending.lock().unwrap_or_else(|e| e.into_inner());
+        let batch = self
+            .consent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .batch(events.into_iter(), id);
+        if !batch.is_empty() {
+            send(batch);
+        }
+    }
+}
+
+struct Consent {
+    enabled: bool,
+    generation: u64,
+}
+
+impl Consent {
+    fn load(path: &Path) -> Self {
+        // Missing, unreadable and malformed preferences never imply consent, including upgrades.
+        let enabled = std::fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<bool>(&bytes).ok())
+            .unwrap_or(false);
+        Self {
+            enabled,
+            generation: 0,
+        }
+    }
+
+    fn generation(&self) -> Option<u64> {
+        self.enabled.then_some(self.generation)
+    }
+
+    fn save(&mut self, path: &Path, enabled: bool) -> Result<bool, String> {
+        paths::write_private(path, if enabled { "true" } else { "false" })
+            .map_err(|_| i18n::t("err.analytics.storage"))?;
+        if self.enabled != enabled {
+            self.generation += 1;
+            self.enabled = enabled;
+        }
+        Ok(self.enabled)
+    }
+
+    fn batch(&self, events: impl Iterator<Item = (u64, Event)>, id: &str) -> Vec<Value> {
+        events
+            .filter(|(generation, _)| self.generation() == Some(*generation))
+            .map(|(_, event)| payload(event, id))
+            .collect()
+    }
+}
+
+fn delivery() -> &'static Delivery {
+    DELIVERY.get_or_init(|| Delivery::new(&paths::root().join("analytics-enabled.json")))
+}
+
+#[tauri::command]
+pub fn analytics_enabled() -> bool {
+    delivery()
+        .consent
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .enabled
+}
+
+#[tauri::command]
+pub async fn analytics_set_enabled(enabled: bool) -> Result<bool, String> {
+    // An in-flight request may take up to its timeout; keep that wait off the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        delivery().save(&paths::root().join("analytics-enabled.json"), enabled)
+    })
+    .await
+    .map_err(|_| i18n::t("err.analytics.storage"))?
+}
+
+/// Never waits for network delivery or fails the caller; delivery problems drop the event.
 pub fn track(event: Event) {
+    let Some(generation) = delivery()
+        .consent
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .generation()
+    else {
+        return;
+    };
     // CI defines the variable as empty when the repository variable is missing.
     let queue = QUEUE.get_or_init(|| {
         option_env!("PROMETEU_POSTHOG_KEY")
@@ -96,7 +206,7 @@ pub fn track(event: Event) {
             .map(start)
     });
     if let Some(queue) = queue {
-        let _ = queue.send(event);
+        let _ = queue.send((generation, event));
     }
 }
 
@@ -105,7 +215,7 @@ pub fn analytics_track(event: Event) {
     track(event);
 }
 
-fn start(key: &'static str) -> Sender<Event> {
+fn start(key: &'static str) -> Sender<(u64, Event)> {
     let (sender, receiver) = channel();
     std::thread::spawn(move || deliver(key, receiver));
     sender
@@ -113,7 +223,7 @@ fn start(key: &'static str) -> Sender<Event> {
 
 // ponytail: no retry or offline queue; a failed batch, or one still waiting when the app quits,
 // is lost. Add a bounded on-disk queue if coverage gaps matter.
-fn deliver(key: &str, events: Receiver<Event>) {
+fn deliver(key: &str, events: Receiver<(u64, Event)>) {
     let id = install_id();
     let Ok(client) = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -123,14 +233,13 @@ fn deliver(key: &str, events: Receiver<Event>) {
     };
     while let Ok(first) = events.recv() {
         std::thread::sleep(BATCH_WINDOW);
-        let batch: Vec<Value> = std::iter::once(first)
-            .chain(events.try_iter())
-            .map(|event| payload(event, &id))
-            .collect();
-        let _ = client
-            .post(format!("{HOST}/batch/"))
-            .json(&json!({ "api_key": key, "batch": batch }))
-            .send();
+        let batch = std::iter::once(first).chain(events.try_iter()).collect();
+        delivery().send_batch(batch, &id, |batch| {
+            let _ = client
+                .post(format!("{HOST}/batch/"))
+                .json(&json!({ "api_key": key, "batch": batch }))
+                .send();
+        });
     }
 }
 
@@ -169,6 +278,153 @@ fn payload(event: Event, id: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabling_after_preparation_prevents_dispatch_even_after_reenabling() {
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        let delivery = Delivery::new(&path);
+        delivery.save(&path, true).unwrap();
+        let generation = delivery.consent.lock().unwrap().generation().unwrap();
+        let prepared = vec![(generation, Event::AppOpened)];
+
+        delivery.save(&path, false).unwrap();
+        delivery.send_batch(prepared.clone(), "id", |_| panic!("sent after disabling"));
+        delivery.save(&path, true).unwrap();
+        delivery.send_batch(prepared, "id", |_| panic!("revived a stale batch"));
+
+        let generation = delivery.consent.lock().unwrap().generation().unwrap();
+        let mut sent = false;
+        delivery.send_batch(vec![(generation, Event::AppOpened)], "id", |_| sent = true);
+        assert!(sent);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn in_flight_delivery_serializes_disabling_without_blocking_capture() {
+        use std::sync::Arc;
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        let delivery = Arc::new(Delivery::new(&path));
+        delivery.save(&path, true).unwrap();
+        let generation = delivery.consent.lock().unwrap().generation().unwrap();
+        let (started, sending) = channel();
+        let (release, wait) = channel();
+        let worker_delivery = delivery.clone();
+        let worker = std::thread::spawn(move || {
+            worker_delivery.send_batch(vec![(generation, Event::AppOpened)], "id", |_| {
+                assert!(worker_delivery.sending.try_lock().is_err());
+                started.send(()).unwrap();
+                wait.recv().unwrap();
+            });
+        });
+        sending.recv_timeout(Duration::from_secs(2)).unwrap();
+        // App events still acquire consent immediately while HTTP is in flight.
+        assert_eq!(
+            delivery.consent.try_lock().unwrap().generation(),
+            Some(generation)
+        );
+
+        let (saving, began_save) = channel();
+        let (saved, completed) = channel();
+        let saver_delivery = delivery.clone();
+        let saver = std::thread::spawn(move || {
+            saving.send(()).unwrap();
+            saved
+                .send(saver_delivery.save(&path, false).unwrap())
+                .unwrap();
+        });
+        began_save.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            completed.recv_timeout(Duration::from_millis(50)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        release.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(!completed.recv_timeout(Duration::from_secs(2)).unwrap());
+        saver.join().unwrap();
+        delivery.send_batch(vec![(generation, Event::AppOpened)], "id", |_| {
+            panic!("sent after disabling")
+        });
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn consent_defaults_off_and_survives_restart_without_using_legacy_identity() {
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        paths::write_private(
+            &root.join("analytics-id"),
+            &uuid::Uuid::new_v4().to_string(),
+        )
+        .unwrap();
+        assert_eq!(Consent::load(&path).generation(), None);
+        for invalid in ["", "null", "{}", "\"true\"", "broken"] {
+            paths::write_private(&path, invalid).unwrap();
+            assert_eq!(Consent::load(&path).generation(), None);
+        }
+        let mut consent = Consent::load(&path);
+        assert!(consent
+            .batch(std::iter::once((0, Event::AppOpened)), "id")
+            .is_empty());
+        assert!(consent.save(&path, true).unwrap());
+        assert!(Consent::load(&path).enabled);
+        assert!(!consent.save(&path, false).unwrap());
+        assert_eq!(Consent::load(&path).generation(), None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn disabling_discards_pending_events_even_after_enabling_again() {
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        let mut consent = Consent::load(&path);
+        let (sender, receiver) = channel();
+        consent.save(&path, true).unwrap();
+        let generation = consent.generation().unwrap();
+        sender.send((generation, Event::AppOpened)).unwrap();
+        assert_eq!(consent.batch(receiver.try_iter(), "id").len(), 1);
+        sender.send((generation, Event::AppOpened)).unwrap();
+        consent.save(&path, false).unwrap();
+        assert!(consent.batch(receiver.try_iter(), "id").is_empty());
+        // An event racing with revocation may reach the queue late; it still cannot be sent.
+        sender.send((generation, Event::AppOpened)).unwrap();
+        consent.save(&path, true).unwrap();
+        sender
+            .send((
+                consent.generation().unwrap(),
+                Event::ScreenViewed {
+                    screen: Screen::Settings,
+                },
+            ))
+            .unwrap();
+        let batch = consent.batch(receiver.try_iter(), "id");
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0]["event"], "screen_viewed");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_saves_preserve_consent_and_unreadable_storage_defaults_off() {
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&root).unwrap();
+        let mut consent = Consent::load(&root);
+        assert_eq!(consent.generation(), None);
+        assert!(consent.save(&root, true).is_err());
+        assert_eq!(consent.generation(), None);
+        consent
+            .save(&root.join("analytics-enabled.json"), true)
+            .unwrap();
+        let generation = consent.generation();
+        assert!(consent.save(&root, false).is_err());
+        assert_eq!(consent.generation(), generation);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     fn parse(value: Value) -> Result<Event, serde_json::Error> {
         serde_json::from_value(value)

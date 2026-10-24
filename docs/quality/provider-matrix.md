@@ -23,6 +23,16 @@ agent-independent; tests are in `src-tauri/src/github_notifications.rs` and
 `src/notification-feed.test.ts` ([contract](../contracts/github-notifications.md)).
 Windows/WSL has no GitHub command implementation yet.
 
+## Product analytics
+
+Product analytics is separate from local telemetry. Claude, Codex and Antigravity
+share the same default-off consent in Settings / General / Privacy; the setting
+gates native and frontend events without changing agent execution or local history.
+Rust consent/persistence/batch tests live in `src-tauri/src/analytics.rs`; Settings
+tests live in `src/analytics-settings.test.ts`. Windows/WSL and mobile send no
+analytics; the browser mock persists the choice but ignores events. See the
+[analytics contract](../contracts/product-analytics.md).
+
 ## Local telemetry foundation
 
 [ADR 0059](../decisions/0059-local-telemetry-foundation.md) adds the same local
