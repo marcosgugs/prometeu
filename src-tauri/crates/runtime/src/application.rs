@@ -293,6 +293,10 @@ pub(crate) enum Request {
     AddProject {
         path: String,
     },
+    CreateProject {
+        directory: String,
+        name: String,
+    },
     RemoveProject {
         id: String,
     },
@@ -666,6 +670,14 @@ impl Host {
             }
             Request::AddProject { path } => {
                 let project = self.catalog.add_project(&path)?;
+                self.application_events
+                    .publish_board(self.catalog.snapshot().board)?;
+                serde_json::to_value(project).map_err(|e| e.to_string())
+            }
+            Request::CreateProject { directory, name } => {
+                let path =
+                    prometeu_git::create_repository(std::path::Path::new(&directory), &name)?;
+                let project = self.catalog.add_project(&path.to_string_lossy())?;
                 self.application_events
                     .publish_board(self.catalog.snapshot().board)?;
                 serde_json::to_value(project).map_err(|e| e.to_string())

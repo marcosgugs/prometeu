@@ -33,7 +33,7 @@ Host-only commands outside the shared registry are `application_open`,
 | Board and session | `load_board`, `set_stage`, `focus_tab`, `look_at`, `set_lang`, `rename_workspace`, `rename_tab`, `pin_workspace`, `set_unread`, `set_tab_choice` |
 | Workspace lifecycle | `archive_workspace`, `finish_workspace`, `remove_workspace`, `cleanup_list`, `cleanup_worktree` |
 | Conversation | `chat_snapshot`, `chat_send`, `chat_control`, `new_tab`, `close_tab` |
-| Projects | `add_project`, `remove_project`, `reorder_projects`, `group_projects` |
+| Projects | `create_project`, `add_project`, `remove_project`, `reorder_projects`, `group_projects` |
 | Project files | `list_dir`, `read_file`, `read_bytes`, `file_stamp`, `write_file`, `create_path`, `rename_path`, `trash_path`, `find_paths`, `reveal_path` |
 | Shell, Setup and Run | `open_dock`, `close_dock`, `dock_state`, `pty_buffer`, `pty_write`, `pty_resize` |
 | Git | `workspace_git_status`, `workspace_git_diff`, `workspace_git_action`, `workspace_git_history`, `workspace_git_branches`, `workspace_git_conflict`, `workspace_git_resolve`, `tree_git_status`, `tree_restore`, `file_base` |
@@ -71,7 +71,7 @@ names. Observed statuses overlay the saved board; work stage stays independent.
 ## Paths and host effects
 
 `ApplicationPaths` translates native selections before they reach shared
-drafts or `add_project`: `\\wsl.localhost\<distribution>` and
+drafts, `add_project` or the parent of `create_project`: `\\wsl.localhost\<distribution>` and
 `\\wsl$\<distribution>` paths of the connected distribution become Linux paths;
 drive paths go through that distribution's `wslpath`, respecting its mounts.
 Literal process arguments are used. Other distributions, network shares and

@@ -1236,6 +1236,45 @@ fn registered_project_files_and_shell_work_without_a_conversation() {
         .unwrap();
     assert_eq!(board["projects"].as_array().unwrap().len(), 1);
     assert_eq!(board["workspaces"].as_array().unwrap().len(), 1);
+    let created = client
+        .application(
+            "create_project".into(),
+            serde_json::json!({"directory":base,"name":"New project"}),
+        )
+        .unwrap();
+    let created_path = base.join("New project");
+    assert_eq!(created["path"], created_path.to_str().unwrap());
+    assert!(created_path.join(".git").is_dir());
+    assert_eq!(std::fs::read_dir(&created_path).unwrap().count(), 1);
+    let references = client
+        .application(
+            "list_branches".into(),
+            serde_json::json!({"project":created["id"]}),
+        )
+        .unwrap();
+    assert_eq!(
+        references,
+        serde_json::json!({"all":[],"local":[],"default":"","git":true})
+    );
+    let board = client
+        .application("load_board".into(), Value::Null)
+        .unwrap();
+    assert_eq!(board["projects"].as_array().unwrap().len(), 2);
+    assert_eq!(board["workspaces"].as_array().unwrap().len(), 1);
+    assert!(board["projects"].as_array().unwrap().contains(&created));
+    assert!(client
+        .application(
+            "create_project".into(),
+            serde_json::json!({"directory":base,"name":"New project"}),
+        )
+        .unwrap_err()
+        .contains("err.project.pathExists"));
+    assert_eq!(
+        client
+            .application("load_board".into(), Value::Null)
+            .unwrap(),
+        board
+    );
     client.shutdown().unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     while base.join("root/resident.sock").exists() {

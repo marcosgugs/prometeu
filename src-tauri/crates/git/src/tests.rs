@@ -225,6 +225,87 @@ impl Drop for Repository {
     }
 }
 
+#[test]
+fn create_repository_starts_empty_and_refuses_existing_paths_and_invalid_names() {
+    let parent = Repository::new();
+    let path = create_repository(&parent.0, "  New ' café project  ").unwrap();
+    assert_eq!(
+        path,
+        parent.0.canonicalize().unwrap().join("New ' café project")
+    );
+    assert!(path.join(".git").is_dir());
+    assert_eq!(std::fs::read_dir(&path).unwrap().count(), 1);
+    assert_eq!(
+        run(&path, &["rev-parse", "--show-toplevel"])
+            .unwrap()
+            .trim(),
+        path.to_str().unwrap()
+    );
+    assert!(optional(&path, &["rev-parse", "--verify", "HEAD"]).is_none());
+    assert!(run(&path, &["remote"]).unwrap().is_empty());
+    std::fs::write(path.join("keep.txt"), "preserve").unwrap();
+    assert!(create_repository(&parent.0, "New ' café project")
+        .unwrap_err()
+        .contains("err.project.pathExists"));
+    assert_eq!(
+        std::fs::read_to_string(path.join("keep.txt")).unwrap(),
+        "preserve"
+    );
+
+    std::fs::create_dir(parent.0.join("empty")).unwrap();
+    parent.write("file", "preserve");
+    for name in ["empty", "file", ".git"] {
+        assert!(create_repository(&parent.0, name).is_err());
+    }
+    assert_eq!(
+        std::fs::read_dir(parent.0.join("empty")).unwrap().count(),
+        0
+    );
+    assert_eq!(parent.read("file"), "preserve");
+    let before = std::fs::read_dir(&parent.0).unwrap().count();
+    for name in [
+        "",
+        " ",
+        ".",
+        "..",
+        "../escape",
+        "/absolute",
+        "a/b",
+        "a\\b",
+        ".GIT",
+        "bad\0name",
+        "bad\nname",
+    ] {
+        assert!(
+            create_repository(&parent.0, name)
+                .unwrap_err()
+                .contains("err.project.name"),
+            "{name:?}"
+        );
+    }
+    assert_eq!(std::fs::read_dir(&parent.0).unwrap().count(), before);
+    for directory in [
+        PathBuf::from("relative"),
+        parent.0.join("missing"),
+        parent.0.join("file"),
+    ] {
+        assert!(create_repository(&directory, "new")
+            .unwrap_err()
+            .contains("err.project.directory"));
+    }
+    #[cfg(unix)]
+    {
+        let alias = parent.0.join("alias");
+        std::os::unix::fs::symlink(&path, &alias).unwrap();
+        assert!(create_repository(&parent.0, "alias")
+            .unwrap_err()
+            .contains("err.project.pathExists"));
+        assert_eq!(std::fs::read_link(&alias).unwrap(), path);
+        let nested = create_repository(&alias, "child").unwrap();
+        assert_eq!(nested, path.join("child"));
+    }
+}
+
 fn entries(files: &[GitFile]) -> Vec<(&str, &str)> {
     files
         .iter()

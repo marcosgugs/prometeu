@@ -84,6 +84,19 @@ fn register_local_project(board: &std::sync::Mutex<Board>, path: &Path) -> Proje
     register_project(&mut lock(board), path)
 }
 
+#[tauri::command(async)]
+pub fn create_project(
+    app: AppHandle,
+    state: State<AppState>,
+    directory: String,
+    name: String,
+) -> Result<Project, String> {
+    let path = prometeu_git::create_repository(Path::new(&expand(&directory)), &name)?;
+    let project = register_local_project(&state.board, &path);
+    publish(&app);
+    Ok(project)
+}
+
 /// Both local folders and catalog clones use the same board registration while holding the catalog
 /// guard. Acquire that guard before the board lock, so origin checks and cloning stay serialized.
 pub(crate) fn register_project(board: &mut Board, path: &Path) -> Project {

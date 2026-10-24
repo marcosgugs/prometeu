@@ -2,7 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import * as catalog from "./catalog";
 import { invoke } from "./ipc";
 import { fromBack, t } from "./i18n";
-import { button, checkbox, formDialog } from "./ui";
+import { button, checkbox, field, formDialog, input } from "./ui";
 import { h } from "./util";
 
 export type CatalogProject = {
@@ -66,7 +66,8 @@ export function openProjects(say: (text: string, bad?: boolean) => void) {
   }, "outline");
   destination.hidden = true;
   const list = h("div", "ui-stack");
-  dialog.body.append(local, h("p", "ui-hint", t("projects.hint")), destination, list);
+  const create = button(t("projects.create"), () => openNewProject(say, dialog.close), "outline");
+  dialog.body.append(local, create, h("p", "ui-hint", t("projects.hint")), destination, list);
   dialog.save.disabled = true;
   function update() { dialog.save.disabled = running || !directory || !choices.some(choice => choice.control.checked); }
   dialog.open();
@@ -102,6 +103,36 @@ export function openProjects(say: (text: string, bad?: boolean) => void) {
     }
     if (!choices.length) list.append(h("p", "ui-hint", t("projects.empty")));
   }).catch(error => { list.textContent = fromBack(error); });
+}
+
+function openNewProject(say: (text: string, bad?: boolean) => void, created: () => void) {
+  let directory = "";
+  const name = input();
+  name.required = true;
+  name.autocomplete = "off";
+  const destination = button(t("projects.destination"), async () => {
+    try {
+      const path = await open({ directory: true, title: t("projects.destination") });
+      if (typeof path === "string") { directory = path; destination.textContent = path; }
+    } catch (error) { say(fromBack(error), true); }
+  }, "outline");
+  const dialog = formDialog({
+    title: t("projects.create"), save: t("projects.create"), cancel: t("actions.cancel"), error: fromBack,
+    submit: async () => {
+      if (!directory) throw t("projects.chooseParent");
+      name.disabled = destination.disabled = true;
+      try {
+        await invoke("create_project", { directory, name: name.value });
+        created();
+      } finally { name.disabled = destination.disabled = false; }
+    },
+  });
+  dialog.body.append(
+    h("p", "ui-hint", t("projects.createHint")),
+    field(t("projects.name"), name),
+    field(t("projects.parent"), destination),
+  );
+  dialog.open();
 }
 
 function install(item: CatalogProject, directory: string, existing: boolean) {

@@ -226,6 +226,7 @@ fn main() {
             session::board_recovery,
             session::board_recovery_open,
             session::add_project,
+            session::create_project,
             session::remove_project,
             session::reorder_projects,
             session::group_projects,

@@ -254,7 +254,14 @@ and WebKit against the browser mock; it does not drive the native Tauri app.
 Changes to native behavior also need a manual desktop check. See the
 [development guide](docs/operations/development.md) for details.
 
-## Add projects from your catalog
+## Create or add projects
+
+Open **Add project** in the sidebar or **Settings / Work and team / Projects on
+this computer**. Choose **Create new project**, enter a name and select a parent
+folder. Prometeu creates the folder, initializes Git and registers the project
+without a terminal or Cloud account. Existing folders are never overwritten.
+The first workspace runs in the project folder; branches and worktrees become
+available after the first commit.
 
 Register Git sources once in the Cloud's **Projects** tab, in your personal or
 organization catalog. In the desktop, open **Settings / Work and team / Projects on this computer** or **Add
