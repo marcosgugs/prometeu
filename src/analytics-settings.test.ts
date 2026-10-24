@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ invoke: vi.fn(), control: null as HTMLInputElement | null }));
 const element = () => ({ append() {}, setAttribute() {}, dataset: {} });
@@ -13,7 +13,11 @@ vi.mock("./ui", () => ({
 }));
 import { analyticsRow, loadAnalytics } from "./analytics-settings";
 
-beforeEach(() => { state.invoke.mockReset(); });
+beforeEach(() => {
+  state.invoke.mockReset();
+  vi.stubGlobal("document", { activeElement: null, body: {} });
+});
+afterEach(() => vi.unstubAllGlobals());
 
 test("loads consent and saves explicit changes while preventing concurrent updates", async () => {
   state.invoke.mockResolvedValueOnce(false);

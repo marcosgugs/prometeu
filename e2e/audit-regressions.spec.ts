@@ -38,6 +38,42 @@ async function release(page: Page, error?: string) {
   await page.evaluate(error => (window as unknown as { auditRelease: (error?: string) => void }).auditRelease(error), error);
 }
 
+// Settings replaces its DOM while saving. Native disabled controls lose focus, which mocked
+// elements cannot reproduce; cover success, failure and moving focus during the pending save.
+test("analytics saves restore keyboard focus without stealing it @webkit", async ({ page }) => {
+  await boot(page);
+  await page.locator("#settings").click();
+  await page.locator(".setnavitem").getByText("General", { exact: true }).click();
+  const control = page.getByRole("switch", { name: "Share usage data", exact: true });
+  await expect(control).toBeEnabled();
+  await hold(page, "analytics_set_enabled");
+  await control.press("Space");
+  await waiting(page);
+  await expect(control).toBeDisabled();
+  await release(page);
+  await expect(control).toBeEnabled();
+  await expect(control).toBeChecked();
+  await expect(control).toBeFocused();
+
+  await hold(page, "analytics_set_enabled");
+  await control.press("Space");
+  await waiting(page);
+  await release(page, 'i18n:{"code":"err.analytics.storage"}');
+  await expect(control).toBeEnabled();
+  await expect(control).toBeChecked();
+  await expect(control).toBeFocused();
+
+  await hold(page, "analytics_set_enabled");
+  await control.press("Space");
+  await waiting(page);
+  const search = page.getByRole("searchbox", { name: "Search settings…" });
+  await search.focus();
+  await release(page);
+  await expect(control).toBeEnabled();
+  await expect(control).not.toBeChecked();
+  await expect(search).toBeFocused();
+});
+
 async function openFile(page: Page, path: string) {
   await page.locator("#tree .treerow", { hasText: path }).click();
   await expect(page.locator("#vcrumb")).toContainText(path);

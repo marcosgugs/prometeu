@@ -88,7 +88,43 @@ impl TryFrom<String> for Token {
 }
 
 static QUEUE: OnceLock<Option<Sender<(u64, Event)>>> = OnceLock::new();
-static CONSENT: OnceLock<Mutex<Consent>> = OnceLock::new();
+static DELIVERY: OnceLock<Delivery> = OnceLock::new();
+
+struct Delivery {
+    consent: Mutex<Consent>,
+    sending: Mutex<()>,
+}
+
+impl Delivery {
+    fn new(path: &Path) -> Self {
+        Self {
+            consent: Mutex::new(Consent::load(path)),
+            sending: Mutex::new(()),
+        }
+    }
+
+    fn save(&self, path: &Path, enabled: bool) -> Result<bool, String> {
+        let _sending = self.sending.lock().unwrap_or_else(|e| e.into_inner());
+        self.consent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .save(path, enabled)
+    }
+
+    fn send_batch(&self, events: Vec<(u64, Event)>, id: &str, send: impl FnOnce(Vec<Value>)) {
+        // Hold the delivery gate through HTTP completion, but never hold the capture lock
+        // across network I/O. A successful disable cannot be followed by a stale send.
+        let _sending = self.sending.lock().unwrap_or_else(|e| e.into_inner());
+        let batch = self
+            .consent
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .batch(events.into_iter(), id);
+        if !batch.is_empty() {
+            send(batch);
+        }
+    }
+}
 
 struct Consent {
     enabled: bool,
@@ -130,26 +166,33 @@ impl Consent {
     }
 }
 
-fn consent() -> &'static Mutex<Consent> {
-    CONSENT.get_or_init(|| Mutex::new(Consent::load(&paths::root().join("analytics-enabled.json"))))
+fn delivery() -> &'static Delivery {
+    DELIVERY.get_or_init(|| Delivery::new(&paths::root().join("analytics-enabled.json")))
 }
 
 #[tauri::command]
 pub fn analytics_enabled() -> bool {
-    consent().lock().unwrap_or_else(|e| e.into_inner()).enabled
+    delivery()
+        .consent
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .enabled
 }
 
 #[tauri::command]
-pub fn analytics_set_enabled(enabled: bool) -> Result<bool, String> {
-    consent()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .save(&paths::root().join("analytics-enabled.json"), enabled)
+pub async fn analytics_set_enabled(enabled: bool) -> Result<bool, String> {
+    // An in-flight request may take up to its timeout; keep that wait off the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        delivery().save(&paths::root().join("analytics-enabled.json"), enabled)
+    })
+    .await
+    .map_err(|_| i18n::t("err.analytics.storage"))?
 }
 
 /// Never waits for network delivery or fails the caller; delivery problems drop the event.
 pub fn track(event: Event) {
-    let Some(generation) = consent()
+    let Some(generation) = delivery()
+        .consent
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .generation()
@@ -190,18 +233,13 @@ fn deliver(key: &str, events: Receiver<(u64, Event)>) {
     };
     while let Ok(first) = events.recv() {
         std::thread::sleep(BATCH_WINDOW);
-        // Recheck after the batch window. A disable/enable cycle cannot revive queued events.
-        let batch = consent()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .batch(std::iter::once(first).chain(events.try_iter()), &id);
-        if batch.is_empty() {
-            continue;
-        }
-        let _ = client
-            .post(format!("{HOST}/batch/"))
-            .json(&json!({ "api_key": key, "batch": batch }))
-            .send();
+        let batch = std::iter::once(first).chain(events.try_iter()).collect();
+        delivery().send_batch(batch, &id, |batch| {
+            let _ = client
+                .post(format!("{HOST}/batch/"))
+                .json(&json!({ "api_key": key, "batch": batch }))
+                .send();
+        });
     }
 }
 
@@ -240,6 +278,78 @@ fn payload(event: Event, id: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabling_after_preparation_prevents_dispatch_even_after_reenabling() {
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        let delivery = Delivery::new(&path);
+        delivery.save(&path, true).unwrap();
+        let generation = delivery.consent.lock().unwrap().generation().unwrap();
+        let prepared = vec![(generation, Event::AppOpened)];
+
+        delivery.save(&path, false).unwrap();
+        delivery.send_batch(prepared.clone(), "id", |_| panic!("sent after disabling"));
+        delivery.save(&path, true).unwrap();
+        delivery.send_batch(prepared, "id", |_| panic!("revived a stale batch"));
+
+        let generation = delivery.consent.lock().unwrap().generation().unwrap();
+        let mut sent = false;
+        delivery.send_batch(vec![(generation, Event::AppOpened)], "id", |_| sent = true);
+        assert!(sent);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn in_flight_delivery_serializes_disabling_without_blocking_capture() {
+        use std::sync::Arc;
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        let delivery = Arc::new(Delivery::new(&path));
+        delivery.save(&path, true).unwrap();
+        let generation = delivery.consent.lock().unwrap().generation().unwrap();
+        let (started, sending) = channel();
+        let (release, wait) = channel();
+        let worker_delivery = delivery.clone();
+        let worker = std::thread::spawn(move || {
+            worker_delivery.send_batch(vec![(generation, Event::AppOpened)], "id", |_| {
+                assert!(worker_delivery.sending.try_lock().is_err());
+                started.send(()).unwrap();
+                wait.recv().unwrap();
+            });
+        });
+        sending.recv_timeout(Duration::from_secs(2)).unwrap();
+        // App events still acquire consent immediately while HTTP is in flight.
+        assert_eq!(
+            delivery.consent.try_lock().unwrap().generation(),
+            Some(generation)
+        );
+
+        let (saving, began_save) = channel();
+        let (saved, completed) = channel();
+        let saver_delivery = delivery.clone();
+        let saver = std::thread::spawn(move || {
+            saving.send(()).unwrap();
+            saved
+                .send(saver_delivery.save(&path, false).unwrap())
+                .unwrap();
+        });
+        began_save.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(matches!(
+            completed.recv_timeout(Duration::from_millis(50)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        release.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(!completed.recv_timeout(Duration::from_secs(2)).unwrap());
+        saver.join().unwrap();
+        delivery.send_batch(vec![(generation, Event::AppOpened)], "id", |_| {
+            panic!("sent after disabling")
+        });
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn consent_defaults_off_and_survives_restart_without_using_legacy_identity() {

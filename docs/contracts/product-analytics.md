@@ -130,8 +130,13 @@ with a new one.
   take effect without restarting. Delivery rechecks consent after the batch
   window, dropping pending events from before a disable even if tracking has
   since been enabled again. Events dropped while off are never replayed.
-  Requests already handed to the HTTP transport may finish; disabling does not
-  erase events already received by PostHog or the local installation ID.
+  Consent changes and dispatch share a delivery gate: a prepared batch is
+  revalidated under that gate, which remains held through HTTP completion.
+  Saving waits for an in-flight request (bounded by the 10-second HTTP timeout)
+  on a background thread; capture does not acquire the delivery gate and the UI
+  stays responsive. No stale batch can start after disabling succeeds.
+  Disabling does not erase events already received by PostHog or the local
+  installation ID.
 - One background thread collects events for 5 seconds after the first one, then
   posts the batch with a 10-second timeout. Failures, and a batch still waiting
   when the app quits, are dropped; there is no offline queue.
@@ -159,10 +164,17 @@ payload contains only the event's fields plus the fixed metadata, that unknown
 events are rejected, that extra or unknown values are dropped, and that click
 tokens reject sentences, paths and URLs. They also cover default-off upgrades,
 invalid/unreadable preferences, persistence across restarts, failed writes and
-pending event rejection across disable/enable cycles.
+pending event rejection across disable/enable cycles. Dispatch tests cover
+disabling after batch preparation, serialization with an in-flight send and
+capture continuing without waiting for the network.
 [`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) covers
 loading and changing consent, pending saves, error recovery and unsupported
-backends. [`src/analytics.test.ts`](../../src/analytics.test.ts)
+backends. The analytics scenario in
+[`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts) covers focus
+after successful and failed saves in Chromium and WebKit, including moving to
+another control while saving. This needs real DOM replacement and native
+disabled-input focus behavior, which the mocked settings unit tests cannot prove.
+[`src/analytics.test.ts`](../../src/analytics.test.ts)
 checks that only catalog keys become click targets, that captured clicks carry
 the right control, target and region, that `data-track` tokens name dynamic
 controls and their nested parts, and that repeated screens are not counted. The IPC parity

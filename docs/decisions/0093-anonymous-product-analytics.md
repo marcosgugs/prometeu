@@ -61,7 +61,11 @@ and payload. The core choices are:
   existing installations default to off; a pre-existing installation ID is not
   consent. Rust persists the choice and enforces it before queuing and before
   delivery. Disabling also invalidates pending events across later opt-ins;
-  already-started HTTP requests cannot be recalled. Local telemetry is independent.
+  already-started HTTP requests cannot be recalled. A delivery gate serializes
+  dispatch and consent changes through HTTP completion; saving may wait up to
+  the request timeout on a background thread, while event capture stays independent
+  of that gate. This trades immediate save completion for a guarantee that stale
+  batches cannot start after disabling succeeds. Local telemetry is independent.
 
 ## Consequences
 
