@@ -74,7 +74,7 @@ test("Git projects clone in a batch, retain success and retry only failures", as
 
 // Protect the project-to-conversation journey and typed input across nested dialog failure/retry.
 // Rust tests cover filesystem behavior; only the browser proves focus and launcher wiring,
-// including retaining choices and the typed prompt through asynchronous project selection.
+// including retaining newer repository choices and the typed prompt during branch discovery.
 test("a new project preserves its name on failure and starts its first workspace without a worktree", async ({ page }) => {
   const projects = page.getByRole("dialog", { name: "Projects", exact: true });
   await projects.getByRole("button", { name: "Create new project" }).click();
@@ -115,6 +115,31 @@ test("a new project preserves its name on failure and starts its first workspace
   await expect(page.locator("#d-wt")).toBeEnabled();
   await expect(page.locator("#d-wt")).toBeChecked();
   await expect(page.locator("#d-nb")).not.toBeChecked();
+  await page.locator("#d-wt").uncheck();
+  await selectProject("New project");
+  await expect(page.locator("#d-wt")).toBeDisabled();
+  await page.evaluate(() => {
+    type Invoke = (command: string, args?: Record<string, unknown>, options?: unknown) => Promise<unknown>;
+    const w = window as Window & { __TAURI_INTERNALS__: { invoke: Invoke }; releaseBranches?: () => void };
+    const original = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = async function (command, args, options) {
+      if (command === "list_branches" && args?.project === "p2") {
+        w.__TAURI_INTERNALS__.invoke = original;
+        await new Promise<void>(resolve => { w.releaseBranches = resolve; });
+      }
+      return original.call(this, command, args, options);
+    };
+  });
+  await selectProject("prometeu");
+  await page.locator("#d-more").click();
+  await page.getByRole("menuitem", { name: "njord", exact: true }).click();
+  await expect(page.locator("#d-wt")).toBeChecked();
+  await page.evaluate(() => (window as Window & { releaseBranches: () => void }).releaseBranches());
+  await expect(page.locator("#d-basename")).toHaveText("origin/main");
+  await expect(page.locator("#d-wt")).toBeChecked();
+  await expect(page.locator("#d-nb")).toBeChecked();
+  await expect(page.locator("#d-wt")).toBeDisabled();
+  await expect(page.locator("#d-nb")).toBeDisabled();
   await selectProject("New project");
   await expect(page.locator("#d-wt")).toBeDisabled();
   await expect(page.locator("#d-wt")).not.toBeChecked();

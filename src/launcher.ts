@@ -303,6 +303,7 @@ export function openLauncher(board: Board, opts: Open) {
       others().map((p) => ({
         label: p.name,
         run: () => {
+          branchChoices = null;
           draft.extras.push(p.id);
           // A shared parent directory makes multiple repositories available to one agent session.
           draft.worktree = true;
@@ -324,6 +325,7 @@ export function openLauncher(board: Board, opts: Open) {
 
   // Branches and worktrees need a repository with a committed base.
   let branchProblem = "";
+  // Explicit choices supersede this snapshot, even while reference discovery is pending.
   let branchChoices: Pick<Draft, "worktree" | "newBranch"> | null = null;
 
   const drawSwitches = () => {
@@ -350,6 +352,7 @@ export function openLauncher(board: Board, opts: Open) {
   };
 
   wt.addEventListener("change", () => {
+    branchChoices = null;
     draft.worktree = wt.checked;
     draft.branch = draft.worktree && !draft.newBranch ? selectedBranch() : generatedBranch;
     localStorage.setItem(WORKTREE_KEY, draft.worktree ? "1" : "0");
@@ -357,6 +360,7 @@ export function openLauncher(board: Board, opts: Open) {
     drawSwitches();
   });
   nb.addEventListener("change", () => {
+    branchChoices = null;
     draft.newBranch = nb.checked;
     draft.branch = draft.newBranch ? generatedBranch : selectedBranch();
     localStorage.setItem(BRANCH_KEY, draft.newBranch ? "1" : "0");

@@ -481,9 +481,11 @@ starts in the project directory with `worktree: false` and `newBranch: false`.
 Branch, worktree and additional-repository controls remain disabled while that
 project is selected. Selecting a project with branches in the same launcher
 restores the worktree and new-branch choices from before the restriction, including
-choices edited during that launch. Prometeu does not create an initial commit or
-change the saved worktree preference. Reopening the launcher after the first
-commit also restores those options.
+choices edited during that launch. Explicit worktree or branch choices, or adding
+another repository while references are loading, supersede the saved choices so
+a late response cannot turn off worktrees required by the selected repositories.
+Prometeu does not create an initial commit or change the saved worktree
+preference. Reopening the launcher after the first commit also restores those options.
 
 ## Starting from a skill
 
