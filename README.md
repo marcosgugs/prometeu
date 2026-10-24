@@ -10,8 +10,8 @@
   </a>
 </p>
 
-Prometeu is an open-source desktop app for macOS and Linux, built for working
-with Claude Code, Codex, and Antigravity CLI.
+Prometeu is an open-source desktop app for working with Claude Code, Codex, and
+Antigravity CLI on macOS and Linux. An experimental Windows app runs Codex in WSL.
 Organize parallel tasks into workspaces, give each task its own Git worktree,
 and keep conversations, files, terminals, and code review in one place.
 
@@ -22,6 +22,7 @@ optional for local work; model access comes from your own provider account.
 [Documentation](docs/README.md) ·
 [Report an issue](https://github.com/prometeucorp/prometeu/issues) ·
 [Changelog](CHANGELOG.md) ·
+[Data and privacy](#local-data-and-optional-cloud-features) ·
 [MIT license](LICENSE)
 
 ## Features
@@ -29,12 +30,15 @@ optional for local work; model access comes from your own provider account.
 - **Parallel workspaces.** Use isolated Git worktrees, work with multiple
   repositories, or open an ordinary folder without Git. Each workspace keeps
   its own conversations and terminals. Archiving or finishing offers to remove
-  its worktree and local branch after explicit confirmation.
+  its worktree and local branch after explicit confirmation. Group projects in
+  collapsible sidebar folders and filter projects or workspaces as the list
+  grows.
 - **Claude Code, Codex, and Antigravity CLI.** Choose a model and supported effort
   level, manage accounts in Settings, and resume conversations after an agent
-  process stops. Antigravity CLI uses the account already connected in `agy`;
-  quotas are shown by model group. App-managed login, interactive approvals and
-  plan mode are unavailable.
+  process stops. A turn cut off by closing or updating the app is marked
+  interrupted, with a **Continue** action. Antigravity CLI uses the account
+  already connected in `agy`; quotas are shown by model group. App-managed
+  login, interactive approvals and plan mode are unavailable.
   See the [provider matrix](docs/quality/provider-matrix.md) for validation limits.
   Search models by name or agent, pin favorites, and select the effort directly.
   Catalogs refresh from each CLI; failed refreshes are visible and extra Codex
@@ -48,16 +52,20 @@ optional for local work; model access comes from your own provider account.
   open PRs and requested reviews. Click an item to open its source, or open a
   workspace with its context. Connect GitHub in Settings › Integrations through
   the Prometeu GitHub App, installed on the repositories you want; the `gh` CLI
-  is not needed. See the [Linear](docs/contracts/linear-issues.md) and
+  is not needed. Open PRs show their CI status in the workspace when available.
+  See the [Linear](docs/contracts/linear-issues.md) and
   [GitHub](docs/contracts/github-issues.md) contracts for setup and limits.
 - **Notifications.** One destination in the sidebar gathers team mentions and
   GitHub activity on your PRs and issues: approvals, requested changes, comments,
-  review requests, merges and failed CI. GitHub activity arrives through your
-  Prometeu account with GitHub linked; see the
-  [contract](docs/contracts/github-notifications.md).
+  review requests, merges and failed CI. GitHub events are grouped by issue or
+  PR, with formatted comment details and actions to open GitHub or a matching
+  workspace. GitHub activity arrives through your Prometeu account with GitHub
+  linked; see the [contract](docs/contracts/github-notifications.md).
 - **Local notifications.** Opt into completion, approval/input and error alerts
-  in Settings. Choose a macOS banner, a notch overlay or sound alone.
-  Notifications and sound start disabled; phone push is not included.
+  in Settings. Choose a system banner, the notch island or sound alone. On
+  macOS, the island shows active conversations and quotas, and lets you approve
+  requests, answer questions and open a conversation. Notifications and sound
+  start disabled; phone push is not included.
 - **Local usage and context.** Completed replies show measured tokens, duration
   and the CLI's cost estimate when available. Context meters offer explicit
   compact, report and new-conversation actions. Workspace summaries combine
@@ -87,15 +95,16 @@ optional for local work; model access comes from your own provider account.
   on the owner's computer: a teammate's message waits above your message box
   until you send, edit or discard it, unless you turn that off for the
   workspace, and input from a new or changed device waits until you allow that
-  device there.
+  device there. Leave a workspace shared with you from its sidebar menu; its
+  owner can share it with you again.
 - **Dictation.** Speak into the message box; the transcript appears as you
   talk, and the dictation language is a preference of its own.
 - **Portuguese and English UI.** Agent output and your content keep their
   original language.
 
 Support differs between providers. For example, initial plan mode is available
-for Claude Code, and local plugin folders are the portable format for both
-agents. See the [provider matrix](docs/quality/provider-matrix.md) for supported
+for Claude Code, and local plugin folders are the portable format for Claude Code
+and Codex. See the [provider matrix](docs/quality/provider-matrix.md) for supported
 features, limitations, and test coverage.
 
 ## Settings
@@ -305,6 +314,13 @@ Local work does not require a Prometeu account. App state and Codex/Antigravity 
 transcripts live under `~/.prometeu`; Claude Code maintains its own transcripts.
 See the [persistence contract](docs/contracts/persistence.md) for paths and
 ownership.
+
+Token and context history stays on your computer. macOS and Linux release builds
+configured with a project analytics key send feature and interface-use events
+to PostHog with a random installation ID. Prompts, transcripts, paths,
+project names and agent output are excluded; there is currently no analytics
+switch in the app. Windows, the browser mock and the mobile shell do not send
+these events. See the [analytics contract](docs/contracts/product-analytics.md).
 
 A Prometeu Cloud account adds organizations, shared tool catalogs, live
 collaboration, and companion access through the mobile web app. Sharing is
