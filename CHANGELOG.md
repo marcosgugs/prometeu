@@ -4,6 +4,19 @@ What changes in Prometeu, version by version, for whoever uses the app.
 Versions come from `sh scripts/release.sh`; this file is generated from the
 commits by git-cliff, and each release's notes on GitHub are its section.
 
+## [0.34.0] - 2026-10-25
+
+### New
+
+- **analytics:** Measure conversation activity
+- **analytics:** Track named controls and feature use
+- **privacy:** Make usage analytics opt-in
+
+### Fixes
+
+- **privacy:** Stop stale sends and preserve settings focus
+- **analytics:** Count plan and island responses
+
 ## [0.33.0] - 2026-10-24
 
 ### New
