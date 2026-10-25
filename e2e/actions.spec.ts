@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import type { Board } from "../src/types";
 
 async function settings(page: Page) {

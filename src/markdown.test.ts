@@ -27,11 +27,17 @@ describe("code blocks", () => {
 describe("GitHub HTML", () => {
   it("keeps the safe subset and drops the rest", () => {
     const html = md(`<!-- bot -->\n<h2><a href="javascript:alert(1)" onclick="x()"><img alt="Retrigger" src="https://x/y.svg"></a>Score</h2>\n\n<details open><summary>More</summary>\n\n**bold** <script>alert(1)</script> &nbsp;<img src=x onerror="globalThis.pwned=true">\n\n</details>`, { html: true });
-    expect(html).toContain('<h2><a class="lnk" href="#" rel="noreferrer noopener"><span class="img">Retrigger</span></a>Score</h2>');
-    expect(html).toContain("<details open><summary>More</summary>");
+    expect(html).toContain('<h2><a data-track="content.link.open" class="lnk" href="#" rel="noreferrer noopener"><span class="img">Retrigger</span></a>Score</h2>');
+    expect(html).toContain('<details open><summary data-track="content.details.toggle">More</summary>');
     expect(html).toContain("<strong>bold</strong>");
     expect(html).toContain("&nbsp;");
     expect(html).not.toMatch(/<script|<img|onclick|onerror|bot -->/);
+  });
+
+  it("replaces untrusted tracking attributes with authored identities", () => {
+    const html = md('<a data-track="private-project" data-track-area="private-account" href="https://example.com">Private label</a><details><summary data-track="private-name">Private title</summary></details>', { html: true });
+    expect([...html.matchAll(/data-track="([^"]+)"/g)].map(match => match[1])).toEqual(["content.link.open", "content.details.toggle"]);
+    expect(html).not.toContain("data-track-area");
   });
 
   it("decodes attribute entities before rebuilding them", () => {

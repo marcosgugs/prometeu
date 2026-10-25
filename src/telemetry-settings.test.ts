@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   actions: new Map<string, () => unknown>(),
   labels: [] as string[],
 }));
-const element = () => ({ append() {}, replaceChildren() {}, setAttribute() {}, textContent: "" });
+const element = () => ({ dataset: {}, append() {}, replaceChildren() {}, setAttribute() {}, textContent: "" });
 vi.mock("./util", () => ({ h: (_tag: string, _cls: string, text?: string) => { if (text) state.labels.push(text); return element(); }, took: (ms: number) => String(ms) }));
 vi.mock("./i18n", () => ({ t: (key: string) => key, current: () => "en", tn: (key: string) => key }));
 vi.mock("./ipc", () => ({ invoke: state.invoke }));
@@ -35,13 +35,16 @@ test("refresh updates workspace choices and names while preserving the selected 
   telemetryRows();
   const workspace = state.controls[0];
   await vi.waitFor(() => expect(workspace.options).toContainEqual(["workspace-one", "First workspace"]));
+  expect(state.invoke).not.toHaveBeenCalledWith("analytics_track", expect.anything());
   workspace.value = "workspace-one";
   workspace.onchange();
   await vi.waitFor(() => expect(state.invoke).toHaveBeenCalledWith("telemetry_insights", { filter: { workspaceId: "workspace-one" } }));
+  expect(state.invoke).toHaveBeenCalledWith("analytics_track", { event: { name: "usage_history_action_used", action: "filter" } });
   ids = ["workspace-one", "workspace-two"];
   title = "Updated workspace";
   await state.actions.get("telemetry.refresh")!();
   await vi.waitFor(() => expect(workspace.options).toContainEqual(["workspace-two", "Updated workspace"]));
+  expect(state.invoke).toHaveBeenCalledWith("analytics_track", { event: { name: "usage_history_action_used", action: "refresh" } });
   expect(workspace.value).toBe("workspace-one");
   expect(workspace.options).toContainEqual(["workspace-one", "Updated workspace"]);
   expect(state.labels).toContain("usage.source.pluginMaker");

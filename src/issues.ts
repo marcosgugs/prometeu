@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { invoke } from "./ipc";
 import { listen } from "@tauri-apps/api/event";
 import { icon } from "./icons";
@@ -69,6 +70,7 @@ export function init(context: Ctx) {
     const control = issueTab(label, () => {
       provider = id; localStorage.setItem("prometeu:issues:provider", id); showProvider();
     });
+    control.dataset.track = `issues.provider.${id}`;
     control.id = `issues-provider-${id}`;
     control.setAttribute("aria-controls", `${id}-issues-pane`);
     $(`${id}-issues-pane`).setAttribute("aria-labelledby", control.id);
@@ -258,18 +260,18 @@ function drawList() {
 
   if (!ctx.connected()) {
     list.append(
-      empty(t("issues.off.title"), t("issues.off.body"), [t("issues.off.action"), ctx.toSettings]),
+      empty(t("issues.off.title"), t("issues.off.body"), [t("issues.off.action"), ctx.toSettings, "issues.connect"]),
     );
     return;
   }
   if (!got) {
     if (!loading && error) {
-      list.append(empty(t("issues.failed.title"), error, [t("issues.failed.action"), () => refresh(true)]));
+      list.append(empty(t("issues.failed.title"), error, [t("issues.failed.action"), () => refresh(true), "issues.refresh"]));
     }
     return;
   }
   if (scope === "available" && got.available_error && !got.available.length) {
-    list.append(empty(t("issues.failed.title"), got.available_error, [t("issues.failed.action"), () => refresh(true)]));
+    list.append(empty(t("issues.failed.title"), got.available_error, [t("issues.failed.action"), () => refresh(true), "issues.refresh"]));
     return;
   }
 
@@ -305,6 +307,7 @@ function drawList() {
     head.children[1].textContent = label;
     head.children[2].textContent = String(grouped.length);
     head.title = t(shut ? "issues.group.show" : "issues.group.fold", { group: label });
+    head.dataset.track = "issues.group.toggle";
     head.addEventListener("click", () => {
       localStorage.setItem(FOLD + kind, shut ? "0" : "1");
       drawList();
@@ -317,6 +320,7 @@ function drawList() {
     const callout = template("div", "iavailable-callout", `<span></span><button class="ghost sm"></button>`);
     callout.children[0].textContent = t("issues.available.count", { n: got.available.length });
     callout.children[1].textContent = t("issues.viewAvailable");
+    (callout.children[1] as HTMLElement).dataset.track = "issues.available";
     callout.children[1].addEventListener("click", showAvailable);
     list.append(callout);
   }
@@ -337,6 +341,7 @@ function drawSuggestions(list: HTMLElement, available: Issue[]) {
   box.querySelector("strong")!.textContent = t("issues.suggestions");
   const view = box.querySelector("button")!;
   view.textContent = t("issues.viewAll", { n: available.length });
+  view.dataset.track = "issues.available";
   view.addEventListener("click", showAvailable);
   for (const issue of [...available].sort(byUrgency).slice(0, 3)) box.append(row(issue, true));
   list.append(box);
@@ -418,13 +423,15 @@ function row(issue: Issue, available = false): HTMLElement {
   el.querySelector(".iago")!.textContent = ago(Date.parse(issue.updated_at));
 
   // Row clicks open Linear; buttons own other actions.
-  const openLinear = () => invoke("linear_open", { url: issue.url }).catch((e) => ctx.say(fromBack(e), true));
+  const openLinear = () => invoke("linear_open", { url: issue.url }).then(() => track({ name: "issue_action_used", integration: "linear", action: "open_source" })).catch((e) => ctx.say(fromBack(e), true));
+  el.dataset.track = "issues.linear.open_source";
   el.addEventListener("click", openLinear);
   el.addEventListener("keydown", (e) => e.key === "Enter" && e.target === el && openLinear());
 
   const act = el.querySelector(".iact")!;
   const owner = ctx.board().workspaces.find((w) => w.issue?.id === issue.id && !w.archived);
   const btn = button(available ? t(ctx.canAssign() ? "issues.claim" : "issues.allowClaim") : t("issues.open"), undefined, "ghost");
+  btn.dataset.track = available ? "issues.linear.claim" : "issues.linear.open_workspace";
   btn.classList.add("sm");
   if (available) {
     if (claiming) btn.setAttribute("aria-disabled", "true");
@@ -442,6 +449,7 @@ function row(issue: Issue, available = false): HTMLElement {
       $("ilist").querySelectorAll(".irow.available .iact button").forEach((action) => action.setAttribute("aria-disabled", "true"));
       try {
         const claimed = await invoke("linear_claim", { id: issue.id });
+        track({ name: "issue_action_used", integration: "linear", action: "claim" });
         succeeded = true;
         if (got) {
           got = {
@@ -477,6 +485,7 @@ function row(issue: Issue, available = false): HTMLElement {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     owner ? ctx.open(owner) : ctx.create(issue);
+    track({ name: "issue_action_used", integration: "linear", action: owner ? "open_workspace" : "prepare_workspace" });
   });
   act.append(btn);
   return el;

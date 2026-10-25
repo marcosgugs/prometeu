@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ invoke: vi.fn(), control: null as HTMLInputElement | null }));
+const state = vi.hoisted(() => ({ invoke: vi.fn(), control: null as HTMLInputElement | null, target: undefined as string | undefined }));
 const element = () => ({ append() {}, setAttribute() {}, dataset: {} });
 vi.mock("./util", () => ({ h: () => element() }));
 vi.mock("./i18n", () => ({ t: (key: string) => key, fromBack: String }));
 vi.mock("./ipc", () => ({ invoke: state.invoke }));
 vi.mock("./ui", () => ({
-  toggle: (_label: string, checked: boolean) => {
+  toggle: (_label: string, checked: boolean, target?: string) => {
+    state.target = target;
     state.control = { ...element(), checked, disabled: false } as unknown as HTMLInputElement;
     return { control: state.control, label: element() };
   },
@@ -24,7 +25,9 @@ test("loads consent and saves explicit changes while preventing concurrent updat
   await loadAnalytics();
   const say = vi.fn();
   const redraw = () => analyticsRow(say, redraw);
-  redraw();
+  const row = redraw();
+  expect(row.dataset.trackArea).toBe("settings.privacy");
+  expect(state.target).toBe("settings.analytics.enabled");
   expect(state.control!.checked).toBe(false);
   expect(state.control!.disabled).toBe(false);
   let finish!: (enabled: boolean) => void;

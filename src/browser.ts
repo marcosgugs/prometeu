@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 /// Native preview lifecycle and the design tools surrounding its reserved DOM surface.
 import { invoke } from "./ipc";
 import { listen } from "@tauri-apps/api/event";
@@ -130,18 +131,18 @@ export function init(external: (id: string) => void, notify: (message: string, e
     paintInspect();
   });
 
-  inspectButton = button(t("web.inspect"), () => void toggleInspect().catch(report), "ghost");
+  inspectButton = button(t("web.inspect"), () => void toggleInspect().catch(report), "ghost", "web.inspect");
   inspectButton.id = "winspect";
   inspectButton.setAttribute("aria-pressed", "false");
-  captureButton = button(t("web.capture"), () => void capture(), "ghost");
+  captureButton = button(t("web.capture"), () => void capture(), "ghost", "web.capture");
   captureButton.id = "wcapture";
-  const size = select("fit", [["fit", t("web.fit")], ["390", t("web.mobile")], ["768", t("web.tablet")]]);
+  const size = select("fit", [["fit", t("web.fit")], ["390", t("web.mobile")], ["768", t("web.tablet")]], { track: "web.viewport" });
   size.control.setAttribute("aria-label", t("web.viewport"));
   size.onchange = () => {
     viewport.value = size.value === "fit" ? "" : size.value;
     resizeViewport();
   };
-  viewport = input();
+  viewport = input("", false, "web.width");
   viewport.id = "wwidth";
   viewport.type = "number";
   viewport.min = "240";
@@ -259,6 +260,7 @@ function paintInspect() {
   if (!inspectButton) return;
   inspectButton.setAttribute("aria-pressed", String(inspecting));
   inspectButton.textContent = t(inspecting ? "web.inspecting" : "web.inspect");
+  inspectButton.dataset.track = inspecting ? "web.inspect.stop" : "web.inspect.start";
 }
 
 async function toggleInspect() {
@@ -296,12 +298,13 @@ function drawSelection() {
     const target = session.contextTarget();
     if (!target) return say(t("web.noChat"), true);
     target({ selection: data, image });
+    track({ name: "browser_context_attached" });
     say(t("web.added"));
     clearSelection();
-  }, "pri");
+  }, "pri", "web.addToChat");
   add.id = "wadd";
-  const copy = button(t("web.copyHtml"), () => void navigator.clipboard.writeText(data.html).catch(report), "ghost");
-  const dismiss = button(t("web.dismiss"), clearSelection, "ghost");
+  const copy = button(t("web.copyHtml"), () => void navigator.clipboard.writeText(data.html).catch(report), "ghost", "web.copyHtml");
+  const dismiss = button(t("web.dismiss"), clearSelection, "ghost", "web.dismiss");
   actions.append(name, add, copy, dismiss);
   const meta = h("p", "webmeta", `${Math.round(data.rect.width)} × ${Math.round(data.rect.height)} px · ${image ? t("web.imageReady") : t("web.imageMissing")}`);
   const html = h("pre", "webhtml", data.html);
@@ -322,6 +325,7 @@ async function capture() {
   captureButton.disabled = true;
   try {
     target.put([await invoke("browser_capture", { id })]);
+    track({ name: "preview_capture_created" });
     say(t("web.added"));
   } catch (error) { report(error); }
   finally { done(); captureButton.disabled = false; }

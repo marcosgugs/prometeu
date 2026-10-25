@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("desktop organizations select accepted access and keep sharing within the chosen scope", async ({ page }) => {
   await page.addInitScript(() => {

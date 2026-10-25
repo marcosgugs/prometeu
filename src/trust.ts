@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { invoke } from "./ipc";
 import { fromBack, t } from "./i18n";
 import * as ui from "./ui";
@@ -36,13 +37,14 @@ export async function open(workspace: string, say: (text: string, isError?: bool
   // An empty hash means the repository declares no `[tools]`, so there is nothing to trust.
   if (!decl.hash) return say(t("tools.trust.empty"));
 
-  const dialog = ui.formDialog({
+  const dialog = ui.formDialog({ track: "project.trust", area: "project_trust",
     title: t("tools.trust.title"),
     save: t("tools.trust.approve"),
     cancel: t("tools.trust.later"),
     error: fromBack,
     submit: async () => {
       await invoke("project_tools_trust", { id: workspace, hash: decl.hash, approved: true });
+      track({ name: "trust_decision_made", approved: true });
     },
   });
   dialog.body.append(
@@ -58,9 +60,9 @@ export async function open(workspace: string, say: (text: string, isError?: bool
   // Rejecting records the decision so the prompt stops until the declaration's hash changes.
   const reject = ui.button(t("tools.trust.reject"), () => {
     void invoke("project_tools_trust", { id: workspace, hash: decl.hash, approved: false })
-      .then(() => dialog.close())
+      .then(() => { track({ name: "trust_decision_made", approved: false }); dialog.close(); })
       .catch((e) => say(fromBack(e), true));
-  }, "ghost");
+  }, "ghost", "project.trust.reject");
   dialog.body.append(reject);
   dialog.open();
 }

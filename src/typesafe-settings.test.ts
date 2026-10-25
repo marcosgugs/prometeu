@@ -29,6 +29,7 @@ test("test enables a saved key and sends only the fixed synthetic request", asyn
   await vi.waitFor(() => expect(redraw).toHaveBeenCalled());
   expect(state.invoke).toHaveBeenCalledWith("typesafe_set_enabled", { enabled: true });
   const request = state.invoke.mock.calls.find(([command]) => command === "context_evaluate")![1].request;
+  expect(state.invoke).toHaveBeenCalledWith("analytics_track", { event: { name: "integration_action_used", integration: "typesafe", action: "test" } });
   expect(request.context).toBe("Fix the error shown when the login button is pressed.");
   typesafeRows(vi.fn(), redraw);
   expect(state.labels).toContain('typesafe.test.ok {"model":"jev-1.13.0"}');
@@ -46,6 +47,7 @@ test("a rejected key surfaces the backend error", async () => {
   state.actions.get("typesafe.test")!();
   await vi.waitFor(() => expect(say).toHaveBeenCalledWith('i18n:{"code":"err.evaluation.auth"}', true));
   expect(state.invoke).not.toHaveBeenCalledWith("typesafe_set_enabled", expect.anything());
+  expect(state.invoke).not.toHaveBeenCalledWith("analytics_track", expect.anything());
 });
 
 test("a test still pending after a re-render cannot start another request", async () => {

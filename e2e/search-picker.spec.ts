@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("design system searchable picker searches accents and selects with keyboard", { tag: "@webkit" }, async ({ page }) => {
   await page.goto("/packages/design-system/index.html");

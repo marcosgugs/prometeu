@@ -18,7 +18,7 @@ export function errorCard(text: string): HTMLElement {
   const el = template(
     "details",
     "syserr",
-    `<summary><span class="eic">${icon("x", 12)}</span><b></b><span class="prev"></span></summary><pre></pre>`,
+    `<summary data-track="chat.error.details"><span class="eic">${icon("x", 12)}</span><b></b><span class="prev"></span></summary><pre></pre>`,
   );
   el.querySelector("b")!.textContent = t("chat.error.title");
   el.querySelector(".prev")!.textContent = errorPeek(value);
@@ -37,7 +37,7 @@ export function noticeCard(text: string, title: string): HTMLElement {
   const el = template(
     "details",
     "sysnote",
-    `<summary><span class="nic">${icon("check", 12)}</span><b></b><span class="prev"></span></summary><div class="md"></div>`,
+    `<summary data-track="chat.notice.details"><span class="nic">${icon("check", 12)}</span><b></b><span class="prev"></span></summary><div class="md"></div>`,
   );
   el.querySelector("b")!.textContent = title;
   el.querySelector(".prev")!.textContent = peek(value).replace(/^\s*#+\s+/, "");
@@ -53,6 +53,7 @@ export function workCard(parts: BlockPart[], opened: boolean, changed: (open: bo
   }
   const el = h("div", "work" + (opened ? " open" : ""));
   const head = template("button", "whead", `<span class="wic"></span><b></b><span class="sum"></span><span class="st"></span>`);
+  head.dataset.track = "chat.work.details";
   head.addEventListener("click", () => {
     const open = el.classList.toggle("open");
     head.setAttribute("aria-expanded", String(open));
@@ -98,7 +99,7 @@ export function conversationBlock(block: Block, live: boolean): HTMLElement {
     const el = template(
       "details",
       "think" + (live ? " live" : "") + (block.text ? "" : " bare"),
-      `<summary><span class="tic">${icon("brain", 14)}</span><b></b><span class="prev"></span></summary><div></div>`,
+      `<summary data-track="chat.thinking.details"><span class="tic">${icon("brain", 14)}</span><b></b><span class="prev"></span></summary><div></div>`,
     );
     el.dataset.kind = "thinking";
     el.querySelector("b")!.textContent = t(live ? "chat.thinking" : "chat.thought");
@@ -116,6 +117,7 @@ export function conversationBlock(block: Block, live: boolean): HTMLElement {
   head.querySelector(".sum")!.textContent = block.name === "ExitPlanMode" ? "" : summary(block.name, block.input, block.json);
   head.querySelector(".bgtag")!.textContent = block.background ? t("chat.bg.tag") : "";
   head.querySelector(".st")!.innerHTML = running ? `<span class="spin"></span>` : icon(block.error ? "x" : "check", 12);
+  head.dataset.track = "chat.tool.details";
   head.setAttribute("aria-expanded", "false");
   head.addEventListener("click", () => {
     head.setAttribute("aria-expanded", String(el.classList.toggle("open")));
@@ -143,7 +145,7 @@ export function conversationBlock(block: Block, live: boolean): HTMLElement {
       technical.append(out);
     }
     if (technical.childElementCount) {
-      const details = template("details", "ttechnical", `<summary></summary>`);
+      const details = template("details", "ttechnical", `<summary data-track="chat.tool.technical"></summary>`);
       details.querySelector("summary")!.textContent = t("chat.tool.details");
       details.append(technical);
       body.append(details);

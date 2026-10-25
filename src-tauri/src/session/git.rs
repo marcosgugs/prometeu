@@ -1,5 +1,9 @@
 //! Desktop admission and IPC over the shared injected Git repository service.
-use crate::{lock::lock, AppState};
+use crate::{
+    analytics::{self, Event, FileOperation, GitOperation},
+    lock::lock,
+    AppState,
+};
 use prometeu_core::git::{self, Mutation};
 pub use prometeu_core::git::{
     DiffScope, GitAction, GitBranch, GitCommit, GitConflict, GitDiff, GitFile, GitStatus,
@@ -43,7 +47,17 @@ pub fn workspace_git_action(
         git::admit_mutation(&board, &id, &operation)?;
         git::repository(&board, &id, repo)?.clone()
     };
-    state.repository_git.action(
+    let tracked = match operation {
+        GitAction::Stage => GitOperation::Stage,
+        GitAction::Unstage => GitOperation::Unstage,
+        GitAction::Commit => GitOperation::Commit,
+        GitAction::Fetch => GitOperation::Fetch,
+        GitAction::Pull => GitOperation::Pull,
+        GitAction::Push => GitOperation::Push,
+        GitAction::Publish => GitOperation::Publish,
+        GitAction::Discard => GitOperation::Discard,
+    };
+    let result = state.repository_git.action(
         &repo,
         Mutation {
             operation,
@@ -52,7 +66,11 @@ pub fn workspace_git_action(
             expected: expected.as_deref(),
             remote: remote.as_deref(),
         },
-    )
+    );
+    if result.is_ok() {
+        analytics::track(Event::GitOperationCompleted { operation: tracked });
+    }
+    result
 }
 #[tauri::command(async)]
 pub fn workspace_git_history(
@@ -93,7 +111,13 @@ pub fn workspace_git_resolve(
     text: String,
 ) -> Result<(), String> {
     let repo = git::repository(&lock(&state.board), &id, repo)?.clone();
-    state.repository_git.resolve(&repo, &path, &was, &text)
+    let result = state.repository_git.resolve(&repo, &path, &was, &text);
+    if result.is_ok() {
+        analytics::track(Event::GitOperationCompleted {
+            operation: GitOperation::Resolve,
+        });
+    }
+    result
 }
 fn tree_repos(state: &State<AppState>, id: &str) -> Option<(PathBuf, Vec<PathBuf>)> {
     let root = super::cwd_of(state, id)?;
@@ -112,7 +136,13 @@ pub fn tree_git_status(state: State<AppState>, id: String) -> Vec<GitFile> {
 pub fn tree_restore(state: State<AppState>, id: String, rel: String) -> Result<(), String> {
     let (root, repos) =
         tree_repos(&state, &id).ok_or_else(|| crate::i18n::t("err.session.noWorkspace"))?;
-    state.repository_git.restore(Path::new(&root), &repos, &rel)
+    let result = state.repository_git.restore(Path::new(&root), &repos, &rel);
+    if result.is_ok() {
+        analytics::track(Event::FileOperationCompleted {
+            operation: FileOperation::Restore,
+        });
+    }
+    result
 }
 
 #[tauri::command(async)]

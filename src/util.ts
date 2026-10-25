@@ -13,12 +13,13 @@ export function template(tag: string, className: string, html: string): HTMLElem
 }
 
 /// A full-page empty state with a title, explanation, and optional action.
-export function empty(title: string, text: string, action?: [string, () => void]): HTMLElement {
+export function empty(title: string, text: string, action?: [string, () => void, string?]): HTMLElement {
   const box = template("div", "iempty", `<h3></h3><p></p>`);
   box.children[0].textContent = title;
   box.children[1].textContent = text;
   if (action) {
     const b = h("button", "outline md", action[0]);
+    if (action[2]) b.dataset.track = action[2];
     b.addEventListener("click", action[1]);
     box.append(b);
   }

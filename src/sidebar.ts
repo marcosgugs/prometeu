@@ -84,40 +84,40 @@ function wsMenu(ws: Workspace, board: Board, hooks: Hooks, label: HTMLElement, k
   const at = board.stages.indexOf(ws.stage);
   return [
     ws.unread
-      ? { label: t("ws.menu.read"), glyph: icon("mail-open"), run: () => hooks.unread(ws.id, false) }
-      : { label: t("ws.menu.unread"), glyph: icon("mail"), run: () => hooks.unread(ws.id, true) },
+      ? { label: t("ws.menu.read"), track: "ws.menu.read", glyph: icon("mail-open"), run: () => hooks.unread(ws.id, false) }
+      : { label: t("ws.menu.unread"), track: "ws.menu.unread", glyph: icon("mail"), run: () => hooks.unread(ws.id, true) },
     ws.pinned
-      ? { label: t("ws.menu.unpin"), glyph: icon("pin-off"), run: () => hooks.pin(ws.id, false) }
-      : { label: t("ws.menu.pin"), glyph: icon("pin"), run: () => hooks.pin(ws.id, true) },
+      ? { label: t("ws.menu.unpin"), track: "ws.menu.unpin", glyph: icon("pin-off"), run: () => hooks.pin(ws.id, false) }
+      : { label: t("ws.menu.pin"), track: "ws.menu.pin", glyph: icon("pin"), run: () => hooks.pin(ws.id, true) },
     {
-      label: t("ws.menu.stage"),
+      label: t("ws.menu.stage"), track: "ws.menu.stage",
       glyph: stageIcon(at, total),
       sub: board.stages.map((name, i) => ({
-        label: stageName(name),
+        label: stageName(name), track: "workspace.stage.select",
         glyph: stageIcon(i, total),
         checked: name === ws.stage,
         run: () => hooks.setStage(ws.id, name),
       })),
     },
     {
-      label: t("ws.menu.rename"),
+      label: t("ws.menu.rename"), track: "ws.menu.rename",
       glyph: icon("pencil"),
       run: () => rename.start(label, ws.title, (title) => hooks.rename(ws.id, title), kind),
     },
-    ...(!ws.remote ? [{ label: t("tools.project"), glyph: icon("plug"), run: () => hooks.projectTools(ws.id) } as menu.Item] : []),
-    { label: t("ws.menu.copyPath"), glyph: icon("copy"), run: () => hooks.copyPath(ws) },
-    { label: t("ws.menu.reveal"), glyph: icon("external-link"), run: () => hooks.reveal(ws.id) },
+    ...(!ws.remote ? [{ label: t("tools.project"), track: "tools.project", glyph: icon("plug"), run: () => hooks.projectTools(ws.id) } as menu.Item] : []),
+    { label: t("ws.menu.copyPath"), track: "ws.menu.copyPath", glyph: icon("copy"), run: () => hooks.copyPath(ws) },
+    { label: t("ws.menu.reveal"), track: "ws.menu.reveal", glyph: icon("external-link"), run: () => hooks.reveal(ws.id) },
     "sep",
     // Archived workspaces have already completed the finish action.
     ...(ws.archived
       ? []
-      : [{ label: t("ws.menu.finish"), glyph: icon("check"), run: () => hooks.finish(ws.id) } as menu.Item]),
+      : [{ label: t("ws.menu.finish"), track: "ws.menu.finish", glyph: icon("check"), run: () => hooks.finish(ws.id) } as menu.Item]),
     ...(hasWorktree(ws)
-      ? [{ label: t("ws.menu.cleanup"), glyph: icon("trash"), run: () => hooks.cleanup() } as menu.Item]
+      ? [{ label: t("ws.menu.cleanup"), track: "ws.menu.cleanup", glyph: icon("trash"), run: () => hooks.cleanup() } as menu.Item]
       : []),
     ws.archived
       ? {
-          label: t("ws.menu.unarchive"),
+          label: t("ws.menu.unarchive"), track: "ws.menu.unarchive",
           glyph: icon("archive-restore"),
           // Removed worktrees cannot be restored; keep the history card and explain why restoration is unavailable.
           disabled: ws.cleaned,
@@ -125,14 +125,14 @@ function wsMenu(ws: Workspace, board: Board, hooks: Hooks, label: HTMLElement, k
           run: () => hooks.archive(ws.id, false),
         }
       : {
-          label: t("ws.menu.archive"),
+          label: t("ws.menu.archive"), track: "ws.menu.archive",
           glyph: icon("archive"),
           // Show the shortcut only for the active workspace it would affect.
           hint: ws.id === openId ? keys("⌘⇧A") : undefined,
           run: () => hooks.archive(ws.id, true),
         },
     {
-      label: t("ws.menu.drop"),
+      label: t("ws.menu.drop"), track: "ws.menu.drop",
       glyph: icon("x"),
       danger: true,
       run: () => hooks.drop(ws.id),
@@ -141,9 +141,10 @@ function wsMenu(ws: Workspace, board: Board, hooks: Hooks, label: HTMLElement, k
 }
 
 export function attachMenu(node: HTMLElement, ws: Workspace, board: Board, hooks: Hooks, label: HTMLElement, kind: string) {
+  node.dataset.trackContextMenu = "workspace.menu";
   node.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    menu.openAt({ x: e.clientX, y: e.clientY }, wsMenu(ws, board, hooks, label, kind));
+    menu.openAt({ area: "sidebar", x: e.clientX, y: e.clientY }, wsMenu(ws, board, hooks, label, kind));
   });
 }
 
@@ -151,12 +152,13 @@ export function attachMenu(node: HTMLElement, ws: Workspace, board: Board, hooks
 /// back, even while the owner is offline.
 function attachLeave(node: HTMLElement, ws: Workspace, owner: string) {
   const leave = async () => {
-    if (await confirmDialog({ title: t("share.leave.title"), message: t("share.leave.message", { name: owner }),
+    if (await confirmDialog({ track: "share.leave.title", area: "sidebar", title: t("share.leave.title"), message: t("share.leave.message", { name: owner }),
       accept: t("share.leave"), cancel: t("actions.cancel") })) await team.leaveShare(ws.id);
   };
+  node.dataset.trackContextMenu = "workspace.menu";
   node.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    menu.openAt({ x: e.clientX, y: e.clientY }, [{ label: t("share.leave"), glyph: icon("x"), danger: true, run: () => void leave() }]);
+    menu.openAt({ area: "sidebar", x: e.clientX, y: e.clientY }, [{ label: t("share.leave"), track: "share.leave", glyph: icon("x"), danger: true, run: () => void leave() }]);
   });
 }
 
@@ -177,6 +179,7 @@ let naming: string | null = null;
 function filterField() {
   if (finder) return finder;
   const f = issueSearch("");
+  f.control.dataset.track = "rail.projects.search";
   f.control.addEventListener("input", () => last && renderRail(...last));
   f.control.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !f.control.value) return;
@@ -209,6 +212,7 @@ function renderRail(board: Board, hooks: Hooks) {
   const create = template("button", "navitem", `${icon("plus")}<span></span>`);
   create.children[1].textContent = t("rail.create");
   create.title = t("rail.create.title");
+  create.dataset.track = "rail.create.title";
   create.addEventListener("click", () => hooks.newWorkspace());
   rail.append(create);
 
@@ -216,6 +220,7 @@ function renderRail(board: Board, hooks: Hooks) {
   const desk = template("button", "navitem" + (openId === DESK ? " on" : ""), `${icon("terminal")}<span></span>`);
   desk.children[1].textContent = t("rail.desk");
   desk.title = t("rail.desk.title");
+  desk.dataset.track = "rail.desk.title";
   desk.addEventListener("click", hooks.toDesk);
   rail.append(desk);
 
@@ -228,6 +233,7 @@ function renderRail(board: Board, hooks: Hooks) {
   issues.children[1].textContent = t("rail.issues");
   const n = hooks.issues();
   issues.querySelector(".n")!.textContent = n === null ? "" : String(n);
+  issues.dataset.track = "rail.issues";
   issues.title = n === null ? t("rail.issues.off") : t("rail.issues.title");
   issues.addEventListener("click", hooks.toIssues);
   rail.append(issues);
@@ -240,6 +246,7 @@ function renderRail(board: Board, hooks: Hooks) {
     `${icon("bell")}<span></span><span class="n"></span>`,
   );
   notifications.id = "rail-notifications";
+  notifications.dataset.track = "rail.notifications";
   notifications.children[1].textContent = t("notifications.center");
   notifications.querySelector(".n")!.textContent = waiting ? String(waiting) : "";
   notifications.addEventListener("click", hooks.toNotifications);
@@ -262,6 +269,7 @@ function renderRail(board: Board, hooks: Hooks) {
   sect.children[0].textContent = t("rail.projects");
   const add = template("button", "ico sm", icon("plus"));
   add.title = t("rail.add");
+  add.dataset.track = "rail.add";
   add.addEventListener("click", () => {
     const at = add.getBoundingClientRect();
     const taken = board.projects.flatMap((p) => (p.group ? [p.group] : []));
@@ -270,13 +278,13 @@ function renderRail(board: Board, hooks: Hooks) {
       naming = untitled(taken);
       hooks.groupProjects([id], naming);
     };
-    menu.openAt({ x: at.left, y: at.bottom + 4 }, [
-      { label: t("rail.addProject"), glyph: icon("folder-plus"), run: hooks.addProject },
+    menu.openAt({ area: "sidebar", x: at.left, y: at.bottom + 4 }, [
+      { label: t("rail.addProject"), track: "rail.addProject", glyph: icon("folder-plus"), run: hooks.addProject },
       {
-        label: t("rail.folder.newWith"),
+        label: t("rail.folder.newWith"), track: "rail.folder.newWith",
         glyph: icon("folder"),
         disabled: !board.projects.length,
-        sub: board.projects.map((p) => ({ label: p.name, glyph: avatar(p.name), run: () => start(p.id) })),
+        sub: board.projects.map((p) => ({ label: p.name, track: "project.folder.create", glyph: avatar(p.name), run: () => start(p.id) })),
       },
     ]);
   });
@@ -321,24 +329,26 @@ function renderRail(board: Board, hooks: Hooks) {
     const plus = template("button", "ico sm", icon("plus"));
     // Create directly inside the selected project.
     plus.title = t("rail.newIn", { project: project.name });
+    plus.dataset.track = "rail.newIn";
     plus.addEventListener("click", (e) => {
       e.stopPropagation();
       hooks.newWorkspace(project.id);
     });
     const more = template("button", "ico sm", icon("ellipsis"));
     more.title = t("rail.projectActions", { project: project.name });
+    more.dataset.track = "rail.projectActions";
     more.addEventListener("click", (e) => {
       e.stopPropagation();
       const at = more.getBoundingClientRect();
       const move: menu.Item[] = [
         ...folders.map((name) => ({
-          label: name,
+          label: name, track: "project.group.select",
           checked: project.group === name,
           run: () => hooks.groupProjects([project.id], name),
         })),
         ...(folders.length ? ["sep" as const] : []),
         {
-          label: t("rail.folder.new"),
+          label: t("rail.folder.new"), track: "rail.folder.new",
           glyph: icon("folder-plus"),
           run: () => {
             naming = untitled(folders);
@@ -346,14 +356,14 @@ function renderRail(board: Board, hooks: Hooks) {
           },
         },
         ...(project.group
-          ? [{ label: t("rail.folder.leave"), glyph: icon("x"), run: () => hooks.groupProjects([project.id], null) }]
+          ? [{ label: t("rail.folder.leave"), track: "rail.folder.leave", glyph: icon("x"), run: () => hooks.groupProjects([project.id], null) }]
           : []),
       ];
-      menu.openAt({ x: at.left, y: at.bottom + 4 }, [
-        { label: t("tools.project"), glyph: icon("plug"), run: () => hooks.projectTools(project.id) },
-        { label: t("rail.folder.move"), glyph: icon("folder"), sub: move },
+      menu.openAt({ area: "sidebar", x: at.left, y: at.bottom + 4 }, [
+        { label: t("tools.project"), track: "tools.project", glyph: icon("plug"), run: () => hooks.projectTools(project.id) },
+        { label: t("rail.folder.move"), track: "rail.folder.move", glyph: icon("folder"), sub: move },
         {
-          label: t("rail.removeProject"),
+          label: t("rail.removeProject"), track: "rail.removeProject",
           glyph: icon("x"),
           danger: true,
           run: () => hooks.removeProject(project.id),
@@ -415,12 +425,13 @@ function renderRail(board: Board, hooks: Hooks) {
     const renameFolder = () => rename.start(title, name, (next) => next && hooks.groupProjects(ids, next), "sub");
     const more = template("button", "ico sm", icon("ellipsis"));
     more.title = t("rail.folder.actions", { folder: name });
+    more.dataset.track = "rail.folder.actions";
     more.addEventListener("click", (e) => {
       e.stopPropagation();
       const at = more.getBoundingClientRect();
-      menu.openAt({ x: at.left, y: at.bottom + 4 }, [
-        { label: t("rail.folder.rename"), glyph: icon("pencil"), run: renameFolder },
-        { label: t("rail.folder.ungroup"), glyph: icon("x"), run: () => hooks.groupProjects(ids, null) },
+      menu.openAt({ area: "sidebar", x: at.left, y: at.bottom + 4 }, [
+        { label: t("rail.folder.rename"), track: "rail.folder.rename", glyph: icon("pencil"), run: renameFolder },
+        { label: t("rail.folder.ungroup"), track: "rail.folder.ungroup", glyph: icon("x"), run: () => hooks.groupProjects(ids, null) },
       ]);
     });
     head.append(more);
@@ -464,6 +475,7 @@ function renderRail(board: Board, hooks: Hooks) {
     arch.children[1].textContent = t("rail.archived");
     arch.querySelector(".n")!.textContent = String(gone);
     arch.title = t("rail.archived.title");
+    arch.dataset.track = "rail.archived.title";
     arch.addEventListener("click", hooks.toArchived);
     rail.append(arch);
   }

@@ -3,116 +3,147 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./ipc", () => ({ invoke: vi.fn(() => Promise.resolve()) }));
 
 import { invoke } from "./ipc";
-import { t, use } from "./i18n";
-import { labelKey, trackClicks, viewScreen } from "./analytics";
+import { trackClicks, trackRequestResponse, unidentifiedControls, viewScreen, type ClickEvent } from "./analytics";
 
-use("en");
 beforeEach(() => vi.mocked(invoke).mockClear());
 
-type Spec = { tag?: string; id?: string; role?: string; aria?: string; title?: string; text?: string; t?: string; track?: string };
-type Node = Element & { spec: Spec };
+type Spec = { disabled?: boolean; ariaDisabled?: boolean; tag?: string; role?: string; type?: string; text?: string; t?: string; tTitle?: string; track?: string; trackArea?: string; trackDoubleClick?: string; trackContextMenu?: string };
+type TestElement = HTMLElement & { spec: Spec };
 
-/** Only what analytics reads from an element; tests run without a DOM. `closest` understands the
- * tag, `[role=…]`, `[data-track]` and `tag[type=…]` selectors analytics uses. */
-function node(spec: Spec, parent: Node | null = null): Node {
-  const attributes: Record<string, string | undefined> = { role: spec.role, "aria-label": spec.aria, title: spec.title };
-  const el = {
-    spec, id: spec.id ?? "", tagName: (spec.tag ?? "div").toUpperCase(), parentElement: parent,
-    dataset: { t: spec.t, track: spec.track }, textContent: spec.text ?? "",
-    getAttribute: (name: string) => attributes[name] ?? null,
-    querySelector: () => null,
+/** Selector behavior is exercised in a real browser by scripts/check-analytics.mjs. */
+function node(spec: Spec, parent: TestElement | null = null): TestElement {
+  const element = {
+    spec, tagName: (spec.tag ?? "div").toUpperCase(), parentElement: parent,
+    dataset: { t: spec.t, tTitle: spec.tTitle, track: spec.track, trackArea: spec.trackArea,
+      trackDoubleClick: spec.trackDoubleClick, trackContextMenu: spec.trackContextMenu }, textContent: spec.text ?? "",
+    getAttribute: (name: string) => name === "role" ? spec.role ?? null : null,
+    matches(selector: string) {
+      return selector.split(/,\s*/).some(part => {
+        if (part === ":disabled") return !!spec.disabled;
+        if (part === "[aria-disabled=true]") return !!spec.ariaDisabled;
+        if (part === "[data-track-area]") return spec.trackArea !== undefined;
+        if (part === "[data-track]") return spec.track !== undefined;
+        if (part === "[data-track-double-click]") return spec.trackDoubleClick !== undefined;
+        if (part === "[data-track-context-menu]") return spec.trackContextMenu !== undefined;
+        const role = /^\[role=(\w+)\]$/.exec(part);
+        if (role) return spec.role === role[1];
+        if (part.startsWith("input[type=")) return spec.tag === "input" && part.includes(`"${spec.type}"`);
+        if (part === "input:not([type=hidden])") return spec.tag === "input" && spec.type !== "hidden";
+        return spec.tag === part;
+      });
+    },
     closest(selector: string) {
-      for (let at: Node | null = el; at; at = at.parentElement as Node | null) {
-        if (selector.split(",").some(part => matches(at!, part))) return at;
+      for (let at: TestElement | null = element as unknown as TestElement; at; at = at.parentElement as TestElement | null) {
+        if (at.matches(selector)) return at;
       }
       return null;
     },
-  } as unknown as Node;
-  return el;
+  };
+  return element as unknown as TestElement;
 }
 
-function matches(el: Node, selector: string) {
-  const role = /^\[role=(\w+)\]$/.exec(selector);
-  if (role) return el.spec.role === role[1];
-  if (selector === "[data-track]") return el.spec.track !== undefined;
-  return el.tagName.toLowerCase() === selector && !selector.includes("[");
+function page(controls: TestElement[] = []) {
+  const listeners: Record<string, (event: { target: TestElement }) => void> = {};
+  const captured: ClickEvent[] = [];
+  const root = {
+    querySelectorAll: () => controls,
+    addEventListener: (name: string, run: (event: { target: TestElement }) => void) => { listeners[name] = run; },
+    dispatchEvent: vi.fn(),
+  } as unknown as Document;
+  trackClicks(root, event => captured.push(event));
+  return { root, captured, click: (target: TestElement, kind = "click") => listeners[kind]({ target }) };
 }
 
-/** A document whose static IDs are the given nodes; returns a function that clicks a node. */
-function page(stable: Node[]) {
-  let listener: (event: { target: Node }) => void = () => {};
-  trackClicks({
-    querySelectorAll: () => stable,
-    addEventListener: (_: string, run: typeof listener) => { listener = run; },
-  } as unknown as Document);
-  return (target: Node) => listener({ target });
-}
-
-const sent = () => vi.mocked(invoke).mock.calls.map(([, args]) => (args as { event: unknown }).event);
-
-describe("click labels", () => {
-  // Shared translations resolve to the first key in the catalog; `area` tells them apart.
-  it("sends the catalog key whose translation the label equals", () => {
-    expect(labelKey(node({ title: t("top.settings") }))).toBe("top.settings");
-    expect(labelKey(node({ text: "  Desk \n" }))).toBe("rail.desk");
-    expect(labelKey(node({ t: "nav.back" }))).toBe("nav.back");
+describe("authored click capture", () => {
+  it("captures static metadata without visible text or user IDs", () => {
+    const area = node({ trackArea: "workspace.tabs" });
+    const control = node({ tag: "button", track: "tab.conversation", text: "private-project" }, area);
+    const { click, captured } = page();
+    click(node({ tag: "span", text: "private-project" }, control));
+    expect(captured).toEqual([{ name: "ui_clicked", control: "button", target: "tab.conversation", area: "workspace.tabs" }]);
   });
 
-  it("never turns visible text outside the catalog into a target", () => {
-    expect(labelKey(node({ text: "fix login bug in acme-payments" }))).toBeNull();
-    expect(labelKey(node({ aria: "/Users/someone/repo", t: "not.a.key" }))).toBeNull();
-  });
-});
-
-describe("click capture", () => {
-  it("records the control, its label key and its static region", () => {
-    const rail = node({ id: "rail" });
-    const click = page([rail]);
-    const settings = node({ tag: "button", aria: t("top.settings") }, rail);
-    click(node({ tag: "span" }, settings));
-    expect(sent()).toEqual([{ name: "ui_clicked", control: "button", target: "top.settings", area: "rail" }]);
+  it("accepts explicitly authored translation keys without reverse lookup", () => {
+    const area = node({ trackArea: "navigation" });
+    const { click, captured } = page();
+    click(node({ tag: "button", tTitle: "nav.back", text: "Back" }, area));
+    click(node({ tag: "button", t: "nav.forward", text: "Avançar" }, area));
+    expect(captured.map(event => event.target)).toEqual(["nav.back", "nav.forward"]);
   });
 
-  it("marks clicks inside menus and maps their role", () => {
-    const click = page([node({ id: "rail" })]);
-    const menu = node({ role: "menu" });
-    click(node({ tag: "button", role: "menuitem", text: t("nav.back") }, menu));
-    expect(sent()).toEqual([{ name: "ui_clicked", control: "menuitem", target: "nav.back", area: "menu" }]);
+  it("exposes missing target and area before a control is clicked", () => {
+    const area = node({ trackArea: "settings" });
+    const noTarget = node({ tag: "button", text: "Save" }, area);
+    const noArea = node({ tag: "button", track: "settings.save" });
+    const neither = node({ tag: "input" });
+    const alternate = node({ trackDoubleClick: "workspace.rename" }, area);
+    const invalidAlternate = node({ trackContextMenu: "/private/path" }, area);
+    const { root } = page([noTarget, noArea, neither, alternate, invalidAlternate]);
+    expect(unidentifiedControls(root).map(problem => problem.missing)).toEqual([["target"], ["area"], ["target", "area"], ["target"]]);
   });
 
-  it("drops labels and IDs created after startup", () => {
-    const tiles = node({ id: "tiles" });
-    const click = page([tiles]);
-    click(node({ tag: "a", id: "workspace-acme-payments", text: "acme-payments" }, tiles));
-    expect(sent()).toEqual([{ name: "ui_clicked", control: "link", target: null, area: "tiles" }]);
+  it("checks missing metadata when disabled controls become eligible", () => {
+    const disabled = node({ tag: "button", disabled: true });
+    const ariaDisabled = node({ role: "menuitem", ariaDisabled: true });
+    const { root, click, captured } = page([disabled, ariaDisabled]);
+    expect(unidentifiedControls(root)).toEqual([]);
+    click(disabled); click(ariaDisabled);
+    expect(captured).toEqual([]);
+    expect(root.dispatchEvent).not.toHaveBeenCalled();
+    disabled.spec.disabled = false; ariaDisabled.spec.ariaDisabled = false;
+    expect(unidentifiedControls(root).map(problem => problem.missing)).toEqual([["target", "area"], ["target", "area"]]);
   });
 
-  it("names controls labeled with user data by their data-track token", () => {
-    const tabbar = node({ id: "tabbar" });
-    const click = page([tabbar]);
-    const tab = node({ tag: "button", track: "tab.conversation", text: "fix login bug" }, tabbar);
-    click(node({ tag: "span", text: "fix login bug" }, tab));
-    click(node({ tag: "span", track: "tab.close", title: t("tab.close") }, tab));
-    expect(sent()).toEqual([
-      { name: "ui_clicked", control: "button", target: "tab.conversation", area: "tabbar" },
-      { name: "ui_clicked", control: "button", target: "tab.close", area: "tabbar" },
+  it("reports invalid or missing identities locally and sends no null or catch-all", () => {
+    vi.stubGlobal("CustomEvent", class { constructor(public type: string, public options: unknown) {} });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const area = node({ trackArea: "settings" });
+    const { click, captured, root } = page();
+    const missing = node({ tag: "button", text: "Save" }, area);
+    click(missing);
+    click(node({ tag: "button", track: "/Users/private/repository" }, area));
+    click(node({ tag: "button", track: "settings.save" }));
+    click(node({ tag: "button", track: "settings.save", trackDoubleClick: "/private/path" }, area), "dblclick");
+    expect(captured).toEqual([]);
+    expect(missing.dataset.trackMissing).toBe("target");
+    expect(root.dispatchEvent).toHaveBeenCalledTimes(4);
+    warn.mockRestore(); vi.unstubAllGlobals();
+  });
+
+  it("classifies native checkboxes and menu items and opts into alternate clicks", () => {
+    const area = node({ trackArea: "git.files" });
+    const { click, captured } = page();
+    click(node({ tag: "input", type: "checkbox", track: "git.reviewed" }, area));
+    click(node({ tag: "button", role: "menuitem", track: "git.stage" }, area));
+    const row = node({ trackDoubleClick: "git.file.open", trackContextMenu: "git.file.menu" }, area);
+    click(row, "dblclick"); click(row, "contextmenu");
+    expect(captured.map(event => [event.control, event.target])).toEqual([
+      ["checkbox", "git.reviewed"], ["menuitem", "git.stage"], ["button", "git.file.open"], ["button", "git.file.menu"],
     ]);
   });
 
-  it("ignores clicks outside controls", () => {
-    const click = page([]);
+  it("ignores content outside controls", () => {
+    const { click, captured } = page();
     click(node({ text: "agent output" }));
-    expect(sent()).toEqual([]);
+    expect(captured).toEqual([]);
   });
 });
 
 describe("screen views", () => {
   it("counts changes, not repeats", () => {
-    viewScreen("desk");
-    viewScreen("desk");
-    viewScreen("workspace");
-    viewScreen("workspace");
-    viewScreen("desk");
-    expect(sent().map(event => (event as { screen: string }).screen)).toEqual(["desk", "workspace", "desk"]);
+    viewScreen("desk"); viewScreen("desk"); viewScreen("workspace"); viewScreen("workspace"); viewScreen("desk");
+    const screens = vi.mocked(invoke).mock.calls.map(([, args]) => (args as { event: { screen: string } }).event.screen);
+    expect(screens).toEqual(["desk", "workspace", "desk"]);
+  });
+});
+
+describe("accepted request responses", () => {
+  it.each([
+    ["allow", { name: "approval_submitted", approved: true }],
+    ["deny", { name: "approval_submitted", approved: false }],
+    ["answer", { name: "request_answered" }],
+  ] as const)("classifies %s using only the closed outcome", (outcome, event) => {
+    trackRequestResponse(outcome);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("analytics_track", { event });
   });
 });

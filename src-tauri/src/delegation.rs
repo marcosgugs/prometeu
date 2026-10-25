@@ -469,6 +469,40 @@ fn create(app: &AppHandle, client: &Client, args: &Value) -> Result<Value, Strin
 
 /// All calls arrive serialized at the local MCP boundary. Work is asynchronous after creation/send.
 pub fn call(app: &AppHandle, client: &Client, name: &str, args: &Value) -> Result<Value, String> {
+    use crate::analytics::{self, DelegationAction, DelegationClient, Event};
+    let result = call_inner(app, client, name, args);
+    let action = match name {
+        "delegate" => Some(DelegationAction::Create),
+        "send_message" => Some(DelegationAction::Send),
+        "interrupt" => Some(DelegationAction::Interrupt),
+        "list_delegations" | "get_delegation" | "get_execution" | "read_conversation" => {
+            Some(DelegationAction::Inspect)
+        }
+        "list_files" | "read_file" => Some(DelegationAction::Files),
+        "run_workspace_script" => match args["kind"].as_str() {
+            Some("setup") => Some(DelegationAction::Setup),
+            Some("run") => Some(DelegationAction::Run),
+            _ => None,
+        },
+        "open_workspace_preview" => Some(DelegationAction::Preview),
+        _ => None,
+    };
+    if result.is_ok() {
+        if let Some(action) = action {
+            analytics::track(Event::DelegationActionUsed {
+                action,
+                client: if client.conversation.is_some() {
+                    DelegationClient::Internal
+                } else {
+                    DelegationClient::External
+                },
+            });
+        }
+    }
+    result
+}
+
+fn call_inner(app: &AppHandle, client: &Client, name: &str, args: &Value) -> Result<Value, String> {
     let state = app.state::<AppState>();
     client.validate(&lock(&state.board))?;
     if name == "delegate" {

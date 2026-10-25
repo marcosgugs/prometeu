@@ -9,12 +9,12 @@
     <!-- The app body sits above a full-width global status bar. -->
     <div class="shell">
     <!-- Navigation stays available across workspace changes. -->
-    <nav class="rail" id="rail">
+    <nav class="rail" id="rail" data-track-area="sidebar">
       <div class="railtop" data-tauri-drag-region="deep">
-        <button id="railtoggle" class="ico" data-t-title="rail.hide"></button>
+        <button id="railtoggle" data-track-area="navigation" data-track="sidebar.hide" class="ico" data-t-title="rail.hide"></button>
         <span class="spacer"></span>
-        <button id="back" class="ico nav" data-t-title="nav.back" disabled></button>
-        <button id="fwd" class="ico" data-t-title="nav.fwd" disabled></button>
+        <button id="back" data-track-area="navigation" class="ico nav" data-t-title="nav.back" disabled></button>
+        <button id="fwd" data-track-area="navigation" class="ico" data-t-title="nav.fwd" disabled></button>
       </div>
       <div class="railbody" id="railbody"></div>
       <!-- The sidebar footer reserves space for version and app-level controls. -->
@@ -22,26 +22,26 @@
         <button id="settings" class="ico sm" data-t-title="top.settings"></button>
         <span class="ver" id="ver"></span>
         <span class="spacer"></span>
-        <button id="update" class="ghost sm" hidden></button>
+        <button id="update" data-track="app.update" class="ghost sm" hidden></button>
       </div>
     </nav>
 
     <div class="stack">
       <header class="top" data-tauri-drag-region="deep">
-        <button id="railshow" class="ico" data-t-title="rail.show" hidden></button>
-        <div id="crumb" class="crumb"></div>
+        <button id="railshow" data-track-area="navigation" data-track="sidebar.show" class="ico" data-t-title="rail.show" hidden></button>
+        <div id="crumb" data-track-area="navigation" class="crumb"></div>
         <span class="spacer"></span>
         <span id="msg" class="msg" role="status"></span>
-        <div id="wsctl" class="wsctl" hidden>
+        <div id="wsctl" data-track-area="workspace.controls" class="wsctl" hidden>
           <!-- Collaboration occupies the toolbar only when active. Initial sharing and stage changes
                remain workspace menu actions. -->
-          <button id="share" class="ico" hidden></button>
+          <button id="share" data-track="collaboration.share" class="ico" hidden></button>
           <span id="watchers" class="watchers"></span>
           <span id="actors" class="actors" hidden></span>
           <!-- Inject PR instructions and Git state into the active conversation. The agent performs the
                work; the adjacent menu opens existing PRs per repository. -->
           <div class="split" id="prsplit">
-            <button id="pr" data-t-title="top.pr"></button>
+            <button id="pr" data-track="git.pull_request" data-t-title="top.pr"></button>
             <button id="prpick" class="ico sm" data-t-title="top.pr.links" hidden></button>
           </div>
           <button id="wsmore" class="ico" data-t-title="top.more"></button>
@@ -51,7 +51,7 @@
 
       <main>
         <!-- The desk is the initial view, with one panel per active conversation, rendered by desk.ts. -->
-        <section id="deskView" class="view desk" hidden>
+        <section id="deskView" data-track-area="desk" class="view desk" hidden>
           <div class="listmain">
             <!-- Conversation controls follow desk order and toggle collapsed panels. -->
             <div class="subbar tabbar" id="deskbar"></div>
@@ -60,7 +60,7 @@
         </section>
 
         <!-- Linear and GitHub share Issues; each provider owns its list and filters. -->
-        <section id="issuesView" class="view issues" hidden>
+        <section id="issuesView" data-track-area="issues" class="view issues" hidden>
           <div class="listmain">
             <div class="subbar tabbar" id="iproviders" role="tablist"></div>
             <div id="linear-issues-pane" class="issue-provider-pane" role="tabpanel">
@@ -74,7 +74,7 @@
         </section>
 
         <!-- GitHub activity and team mentions, rendered by notification-center.ts. -->
-        <section id="notificationsView" class="view issues" hidden>
+        <section id="notificationsView" data-track-area="notifications" class="view issues" hidden>
           <div class="listmain">
             <div class="subbar tabbar itabs" id="ntabs" role="tablist"></div>
             <div class="subbar ibar" id="nbar"></div>
@@ -83,7 +83,7 @@
         </section>
 
         <!-- Archived workspaces, search and worktree cleanup, rendered by archived.ts. -->
-        <section id="archivedView" class="view issues" hidden>
+        <section id="archivedView" data-track-area="archived" class="view issues" hidden>
           <div class="listmain">
             <div class="subbar ibar" id="abar"></div>
             <div class="ilist" id="alist"></div>
@@ -91,14 +91,14 @@
         </section>
 
         <!-- App-level integration and preference settings, rendered by settings.ts. -->
-        <section id="settingsView" class="view settings" hidden></section>
+        <section id="settingsView" data-track-area="settings" class="view settings" hidden></section>
 
-        <section id="wsView" class="view wsview" hidden>
+        <section id="wsView" data-track-area="workspace" class="view wsview" hidden>
           <div class="center" id="wscenter">
-            <div class="subbar tabbar" id="tabbar"></div>
+            <div class="subbar tabbar" id="tabbar" data-track-area="workspace.tabs"></div>
             <div class="tabbody" id="tabbody">
             <!-- The conversation timeline and composer are created by chat.ts. -->
-            <div class="chatwrap" id="chatwrap">
+            <div class="chatwrap" id="chatwrap" data-track-area="workspace.chat">
               <!-- Show preparation progress or retained history after worktree cleanup. -->
               <div class="offline" id="offline" hidden>
                 <span class="offwave" id="offwave" hidden></span>
@@ -108,7 +108,7 @@
               </div>
             </div>
             <!-- All file diffs share one stacked scrolling view. -->
-            <div class="diffview" id="diffview" hidden>
+            <div class="diffview" id="diffview" data-track-area="git.diff" hidden>
               <div class="vbar">
                 <span class="vcrumb" id="dcrumb"></span>
                 <div id="dlayout" role="group" hidden></div>
@@ -122,11 +122,11 @@
             </div>
             <!-- The browser shares the center with the existing conversation and its draft. -->
             <div id="websplit" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="chatwrap" aria-valuemin="20" aria-valuemax="70" aria-valuenow="40" data-t-title="web.resize" hidden></div>
-            <div class="webview" id="webview" hidden>
+            <div class="webview" id="webview" data-track-area="preview" hidden>
               <div class="vbar">
                 <button id="wback" class="ico" data-t-title="web.back"></button>
                 <button id="wfwd" class="ico" data-t-title="web.fwd"></button>
-                <input class="wurl" id="wurl" type="text" spellcheck="false" autocomplete="off" data-t-title="web.url" />
+                <input class="wurl" id="wurl" data-track="preview.url" type="text" spellcheck="false" autocomplete="off" data-t-title="web.url" />
                 <span class="spacer"></span>
                 <button id="wreload" class="ico" data-t-title="web.reload"></button>
                 <button id="wext" class="ico" data-t-title="web.external"></button>
@@ -138,9 +138,9 @@
               <div id="webdetails" class="webdetails" hidden></div>
             </div>
             <!-- Free terminals occupy center tabs. Setup and Run remain in the side panel. -->
-            <div class="termview" id="termview" hidden><div id="shellterm"></div></div>
+            <div class="termview" id="termview" data-track-area="terminal" hidden><div id="shellterm"></div></div>
             <!-- Opening a file from the tree replaces the central conversation view. -->
-            <div class="viewer" id="viewer" hidden>
+            <div class="viewer" id="viewer" data-track-area="files.viewer" hidden>
               <div class="vbar" id="vbar">
                 <span class="vcrumb" id="vcrumb"></span>
                 <span class="spacer"></span>
@@ -161,7 +161,7 @@
                 <!-- Overlay syntax-highlighted pre content with a transparent-text editor that owns the
                      caret and selection. -->
                 <div class="vstack">
-                  <textarea id="vtext" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+                  <textarea id="vtext" data-track="files.editor" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
                   <!-- Find matches draw as transparent-text marks between the editor and the highlighted text. -->
                   <pre id="vmarks" aria-hidden="true"></pre>
                   <pre id="vpre"></pre>
@@ -173,34 +173,34 @@
             </div>
             </div>
           </div>
-          <aside class="side" id="side">
+          <aside class="side" id="side" data-track-area="workspace.side">
             <!-- Drag the left-edge handle to resize the panel. -->
             <div class="sideresize" id="sideresize"></div>
             <div class="sidetabs">
               <button id="tab-files" class="sidetab on" data-t="side.files"></button>
-              <button id="tab-diff" class="sidetab"><span data-t="side.changes"></span> <span id="diffcount"></span></button>
-              <button id="tab-comments" class="sidetab" hidden><span data-t="side.comments"></span> <span id="commentcount"></span></button>
+              <button id="tab-diff" data-track="git.changes.open" class="sidetab"><span data-t="side.changes"></span> <span id="diffcount"></span></button>
+              <button id="tab-comments" data-track="collaboration.comments.open" class="sidetab" hidden><span data-t="side.comments"></span> <span id="commentcount"></span></button>
               <span class="spacer"></span>
               <!-- Show the complete stacked review diff only when changes exist. -->
-              <button id="review" class="ghost sm" data-t-title="side.review.title" hidden></button>
+              <button id="review" data-track="review.open" class="ghost sm" data-t-title="side.review.title" hidden></button>
               <button id="collapse" class="ico" data-t-title="side.collapse"></button>
               <button id="reveal" class="ico" data-t-title="side.reveal"></button>
             </div>
             <div class="sidebody">
-              <div class="tree" id="tree"></div>
-              <div class="difflist" id="difflist" hidden></div>
-              <div class="comments" id="comments" hidden></div>
+              <div class="tree" id="tree" data-track-area="files.tree"></div>
+              <div class="difflist" id="difflist" data-track-area="git.files" hidden></div>
+              <div class="comments" id="comments" data-track-area="collaboration.comments" hidden></div>
             </div>
             <!-- Setup prepares the worktree and Run starts its project. Free terminals live in center
                  tabs; neither script is an agent session. -->
-            <div class="dock" id="dock">
+            <div class="dock" id="dock" data-track-area="dock">
               <div class="docktabs">
                 <button id="dock-toggle" class="ico" data-t-title="dock.collapse"></button>
                 <div class="dockstrip" id="dockstrip"></div>
                 <span class="spacer"></span>
-                <button id="run-open" hidden></button>
+                <button id="run-open" data-track="dock.run.open" hidden></button>
                 <div class="split" id="runsplit" hidden>
-                  <button id="run-go" class="md"></button>
+                  <button id="run-go" data-track="dock.run.toggle" class="md"></button>
                   <button id="run-pick" class="ico sm" data-t-title="dock.pick"></button>
                 </div>
                 <button id="dock-again" class="ico" data-t-title="dock.again" hidden></button>
@@ -225,7 +225,7 @@
 
     <!-- The full-width global status bar shows account quotas and machine resources, independently of
          the selected workspace. -->
-    <footer class="status" id="status"></footer>
+    <footer class="status" id="status" data-track-area="status"></footer>
 
     <div class="veil" id="veil" hidden></div>
     <script type="module" src="/src/main.ts"></script>

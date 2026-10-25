@@ -1,92 +1,112 @@
-# ADR 0093 — Anonymous product analytics in PostHog
+# ADR 0093 — Product analytics in PostHog
 
 Date: 2026-10-23
 Status: Accepted
 
 ## Context
 
-We do not know which features people use. The local telemetry in
-[ADR 0059](0059-local-telemetry-foundation.md) measures execution (turns, usage,
-time, PRs) and never leaves the machine. Product questions need a different
-dataset: feature events from many installations, with funnels and retention, in
-the style of Mixpanel or PostHog. Three constraints are fixed: the data is
-anonymous, transport is secure, and no customer data (code, prompts, paths,
-names, output) is sent.
+Product decisions need evidence about feature adoption and repeated use. Local
+[execution telemetry](0059-local-telemetry-foundation.md) answers operational
+questions and stays on the machine. Clicks inferred from translated labels can
+have a null target or identify the wrong feature; a click also cannot establish
+that the corresponding operation happened.
+
+The product needs both named interactions and feature-use events. Customer
+content must not be collected. The [contract](../contracts/product-analytics.md)
+contains the tracking plan and delivery rules; the
+[coverage map](../quality/product-analytics-coverage.md) inventories modules.
 
 ## Options considered
 
-1. **Reuse the local telemetry store and sync it.** It is already typed, but its
-   events carry per-turn measurements and opaque workspace identities designed for
-   local insight. Uploading it would widen ADR 0059's privacy boundary.
-2. **Daily aggregated counters to our own Worker.** The most private option, but
-   counters without an installation identity cannot answer funnel or retention
-   questions.
-3. **Aptabase.** Anonymous by design, but its dashboards do not offer
-   PostHog-level funnels and cohorts.
-4. **PostHog Cloud with events sent from Rust.** Funnels, retention and
-   dashboards without operating infrastructure.
+1. **Upload local telemetry.** It contains execution detail and local identities
+   intended for private analysis. Uploading would widen its privacy boundary and
+   would not directly answer which UI features are used.
+2. **Send daily aggregate counters to our Worker.** This offers less individual
+   linkage but cannot support installation-level recurrence and funnels.
+3. **Use a minimal analytics service.** This reduces setup but limits cohort and
+   exploration capabilities needed for feature decisions.
+4. **Send a closed vocabulary from Rust to PostHog.** This supports product
+   analysis without operating another service or exposing the webview DOM.
 
 ## Decision
 
-Use option 4. The [contract](../contracts/product-analytics.md) lists the events
-and payload. The core choices are:
+Use option 4, with two categories of evidence:
 
-- Rust owns the vocabulary: `analytics::Event` is a closed enum. The webview
-  calls `analytics_track` with a typed event; anything outside the enum fails to
-  deserialize. Fields are closed enums, booleans or identifier tokens whose shape
-  (ASCII letters, digits, `.`, `_`, `-`) cannot hold a sentence, path or URL.
-- Clicks are captured generically, not one event per feature. One listener in
-  the webview records every click on a control as the i18n key of its label and
-  the static `index.html` region around it. A label becomes a key only by
-  exactly matching a catalog translation, so visible text never leaves; new UI is
-  covered without annotation. A few typed events cover outcomes a click cannot
-  show, such as a workspace actually being created, plus screen views. Names
-  follow one `object_verb` convention and the contract is the tracking plan;
-  readable names for specific clicks are PostHog Actions, not new events.
-- Events leave from Rust over HTTPS to the PostHog US ingestion host, where the
-  project lives. No PostHog JavaScript SDK runs in the webview: its autocapture
-  sends element text, and session replay and heatmaps read the DOM, which holds
-  code and prompts.
-- Identity is a random UUID per installation in `<root>/analytics-id`, unrelated
-  to accounts, devices, paths or the local telemetry identities. Events set
-  `$process_person_profile: false` and `$geoip_disable: true`. The PostHog project
-  must also discard client IP addresses.
-- The layer is decoupled: callers emit one fire-and-forget `track` call, which
-  never blocks or fails a feature. A single background thread batches events in
-  5-second windows and posts them. Failed deliveries are dropped without retry.
-- Only builds compiled with `PROMETEU_POSTHOG_KEY` send events. Development,
-  tests, forks and local builds send nothing. Release CI supplies the key from a
-  repository variable; a PostHog project key is write-only and public by design.
-- Tracking requires explicit opt-in in Settings / General / Privacy. New and
-  existing installations default to off; a pre-existing installation ID is not
-  consent. Rust persists the choice and enforces it before queuing and before
-  delivery. Disabling also invalidates pending events across later opt-ins;
-  already-started HTTP requests cannot be recalled. A delivery gate serializes
-  dispatch and consent changes through HTTP completion; saving may wait up to
-  the request timeout on a background thread, while event capture stays independent
-  of that gate. This trades immediate save completion for a guarantee that stale
-  batches cannot start after disabling succeeds. Local telemetry is independent.
+- **Named control activations:** one `ui_clicked` vocabulary with required,
+  authored `target` and `area`. Use explicit tracking metadata or explicit i18n
+  key metadata; never infer a key from translated text. Menus and dialogs carry
+  the original area into their portals. A repeated row identifies the action,
+  not the customer's item. Owned native-menu callbacks share the same model.
+- **Feature use:** typed events emitted from explicit application operations,
+  independent of the button that starts them. Successful mutations are observed
+  at the native use case; presentations record explicit opening, selection and
+  copying where those actions are owned. Shared keyboard, paste/drop, remote and
+  MCP paths are covered where applicable. Configuration and execution remain
+  different facts. No product event observes model turn completion or uploads
+  local execution telemetry.
+
+Rust validates the event vocabulary and closed fields before delivery.
+TypeScript types and shared test fixtures protect parity. Control identifiers
+have a restrictive token shape; no prompts, code, filenames, paths, URLs, user
+names, search text, commands, output or error strings are allowed. Shared UI
+components carry metadata but do not import app controllers, analytics or IPC.
+
+A [generated source catalog](../contracts/product-analytics-catalog.json) records
+control identities, source locations, composed expressions and feature event
+schemas. Runtime checks inspect controls even before a click. Unidentified
+controls produce local diagnostics and no analytics event. Coverage checks must
+fix these gaps rather than replacing them with `unknown` or claiming complete
+coverage from an empty null bucket. Disabled controls are ineligible until
+activated; hidden but enabled controls are still checked.
+
+Events leave through HTTPS to the US PostHog project. There is no PostHog JS SDK,
+session replay, heatmap or DOM upload. A UUID stored in `<root>/analytics-id`
+identifies an installation, independently of accounts and local telemetry IDs.
+Person profiles and geolocation are disabled; the project must discard client
+IP data. This is pseudonymous metadata, not an identified-user dataset.
+
+Tracking is fire-and-forget and cannot fail a feature. One thread collects
+five-second batches; failed requests and pending shutdown batches are dropped.
+There is no retry or offline queue. Only opted-in builds compiled with a nonempty
+`PROMETEU_POSTHOG_KEY` send events. Windows/WSL, mobile and the browser mock do not
+have a product-event transport in this delivery.
+
+Version 2 adds explicit feature events, fixed `analytics_version: 2`, and a
+monotonic top-level `offset` so PostHog preserves spacing within a batch without
+trusting the client clock. Network delay still shifts absolute time. Existing
+lifecycle/navigation meanings remain; old click series with null or inferred
+identities are historical data, not backfilled into the new catalog.
+
+Tracking requires explicit opt-in in Settings / General / Privacy. New and
+existing installations default to off; a pre-existing installation ID is not
+consent. Rust persists the choice and enforces it before queuing and before
+delivery. Disabling also invalidates pending events across later opt-ins;
+already-started HTTP requests cannot be recalled. A delivery gate serializes
+dispatch and consent changes through HTTP completion; saving may wait up to
+the request timeout on a background thread, while event capture stays independent
+of that gate. This trades immediate save completion for a guarantee that stale
+batches cannot start after disabling succeeds. The local telemetry store and
+its deletion semantics remain independent.
 
 ## Consequences
 
-PostHog becomes an external recipient of product metadata. The installation ID
-makes events pseudonymous, not strictly anonymous: events from the same
-installation can be linked to each other, though not to a person. Keeping
-properties to identifiers we author is what keeps that link harmless; every new
-event goes through the contract and review.
+The team can distinguish finding/activating a control from actually using its
+feature. Stable identities require explicit maintenance when actions or surfaces
+change, and catalog checks become part of contribution validation. The source
+catalog does not prove every dynamic state has been exercised; runtime and
+feature tests remain necessary.
 
-Generic clicks multiply volume. PostHog's free tier allows one million events a
-month, so heavy use from a few hundred installations can exceed it; the project
-needs a billing limit. Clicks show intent, not success, and controls whose label
-is dynamic (workspace rows, file names, parameterized text) arrive with only
-their region.
+Granularity has a cost. New events need a product question, exact trigger,
+allowed properties, eligible audience, coverage and verification. Prefer
+properties for variants of one operation and avoid recording polling, every
+keystroke, every resize pixel or streams. Do not sum clicks and feature events
+as unique operations, or treat app starts as daily activity.
 
-There is no offline queue, so coverage drops while offline or when PostHog is
-unreachable. The Windows WSL runtime does not implement `analytics_track`, so
-native Windows builds send no events in this delivery. The browser mock ignores
-events.
-
-The local telemetry of ADR 0059 is unchanged and remains local.
+Low observed use is not sufficient to remove a feature. Check availability,
+discovery, recurrence, concentrated use, unsupported shells and delivery loss,
+then gather qualitative context. Existing PostHog dashboard titles were corrected
+without changing their queries; adoption dashboards require released events and
+verified ingestion.
 
 Opt-in reduces coverage and introduces selection bias, but gives people control
 over external product tracking. The preference belongs in the backend so startup
@@ -96,16 +116,15 @@ and surfaces an error instead of claiming success.
 
 ## Evidence
 
-- [Vocabulary, payload and delivery](../../src-tauri/src/analytics.rs), with tests
-  for the payload's key allowlist, rejection of unknown events, normalization of
-  unknown provider text and rejection of non-identifier click tokens.
+- [Typed native vocabulary and payload tests](../../src-tauri/src/analytics.rs),
+  [feature schema parity](../../src/analytics-events.test.ts), and
+  [shared fixtures](../../src-tauri/tests/fixtures/product-analytics.json).
 - Consent persistence and pending batch invalidation are tested in
   [`analytics.rs`](../../src-tauri/src/analytics.rs); Settings saves and failure
   recovery are covered by [`analytics-settings.test.ts`](../../src/analytics-settings.test.ts).
-- [Click and screen capture](../../src/analytics.ts), with
-  [tests](../../src/analytics.test.ts) that only catalog keys become targets,
-  and the typed command in [`src/ipc.ts`](../../src/ipc.ts); the existing IPC
-  parity test checks native registration and the browser handler.
-- Call sites: app start in [`main.rs`](../../src-tauri/src/main.rs), workspace and
-  conversation creation in [`session.rs`](../../src-tauri/src/session.rs), and
-  click capture and screen changes in [`src/main.ts`](../../src/main.ts).
+- [Click capture and diagnostics](../../src/analytics.ts),
+  [capture tests](../../src/analytics.test.ts), and
+  [real DOM/portal checks](../../scripts/check-analytics.mjs).
+- [Catalog generator](../../scripts/analytics-catalog.mjs) and its
+  [extraction/staleness test](../../scripts/analytics-catalog.test.mjs).
+- Feature tests and observation boundaries listed in the coverage map.

@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as actions from "./actions";
 import { descriptor, modelLabelOf, onCatalogChange } from "./agents";
 import { effortStep, fitsEffort, modelLabel } from "./model-choice";
@@ -12,12 +13,12 @@ import { h } from "./util";
 import * as ui from "./ui";
 
 let scope = "";
-const button = (key: Key, run: () => void) => ui.button(t(key), run);
-const field = (key: Key, control: HTMLElement) => ui.field(t(key), control);
-const checkbox = (key: Key, checked: boolean) => ui.checkbox(t(key), checked);
+const button = (key: Key, run: () => void) => ui.button(t(key), run, undefined, key);
+const field = (key: Key, control: HTMLElement) => ui.field(t(key), control, undefined, key);
+const checkbox = (key: Key, checked: boolean) => ui.checkbox(t(key), checked, key);
 const { input, select } = ui;
 function more(name: string, items: menu.Item[], key = name) {
-  return overflowAction({ label: `${t("actions.more")} · ${name}`, key: `action-more-${key}`, items });
+  return overflowAction({ track: "actions.more", label: `${t("actions.more")} · ${name}`, key: `action-more-${key}`, items });
 }
 function section(title: Key, count: number, controls: HTMLElement[]) {
   const root = h("section", "action-section");
@@ -25,7 +26,7 @@ function section(title: Key, count: number, controls: HTMLElement[]) {
   return root;
 }
 function card(key: string, title: string, description: string, glyph: IconName, edit: () => void, options: menu.Item[]) {
-  const editButton = ui.button(t("actions.edit"), edit, "ghost"); editButton.classList.add("action-edit");
+  const editButton = ui.button(t("actions.edit"), edit, "ghost", "actions.edit"); editButton.classList.add("action-edit");
   editButton.dataset.focus = `action-edit-${key}`;
   const row = itemRow({ title, description, glyph, actions: [editButton, more(title, options, key)] });
   row.root.classList.add("action-card");
@@ -34,7 +35,7 @@ function card(key: string, title: string, description: string, glyph: IconName, 
 
 export function settingsRows(redraw: () => void, say: (text: string, bad?: boolean) => void): HTMLElement[] {
   const catalog = actions.catalog();
-  const commit = (next: actions.Catalog) => { void actions.save(next).then(redraw).catch(e => say(fromBack(e), true)); };
+  const commit = (next: actions.Catalog, kind: "command" | "profile" | "project" | "pr_action", action: "save" | "remove") => { void actions.save(next).then(() => { track({ name: "action_configuration_changed", kind, action }); redraw(); }).catch(e => say(fromBack(e), true)); };
   const root = h("div", "actions-page");
   root.append(h("p", "actions-intro", t("actions.intro")));
   const create = button("actions.newCommand", () => commandEditor(null, redraw));
@@ -46,10 +47,10 @@ export function settingsRows(redraw: () => void, say: (text: string, bad?: boole
     const item = card(`command-${action.name}`, action.kind === "agent" ? profile?.name ?? action.name : action.name,
       action.description || t(builtin ? "actions.reviewDescription" : action.kind === "agent" ? "actions.agentDescription" : "actions.promptDescription"),
       action.kind === "agent" ? "sparkles" : "terminal", () => commandEditor(action, redraw), [{
-        label: t("actions.remove"), run: () => {
+        track: "actions.remove", label: t("actions.remove"), run: () => {
           const next = structuredClone(catalog); next.commands = next.commands.filter(c => c.name !== action.name);
           if (next.pr_action === action.name) next.pr_action = null;
-          commit(next);
+          commit(next, "command", "remove");
         },
       }]);
     item.root.classList.add("action-command");
@@ -64,7 +65,7 @@ export function settingsRows(redraw: () => void, say: (text: string, bad?: boole
   scopeSelect.onchange = () => { scope = scopeSelect.value; redraw(); };
   const scopeField = field("actions.scope", scopeSelect.control); scopeField.classList.add("action-scope");
   const newAgent = button("actions.newProfile", () => profileEditor(null, "", redraw));
-  const templates = more(t("actions.profiles"), [{ label: t("actions.deliveryName"), run: () => delivery(redraw, say) }]);
+  const templates = more(t("actions.profiles"), [{ track: "actions.delivery_template", label: t("actions.deliveryName"), run: () => delivery(redraw, say) }]);
   const profiles = section("actions.profiles", catalog.profiles.length, [scopeField, newAgent, templates]);
   const profileList = h("div", "action-list");
   for (const base of catalog.profiles) {
@@ -73,7 +74,7 @@ export function settingsRows(redraw: () => void, say: (text: string, bad?: boole
     const model = profile.choice.model ? modelLabelOf(profile.choice.model, profile.choice.agent) : t("actions.default");
     const item = card(`profile-${base.id}`, profile.name, `${descriptor(profile.choice.agent).label} · ${model}`,
       "eye", () => profileEditor(profile, scope, redraw), [{
-        label: t(scope ? "actions.reset" : "actions.remove"), disabled: !!scope && !overridden,
+        track: "actions.profile.remove", label: t(scope ? "actions.reset" : "actions.remove"), disabled: !!scope && !overridden,
         run: () => {
           const next = structuredClone(catalog);
           if (scope) delete next.overrides[scope]?.[base.id];
@@ -82,7 +83,7 @@ export function settingsRows(redraw: () => void, say: (text: string, bad?: boole
             next.profiles = next.profiles.filter(p => p.id !== base.id);
             for (const overrides of Object.values(next.overrides)) delete overrides[base.id];
           }
-          commit(next);
+          commit(next, scope ? "project" : "profile", "remove");
         },
       }]);
     item.root.classList.add("action-profile");
@@ -94,20 +95,21 @@ export function settingsRows(redraw: () => void, say: (text: string, bad?: boole
   profiles.append(profileList);
 
   const pr = select(catalog.pr_action ?? "", [["", t("actions.prLegacy")], ...catalog.commands.filter(c => c.kind === "agent").map(c => [c.name, `/${c.name}`] as [string, string])]);
-  pr.onchange = () => commit({ ...catalog, pr_action: pr.value || null });
+  pr.onchange = () => commit({ ...catalog, pr_action: pr.value || null }, "pr_action", "save");
   const shortcut = ui.disclosure(t("actions.prButton"));
   shortcut.classList.add("action-pr");
   const summary = shortcut.querySelector("summary")!;
+  summary.dataset.track = "actions.pr_settings";
   summary.append(h("span", "action-caption", catalog.pr_action ? `/${catalog.pr_action}` : t("actions.prLegacy")));
   shortcut.append(field("actions.prAction", pr.control));
   root.append(commands, profiles, shortcut);
   return [root];
 }
 
-function sheet(title: string, build: (body: HTMLElement) => () => actions.Catalog, redraw: () => void) {
-  const dialog = ui.formDialog({
+function sheet(kind: "command" | "profile" | "project", title: string, build: (body: HTMLElement) => () => actions.Catalog, redraw: () => void) {
+  const dialog = ui.formDialog({ track: "actions.editor", area: "actions",
     title, save: t("actions.save"), cancel: t("actions.cancel"), error: fromBack,
-    submit: async () => { await actions.save(get()); redraw(); },
+    submit: async () => { await actions.save(get()); track({ name: "action_configuration_changed", kind, action: "save" }); redraw(); },
   });
   const get = build(dialog.body);
   dialog.open();
@@ -119,7 +121,7 @@ function selection(key: Key, values: string[] | null, available: string[]) {
   const list = document.createElement("fieldset");
   list.className = "action-tool-list"; list.setAttribute("aria-label", t(key));
   const choices = [...new Set([...available, ...(values ?? [])])].map(id => {
-    const { label, control: checked } = ui.checkbox(id, !!values?.includes(id));
+    const { label, control: checked } = ui.checkbox(id, !!values?.includes(id), "actions.tool.select");
     list.append(label);
     return { id, checked };
   });
@@ -135,7 +137,7 @@ function profileEditor(old: actions.Profile | null, project: string, redraw: () 
     id: crypto.randomUUID(), name: "", prompt: "", choice: { agent: "claude", model: "", effort: "" },
     mcp: null, plugins: null, skills: [], permission: "ask",
   });
-  sheet(t("actions.profileEditor"), body => {
+  sheet(project ? "project" : "profile", t("actions.profileEditor"), body => {
     const name = input(profile.name); name.required = true;
     const prompt = input(profile.prompt, true); prompt.required = true;
     const choice = { ...profile.choice };
@@ -172,6 +174,7 @@ function profileEditor(old: actions.Profile | null, project: string, redraw: () 
     const models = h("div", "ui-columns");
     models.append(field("actions.model", model), effortField);
     const tools = ui.disclosure(t("actions.tools"));
+    tools.querySelector("summary")!.dataset.track = "actions.tools";
     tools.toggleAttribute("open", !!profile.mcp?.length || !!profile.plugins?.length || !!profile.skills.length);
     tools.append(servers.root, packages.root,
       field("actions.skills", skills), h("p", "ui-hint", t("actions.skillsHint")));
@@ -192,7 +195,7 @@ function profileEditor(old: actions.Profile | null, project: string, redraw: () 
 }
 
 function commandEditor(old: actions.Action | null, redraw: () => void) {
-  sheet(t("actions.commandEditor"), body => {
+  sheet("command", t("actions.commandEditor"), body => {
     const name = input(old?.name ?? ""); name.required = true;
     if (name instanceof HTMLInputElement) name.pattern = "[a-z0-9-]{1,64}";
     const description = input(old?.description ?? "");
@@ -229,5 +232,5 @@ function delivery(redraw: () => void, say: (text: string, bad?: boolean) => void
   const id = crypto.randomUUID();
   next.profiles.push({ id, name: t("actions.deliveryName"), prompt: t("actions.deliveryPrompt"), choice: { agent: "claude", model: "", effort: "" }, mcp: null, plugins: null, skills: [], permission: "ask" });
   next.commands.push({ name: "entregar", description: t("actions.deliveryName"), kind: "agent", profile: id, prompt: t("actions.deliveryStart") });
-  void actions.save(next).then(redraw).catch(e => say(fromBack(e), true));
+  void actions.save(next).then(() => { track({ name: "action_configuration_changed", kind: "profile", action: "save" }); track({ name: "action_configuration_changed", kind: "command", action: "save" }); redraw(); }).catch(e => say(fromBack(e), true));
 }

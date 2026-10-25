@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { icon } from "./icons";
 import { fromBack, t } from "./i18n";
 import { invoke } from "./ipc";
@@ -40,6 +41,7 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
   function save() {
     try {
       savePreferences(preferences);
+      track({ name: "preference_changed", setting: "notifications" });
       syncIsland();
       feedback.textContent = t("notifications.saved");
       void invoke("notification_dismiss").catch(fail);
@@ -47,7 +49,7 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
     paint();
   }
 
-  const enabled = toggle(t("notifications.enabled"), preferences.enabled);
+  const enabled = toggle(t("notifications.enabled"), preferences.enabled, "notifications.enabled");
   enabled.label.classList.add("notification-master");
   const masterCopy = enabled.label.querySelector("span")!;
   masterCopy.append(h("small", "", t("notifications.enabledHint")));
@@ -65,7 +67,7 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
   };
   const events = section(t("notifications.events"));
   const eventControls = (["approval", "done", "error", "github"] as const).map(kind => {
-    const item = toggle(t(`notifications.${kind}`), preferences[kind]);
+    const item = toggle(t(`notifications.${kind}`), preferences[kind], `notifications.${kind}`);
     item.label.classList.add("notification-row", kind);
     item.label.querySelector("span")!.append(h("small", "", t(`notifications.${kind}Hint`)));
     item.control.onchange = () => { preferences[kind] = item.control.checked; save(); };
@@ -77,7 +79,7 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
   choices.setAttribute("role", "radiogroup");
   choices.setAttribute("aria-label", t("notifications.style"));
   const styleControls = (["banner", "notch", "none"] as const).map(style => {
-    const choice = radio(t(`notifications.${style}`), "notification-style", style, preferences.style === style);
+    const choice = radio(t(`notifications.${style}`), "notification-style", style, preferences.style === style, `notifications.style.${style}`);
     choice.label.classList.add("notification-style");
     const screen = h("div", `notification-mini ${style}`);
     screen.setAttribute("aria-hidden", "true");
@@ -93,16 +95,18 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
   styles.append(choices);
   const sounds = h("section", "notification-section");
   controls.append(sounds);
-  const sound = toggle(t("notifications.sound"), preferences.sound);
+  const sound = toggle(t("notifications.sound"), preferences.sound, "notifications.sound");
   sound.label.classList.add("notification-row");
   sound.label.querySelector("span")!.append(h("small", "", t("notifications.soundHint")));
   sound.control.onchange = () => { preferences.sound = sound.control.checked; save(); };
   const tone = select(preferences.tone, (["soft", "digital", "bell"] as const).map(key => [key, t(`notifications.${key}`)]));
+  tone.control.dataset.track = "notifications.tone";
   tone.onchange = () => { preferences.tone = tone.value as NoticeTone; save(); };
   const listen = button(t("notifications.listen"), () => {
     listen.disabled = true;
     void invoke("notification_sound", { tone: preferences.tone }).catch(fail).finally(() => paint());
   });
+  listen.dataset.track = "notifications.listen";
   const soundControls = h("div", "notification-sound-controls");
   soundControls.append(field(t("notifications.tone"), tone.root), listen);
   sounds.append(sound.label, soundControls);
@@ -124,6 +128,7 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
   const previewBody = h("div", "notification-preview-body");
   const description = h("p", "ui-hint");
   const event = select(example, (["approval", "done", "error"] as const).map(key => [key, t(`notifications.${key}`)]));
+  event.control.dataset.track = "notifications.example";
   event.onchange = () => { example = event.value as NoticeKind; paint(); };
   const test = button(t("notifications.test"), () => {
     test.disabled = true;
@@ -131,10 +136,12 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
       .then(() => { feedback.textContent = t("notifications.testSent"); })
       .catch(fail).finally(() => paint());
   }, "pri");
+  test.dataset.track = "notifications.test";
   const warning = h("div", "notification-permission");
   warning.setAttribute("role", "status");
   const warningText = h("p", "ui-hint");
   const allow = button(t("notifications.allow"), () => { void requestPermission(); });
+  allow.dataset.track = "notifications.allow";
   warning.append(warningText, allow);
   enabled.label.after(warning);
   previewBody.append(description, field(t("notifications.example"), event.root), test,
@@ -145,6 +152,7 @@ export function settings(say: (text: string, error?: boolean) => void, compact =
   if (compact) {
     root.classList.add("compact");
     const details = disclosure(t("settings.notificationDetails"), layout);
+    details.querySelector("summary")!.dataset.track = "notifications.details";
     details.dataset.settingsDisclosure = "notifications";
     root.append(enabled.label, warning, details, feedback);
   } else root.append(intro, layout);

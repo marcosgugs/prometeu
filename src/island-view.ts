@@ -51,6 +51,7 @@ export function redraw(host: HTMLElement, build: () => HTMLElement) {
 /// Native overlay and browser mock render the same escaped content.
 export function islandView(snapshot: IslandSnapshot, layout: IslandLayout, notice: Notice | null, actions: IslandActions) {
   const root = h("div", "island");
+  root.dataset.trackArea = "island";
   root.dataset.expanded = String(layout.expanded);
   root.style.setProperty("--island-top", `${layout.top}px`);
   const tones = new Set(snapshot.tabs.map(toneOf));
@@ -67,7 +68,7 @@ export function islandView(snapshot: IslandSnapshot, layout: IslandLayout, notic
   if (snapshot.usage.length) body.append(usage(snapshot.usage));
   // A notice about a conversation highlights its row; only notices without one need their own line.
   if (notice && !notice.tab) {
-    const line = button("", actions.noticeOpen, "ghost");
+    const line = button("", actions.noticeOpen, "ghost", "island.notice.open");
     line.classList.add("island-notice");
     line.append(flame("run"), h("strong", "", notice.title), h("span", "", notice.body));
     body.append(line);
@@ -103,7 +104,7 @@ function row(tab: IslandTab, actions: IslandActions, focus: boolean) {
   const tone = toneOf(tab);
   const detailed = tone !== "idle" || focus;
   const item = h("div", `island-row ${tone}${detailed ? " detailed" : ""}${focus ? " focus" : ""}`);
-  const open = button("", () => actions.open(tab.id), "ghost");
+  const open = button("", () => actions.open(tab.id), "ghost", "island.workspace.open");
   open.classList.add("island-open");
   const copy = h("span", "island-copy");
   const head = h("span", "island-head");
@@ -189,8 +190,8 @@ function approval(panel: HTMLElement, request: IslandRequest, respond: (response
   if (removed.length || added.length) panel.append(h("small", "island-stat", `+${added.length} −${removed.length}`));
   const choices = h("div", "island-actions");
   choices.append(
-    plan ? button(t("island.openApp"), open) : button(t("chat.perm.no"), () => respond({ outcome: "deny", message: t("chat.perm.denied") })),
-    button(t(plan ? "island.approve" : "chat.perm.yes"), () => respond({ outcome: "allow" }), "pri"),
+    plan ? button(t("island.openApp"), open, undefined, "island.open_app") : button(t("chat.perm.no"), () => respond({ outcome: "deny", message: t("chat.perm.denied") }), undefined, "island.permission.deny"),
+    button(t(plan ? "island.approve" : "chat.perm.yes"), () => respond({ outcome: "allow" }), "pri", "island.permission.allow"),
   );
   panel.append(choices);
 }
@@ -206,11 +207,11 @@ function question(panel: HTMLElement, tab: IslandTab, request: IslandRequest, re
     const current = questions[index];
     panel.replaceChildren(label(t("island.asks", { agent: t(`model.${tab.agent}`) }), questions.length > 1 ? `${index + 1}/${questions.length}` : ""));
     if (!current) {
-      panel.append(button(t("island.openApp"), open));
+      panel.append(button(t("island.openApp"), open, undefined, "island.open_app"));
       return;
     }
     const picked = new Set<string>();
-    const other = input();
+    const other = input("", false, "island.answer.other");
     other.classList.add("island-other");
     other.placeholder = t("chat.ask.other");
     const answer = () => {
@@ -230,6 +231,7 @@ function question(panel: HTMLElement, tab: IslandTab, request: IslandRequest, re
         if (!picked.delete(option.label)) picked.add(option.label);
         choice.classList.toggle("on", picked.has(option.label));
       }, "ghost");
+      choice.dataset.track = "island.answer.option";
       choice.classList.add("island-option");
       choice.append(h("kbd", "", String(i + 1)), h("b", "", option.label));
       if (option.description) choice.append(h("small", "", option.description));
@@ -240,7 +242,7 @@ function question(panel: HTMLElement, tab: IslandTab, request: IslandRequest, re
     });
     panel.append(h("p", "island-question", current.question), options, other);
     if (current.multiSelect) {
-      const send = button(t("chat.ask.go"), answer, "pri");
+      const send = button(t("chat.ask.go"), answer, "pri", "island.answer.submit");
       send.classList.add("island-send");
       panel.append(send);
     }

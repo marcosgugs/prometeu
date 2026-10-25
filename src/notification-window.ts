@@ -1,3 +1,4 @@
+import { track, trackClicks, trackRequestResponse } from "./analytics";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "./ipc";
 import type { IslandSnapshot } from "./island";
@@ -7,15 +8,23 @@ import "./ui.css";
 import "./notifications.css";
 
 /// The notch overlay renders the main window's island snapshot and answers requests directly.
+document.body.dataset.trackArea = "island";
+trackClicks();
+
 let snapshot: IslandSnapshot = { tabs: [], usage: [] };
 let layout: IslandLayout = { expanded: false, top: 32 };
 let notice: Notice | null = null;
-const open = (tab: string) => void invoke("island_open", { tab }).catch(console.error);
-const panels = requestPanels((session, frame) => invoke("chat_control", { session, frame }), open);
+const open = (tab: string) => void invoke("island_open", { tab }).then(() => track({ name: "notification_action_used", source: "island", action: "open_workspace" })).catch(console.error);
+const panels = requestPanels((session, frame) => invoke("chat_control", { session, frame }).then(() => {
+  if (frame.type === "request.respond") {
+    trackRequestResponse(frame.response.outcome);
+    track({ name: "notification_action_used", source: "island", action: "answer" });
+  }
+}), open);
 const actions = {
   open,
   panel: panels.panel,
-  noticeOpen: () => void invoke("notification_open").catch(console.error),
+  noticeOpen: () => void invoke("notification_open").then(() => track({ name: "notification_action_used", source: "island", action: "open" })).catch(console.error),
 };
 
 function draw() {

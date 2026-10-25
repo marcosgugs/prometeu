@@ -72,6 +72,19 @@ gallery's confirmation demonstrates this initial state; tests cover it in
 An opener replaced during a background refresh keeps focus restoration through
 its stable `id` or `data-focus` key.
 
+## Interaction metadata
+
+Desktop consumers supply stable control identities through `data-track` or the
+optional `track` arguments/options on existing controls. `identifyControl` and
+`identifyArea` only set metadata. Menus, dialogs and searchable pickers preserve
+the opener's explicit area, including when rendered in a portal. Each action in
+a menu has its own `track`; changing visible text never determines identity.
+
+The shared package has no analytics transport or app dependency. Desktop capture
+and coverage checks live outside it; see the
+[product analytics contract](../contracts/product-analytics.md). Existing callers
+without tracking options retain their behavior.
+
 ## Adoption
 
 The command and agent editors in Actions use the shared fields, selectors,

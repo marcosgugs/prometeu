@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator } from "./fixtures";
 import type { Board, Choice } from "../src/types";
 
 type ComposerWindow = Window & {

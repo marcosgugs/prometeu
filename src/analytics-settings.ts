@@ -13,11 +13,12 @@ export async function loadAnalytics() {
 
 export function analyticsRow(say: (text: string, isError?: boolean) => void, redraw: () => void): HTMLElement {
   const row = h("div", "setrow");
+  row.dataset.trackArea = "settings.privacy";
   const copy = h("div", "txt");
   const hint = h("span", "", t(enabled === null ? "analytics.unavailable" : "analytics.description"));
   hint.id = "analytics-description";
   copy.append(h("b", "", t("analytics.title")), hint);
-  const choice = toggle(t("analytics.enabled"), enabled === true);
+  const choice = toggle(t("analytics.enabled"), enabled === true, "settings.analytics.enabled");
   choice.control.dataset.focus = "analytics-enabled";
   choice.control.setAttribute("aria-describedby", hint.id);
   choice.control.disabled = enabled === null || busy;

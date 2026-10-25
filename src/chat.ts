@@ -1,3 +1,4 @@
+import { track, trackRequestResponse } from "./analytics";
 import { reviewContextChip } from "./components/chat/review-context";
 import { mergeReviewDraft, type ReviewDraft } from "./review-comments";
 import { encodeReviewContext, reviewContext } from "./review-context";
@@ -113,6 +114,7 @@ export function attachReview(tab: string, draft: ReviewDraft) {
   const merged = mergeReviewDraft(drafts.reviews.get(tab), draft);
   encodeReviewContext(reviewContext(merged));
   drafts.reviews.set(tab, merged); draftChanged(tab);
+  track({ name: "context_attached" });
 }
 
 export class ChatView {
@@ -156,6 +158,7 @@ export class ChatView {
 
   open(host: HTMLElement, ctx: Ctx) {
     this.ctx = ctx;
+    if (!host.closest("[data-track-area]")) host.dataset.trackArea = "conversation";
     this.disposed = false;
     this.feed = h("div", "feed");
     this.notices = h("div", "chat-notices");
@@ -368,6 +371,7 @@ export class ChatView {
     const key = this.key;
     return context => {
       drafts.contexts.set(key, [...(drafts.contexts.get(key) ?? []), context]);
+      track({ name: "context_attached" });
       draftChanged(key);
       if (!this.disposed && this.key === key) this.area.focus();
     };
@@ -380,8 +384,10 @@ export class ChatView {
     return {
       put: (paths) => {
         const files = (drafts.files.get(key) ?? []).slice();
+        const before = files.length;
         for (const path of paths) if (path && !files.includes(path)) files.push(path);
         drafts.files.set(key, files);
+        if (files.length > before) track({ name: "attachment_added" });
         draftChanged(key);
         if (!this.disposed && this.key === key && this.box.getClientRects().length) this.area.focus();
       },
@@ -562,17 +568,19 @@ export class ChatView {
       this.paintCommentAction(old, piece);
       return;
     }
-    const meta = template("div", "meta", `<span class="took"></span><button class="ico sm cp"></button><button class="ghost sm cm"></button>`);
+    const meta = template("div", "meta", `<span class="took"></span><button class="ico sm cp"></button><button class="ghost sm cm" data-track="notes.comment.turn"></button>`);
     paint(meta);
     const cp = meta.querySelector<HTMLButtonElement>(".cp")!;
     cp.innerHTML = icon("copy", 13);
     cp.title = t("chat.copy");
+    cp.dataset.track = "chat.copy";
     cp.addEventListener("click", async () => {
       const at = this.blockAt(piece);
       if (at?.block.kind !== "text") return;
       cp.disabled = true;
       try {
         await navigator.clipboard.writeText(at.block.text);
+        track({ name: "output_copied", kind: "message" });
         cp.innerHTML = icon("check", 13);
         setTimeout(() => (cp.innerHTML = icon("copy", 13)), 1200);
       } catch {
@@ -593,6 +601,7 @@ export class ChatView {
     button.innerHTML = `${icon("message-square", 12)}<span></span>`;
     button.querySelector("span")!.textContent = t("notes.comment");
     button.title = t("notes.comment.turn");
+    button.dataset.track = "notes.comment.turn";
     button.onclick = () => {
       const at = this.blockAt(piece);
       const quote = at?.block.kind === "text" ? at.block.text : null;
@@ -738,7 +747,9 @@ export class ChatView {
   }
 
   private respond(ask: Ask, response: RequestResponse) {
-    this.control({ v: 1, type: "request.respond", requestId: ask.id, response });
+    void this.control({ v: 1, type: "request.respond", requestId: ask.id, response }).then(sent => {
+      if (sent) trackRequestResponse(response.outcome);
+    });
     this.sync(new Set(this.tl.answer(ask.id)));
     this.paintComposer();
   }
@@ -811,6 +822,7 @@ export class ChatView {
     const paint = (on: boolean) => {
       mic.classList.toggle("on", on);
       mic.title = t(on ? "chat.voice.stop" : "chat.voice");
+      mic.dataset.track = on ? "chat.voice.stop" : "chat.voice";
       mic.setAttribute("aria-label", mic.title);
       mic.setAttribute("aria-pressed", String(on));
     };
@@ -920,7 +932,7 @@ export class ChatView {
     const key = this.key;
     if (review) {
       // Submission is a local user action; backend failures may still leave a persisted queue.
-      void reviews.submit(review, key).catch(e => this.ctx.say(reviewError(e), true));
+      void reviews.submit(review, key).then(() => track({ name: "review_notes_sent" })).catch(e => this.ctx.say(reviewError(e), true));
       drafts.reviews.delete(key);
     }
     if (this.remote) team.write(said);
@@ -950,8 +962,8 @@ export class ChatView {
     if (this.remote || !this.ctx.info().workspace) return;
     const button = this.box.querySelector<HTMLElement>(".actionsbtn")!;
     const box = button.getBoundingClientRect();
-    menu.openAt({ x: box.left, y: box.top - 4, above: true }, actions.catalog().commands.length
-      ? actions.catalog().commands.map(action => ({ label: `/${action.name}`, hint: t(action.kind === "prompt" ? "actions.prompt" : "actions.agent"), run: () => this.useAction(action, this.area.value) }))
+    menu.openAt({ x: box.left, y: box.top - 4, above: true, anchor: button }, actions.catalog().commands.length
+      ? actions.catalog().commands.map(action => ({ label: `/${action.name}`, track: "action.select", hint: t(action.kind === "prompt" ? "actions.prompt" : "actions.agent"), run: () => this.useAction(action, this.area.value) }))
       : [{ label: t("actions.empty"), disabled: true }]);
   }
 
@@ -969,6 +981,7 @@ export class ChatView {
     commands.dismiss();
     if (action.kind === "prompt") {
       this.area.value = actions.expand(action.prompt, rest);
+      track({ name: "action_used", kind: "prompt" });
       this.keep(); this.grow(); this.area.focus();
       return;
     }
@@ -983,7 +996,7 @@ export class ChatView {
     // Preserve the draft if the backend rejects execution.
     void actions.start(workspace, action, context).then(tab => {
       if (review) {
-        void reviews.submit(review, tab.id).catch(e => this.ctx.say(reviewError(e), true));
+        void reviews.submit(review, tab.id).then(() => track({ name: "review_notes_sent" })).catch(e => this.ctx.say(reviewError(e), true));
         if (key && drafts.reviews.get(key) === review) drafts.reviews.delete(key);
       }
       if (key && drafts.says.get(key) === draft) drafts.says.delete(key);
@@ -1084,11 +1097,11 @@ export class ChatView {
     }
     const key = this.key;
     const actions = [];
-    if (capabilities.compact) actions.push({ label: t("usage.compact"), disabled: this.tl.working, run: () => this.contextCommand("compact", key) });
-    if (capabilities.contextReport) actions.push({ label: t("usage.contextReport"), disabled: this.tl.working, run: () => this.contextCommand("context", key) });
+    if (capabilities.compact) actions.push({ label: t("usage.compact"), track: "usage.compact", disabled: this.tl.working, run: () => this.contextCommand("compact", key) });
+    if (capabilities.contextReport) actions.push({ label: t("usage.contextReport"), track: "usage.contextReport", disabled: this.tl.working, run: () => this.contextCommand("context", key) });
     const workspace = info.workspace;
     if (workspace && this.ctx.newConversation && info.canCreateConversation !== false) {
-      actions.push({ label: t("usage.newConversation"), disabled: false, run: () => this.ctx.newConversation?.(workspace) });
+      actions.push({ label: t("usage.newConversation"), track: "usage.newConversation", disabled: false, run: () => this.ctx.newConversation?.(workspace) });
     }
     this.gauge.update({
       label: t("usage.context", { used: kilo(context.used), window: kilo(context.window) }),
@@ -1231,7 +1244,7 @@ export class ChatView {
           invoke("set_workspace_mcp", { id: workspace, mcp: sel }).catch((e) =>
             this.ctx.say(fromBack(e), true),
           ),
-        at: () => ({ x: at.left, y: at.top - 4, above: true }),
+        at: () => ({ x: at.left, y: at.top - 4, above: true, anchor: btn }),
         trust: () => void trust.open(workspace, this.ctx.say),
       });
     };
@@ -1263,7 +1276,7 @@ export class ChatView {
           invoke("set_workspace_plugins", { id: workspace, plugins: sel }).catch((e) =>
             this.ctx.say(fromBack(e), true),
           ),
-        at: () => ({ x: at.left, y: at.top - 4, above: true }),
+        at: () => ({ x: at.left, y: at.top - 4, above: true, anchor: btn }),
         trust: () => void trust.open(workspace, this.ctx.say),
       });
     };
@@ -1296,7 +1309,7 @@ export class ChatView {
           invoke("set_workspace_skills", { id: workspace, skills: sel }).catch((e) =>
             this.ctx.say(fromBack(e), true),
           ),
-        at: () => ({ x: at.left, y: at.top - 4, above: true }),
+        at: () => ({ x: at.left, y: at.top - 4, above: true, anchor: btn }),
         trust: () => void trust.open(workspace, this.ctx.say),
       });
     };
@@ -1311,6 +1324,7 @@ export class ChatView {
     btn.title = `${t("remoteControl.label")} — ${t(info.remoteControl ? "remoteControl.on" : "remoteControl.off")}\n${t("remoteControl.title")}`;
     btn.classList.toggle("on", info.remoteControl);
     btn.setAttribute("aria-pressed", String(info.remoteControl));
+    btn.dataset.track = info.remoteControl ? "remoteControl.disable" : "remoteControl.enable";
     btn.onclick = () => {
       btn.disabled = true;
       void team.remoteControl(info.workspace!, !info.remoteControl)
@@ -1340,14 +1354,14 @@ export class ChatView {
       const row = h("div", "chat-notice");
       const allow = ui.button(t("team.input.allow"), () => void team.allowInput(person)
         .then(count => { if (count) this.ctx.say(own ? tn(count, "team.input.approvedOwn") : tn(count, "team.input.approved", { name })); })
-        .catch(fail));
-      const later = ui.button(t("team.input.later"), () => void team.dismissInput(person).catch(fail), "ghost");
+        .catch(fail), undefined, "team.input.allow");
+      const later = ui.button(t("team.input.later"), () => void team.dismissInput(person).catch(fail), "ghost", "team.input.later");
       row.append(ui.notice(own ? t("team.input.pausedOwn") : t("team.input.paused", { name }), "warning"), allow, later);
       return row;
     });
     if (rights) {
       const row = h("div", "chat-notice");
-      row.append(ui.notice(t("team.rights.notice"), "warning"), ui.button(t("team.rights.gotIt"), team.dismissRightsNotice, "ghost"));
+      row.append(ui.notice(t("team.rights.notice"), "warning"), ui.button(t("team.rights.gotIt"), team.dismissRightsNotice, "ghost", "team.rights.gotIt"));
       rows.push(row);
     }
     if (viewOnly !== null) rows.push(h("p", "ui-hint chat-viewonly", t("chat.viewOnly", { name: viewOnly })));
@@ -1356,7 +1370,7 @@ export class ChatView {
       const key = this.key!;
       const row = h("div", "chat-notice");
       const resume = ui.button(t("chat.interrupted.continue"), () =>
-        void invoke("chat_send", { session: key, text: t("chat.interrupted.prompt") }).catch(fail), "pri");
+        void invoke("chat_send", { session: key, text: t("chat.interrupted.prompt") }).then(() => track({ name: "conversation_resumed" })).catch(fail), "pri", "chat.interrupted.continue");
       row.append(ui.notice(t("chat.interrupted.notice"), "warning"), resume);
       rows.push(row);
     }
@@ -1417,6 +1431,7 @@ export class ChatView {
       if (!node) continue;
       const pin = h("button", "commentpin", `${list.length}`);
       pin.title = tn(list.length, "notes.onTurn");
+      pin.dataset.track = "notes.thread.open";
       pin.onclick = () => this.ctx.thread?.(list[0].id);
       node.append(pin);
     }

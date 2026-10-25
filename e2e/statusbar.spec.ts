@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("resource readings preserve the sleep menu anchor and open process row", async ({ page }) => {
   await page.goto("/");

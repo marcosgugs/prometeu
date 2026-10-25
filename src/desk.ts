@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { ChatView, type Info } from "./chat";
 import { arrange } from "./desk-layout";
 import { icon } from "./icons";
@@ -117,7 +118,7 @@ export function draw() {
   }
   drawBar(byTab, hidden);
   host.querySelector(".iempty")?.remove();
-  if (!pairs.length) host.append(empty(t("desk.empty"), t("desk.empty.hint"), [t("rail.create"), ctx.create]));
+  if (!pairs.length) host.append(empty(t("desk.empty"), t("desk.empty.hint"), [t("rail.create"), ctx.create, "workspace.create"]));
   save();
 }
 
@@ -133,6 +134,7 @@ function drawBar(byTab: Map<string, Pair>, hidden: Set<string>) {
       b.children[2].textContent = tabLabel(w, tab);
       b.title = t(off ? "desk.chip.show" : "desk.chip.hide");
       b.dataset.tab = id;
+      b.dataset.track = off ? "desk.conversation.show" : "desk.conversation.hide";
       b.addEventListener("click", () => toggle(id));
       return b;
     }),
@@ -143,6 +145,8 @@ function toggle(id: string) {
   const hidden = new Set(layout.hidden);
   if (!hidden.delete(id)) hidden.add(id);
   layout.hidden = [...hidden];
+  track({ name: "desk_layout_changed", change: "visibility" });
+  if (!hidden.has(id)) track({ name: "conversation_opened", surface: "desk" });
   draw();
   ctx.looked();
 }
@@ -154,14 +158,17 @@ function mount(id: string): Tile {
     `<div class="tile-head"><i class="dot"></i><b></b><span class="ttab"></span><span class="spacer"></span><button class="ico sm tmin"></button><button class="ico sm topen"></button></div><div class="chatwrap"></div>`,
   );
   el.dataset.tab = id;
+  el.dataset.trackArea = "desk";
   const head = el.querySelector<HTMLElement>(".tile-head")!;
   const min = head.querySelector<HTMLElement>(".tmin")!;
   min.innerHTML = icon("chevron-down", 14);
   min.title = t("desk.min");
+  min.dataset.track = "desk.min";
   min.addEventListener("click", () => toggle(id));
   const open = head.querySelector<HTMLElement>(".topen")!;
   open.innerHTML = icon("arrow-right", 14);
   open.title = t("desk.open");
+  open.dataset.track = "desk.open";
   open.addEventListener("click", () => {
     const w = wsOf(id);
     if (w) ctx.open(w, id);
@@ -244,7 +251,9 @@ function drag(el: HTMLElement, head: HTMLElement) {
         ghost.remove();
         el.classList.remove("dragging");
         dragging = false;
-        layout.order = [...$("tiles").querySelectorAll<HTMLElement>(".tile")].map((x) => x.dataset.tab!);
+        const order = [...$("tiles").querySelectorAll<HTMLElement>(".tile")].map((x) => x.dataset.tab!);
+        if (order.some((id, i) => id !== layout.order[i])) track({ name: "desk_layout_changed", change: "order" });
+        layout.order = order;
         save();
       },
     );
@@ -259,6 +268,7 @@ function grip(el: HTMLElement, id: string) {
     `<svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 1 1 9M9 5 5 9"/></svg>`,
   );
   handle.title = t("desk.grip");
+  handle.dataset.trackDoubleClick = "desk.size.reset";
   handle.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -281,11 +291,13 @@ function grip(el: HTMLElement, id: string) {
       () => {
         el.classList.remove("sizing");
         layout.sizes[id] = [el.offsetWidth, el.offsetHeight];
+        if (el.offsetWidth !== w0 || el.offsetHeight !== h0) track({ name: "desk_layout_changed", change: "size" });
         save();
       },
     );
   });
   handle.addEventListener("dblclick", () => {
+    if (layout.sizes[id]) track({ name: "desk_layout_changed", change: "size" });
     el.style.width = "";
     el.style.height = "";
     delete layout.sizes[id];

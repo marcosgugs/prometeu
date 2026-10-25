@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import type { Board } from "../src/types";
 
 const previewSelector = 'iframe[data-browser-workspace="sessao-0929"]';

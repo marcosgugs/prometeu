@@ -14,7 +14,7 @@ export function openQuickOpen(anchor: HTMLElement, id: string, recent: string[],
       const cut = entry.path.lastIndexOf("/");
       return { key: entry.path, label: entry.name, detail: cut < 0 ? undefined : entry.path.slice(0, cut) };
     });
-  const picker = searchablePicker(anchor, {
+  const picker = searchablePicker(anchor, { track: "files.picker", area: "files",
     label: t("quickOpen.label"),
     searchPlaceholder: t("quickOpen.search"),
     empty: t("quickOpen.empty"),

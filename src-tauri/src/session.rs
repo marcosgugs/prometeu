@@ -1,3 +1,4 @@
+use crate::analytics::{self, Event, ProjectAction, ResourceKind, ResourceScope, WorkspaceAction};
 #[cfg(test)]
 use crate::domain::Pr;
 use crate::lock::lock;
@@ -74,14 +75,18 @@ pub fn add_project(
     path: String,
 ) -> Result<Project, String> {
     let path = PathBuf::from(expand(&path));
-    let project = register_local_project(&state.board, &path);
+    let project = register_local_project(&state.board, &path, ProjectAction::Add);
     publish(&app);
     Ok(project)
 }
 
-fn register_local_project(board: &std::sync::Mutex<Board>, path: &Path) -> Project {
+fn register_local_project(
+    board: &std::sync::Mutex<Board>,
+    path: &Path,
+    action: ProjectAction,
+) -> Project {
     let _sync = crate::catalog::guard();
-    register_project(&mut lock(board), path)
+    register_project(&mut lock(board), path, action)
 }
 
 #[tauri::command(async)]
@@ -92,14 +97,14 @@ pub fn create_project(
     name: String,
 ) -> Result<Project, String> {
     let path = prometeu_git::create_repository(Path::new(&expand(&directory)), &name)?;
-    let project = register_local_project(&state.board, &path);
+    let project = register_local_project(&state.board, &path, ProjectAction::Create);
     publish(&app);
     Ok(project)
 }
 
 /// Both local folders and catalog clones use the same board registration while holding the catalog
 /// guard. Acquire that guard before the board lock, so origin checks and cloning stay serialized.
-pub(crate) fn register_project(board: &mut Board, path: &Path) -> Project {
+pub(crate) fn register_project(board: &mut Board, path: &Path, action: ProjectAction) -> Project {
     let id = path.display().to_string();
     let project = Project {
         id: id.clone(),
@@ -111,7 +116,15 @@ pub(crate) fn register_project(board: &mut Board, path: &Path) -> Project {
         path: id,
         group: None,
     };
-    prometeu_core::projects::register(board, project)
+    let added = !board
+        .projects
+        .iter()
+        .any(|existing| existing.id == project.id);
+    let project = prometeu_core::projects::register(board, project);
+    if added {
+        analytics::track(Event::ProjectActionUsed { action });
+    }
+    project
 }
 
 #[tauri::command(async)]
@@ -122,7 +135,17 @@ pub fn remove_project(app: AppHandle, state: State<AppState>, id: String) {
 
 fn remove_registered_project(board: &std::sync::Mutex<Board>, id: &str) {
     let _sync = crate::catalog::guard();
-    prometeu_core::projects::remove(&mut lock(board), id);
+    let removed = {
+        let mut board = lock(board);
+        let exists = board.projects.iter().any(|project| project.id == id);
+        prometeu_core::projects::remove(&mut board, id);
+        exists
+    };
+    if removed {
+        analytics::track(Event::ProjectActionUsed {
+            action: ProjectAction::Remove,
+        });
+    }
 }
 
 /// The sidebar lists projects in board order. Projects missing from `ids` (registered while the
@@ -131,7 +154,23 @@ fn remove_registered_project(board: &std::sync::Mutex<Board>, id: &str) {
 pub fn reorder_projects(app: AppHandle, state: State<AppState>, ids: Vec<String>) {
     {
         let _sync = crate::catalog::guard();
-        sort_projects(&mut lock(&state.board).projects, &ids);
+        let mut board = lock(&state.board);
+        let previous: Vec<_> = board
+            .projects
+            .iter()
+            .map(|project| project.id.clone())
+            .collect();
+        sort_projects(&mut board.projects, &ids);
+        if !board
+            .projects
+            .iter()
+            .map(|project| &project.id)
+            .eq(previous.iter())
+        {
+            analytics::track(Event::ProjectActionUsed {
+                action: ProjectAction::Reorder,
+            });
+        }
     }
     publish(&app);
 }
@@ -147,7 +186,23 @@ pub fn group_projects(
 ) {
     {
         let _sync = crate::catalog::guard();
-        prometeu_core::projects::group(&mut lock(&state.board).projects, &ids, group.as_deref());
+        let mut board = lock(&state.board);
+        let previous: Vec<_> = board
+            .projects
+            .iter()
+            .map(|project| project.group.clone())
+            .collect();
+        prometeu_core::projects::group(&mut board.projects, &ids, group.as_deref());
+        if !board
+            .projects
+            .iter()
+            .map(|project| &project.group)
+            .eq(previous.iter())
+        {
+            analytics::track(Event::ProjectActionUsed {
+                action: ProjectAction::Group,
+            });
+        }
     }
     publish(&app);
 }
@@ -165,7 +220,12 @@ pub fn set_stage(app: AppHandle, state: State<AppState>, id: String, stage: Stri
     {
         let mut board = lock(&state.board);
         if let Some(ws) = board.workspace_mut(&id) {
-            ws.stage = stage;
+            if ws.stage != stage {
+                ws.stage = stage;
+                analytics::track(Event::WorkspaceActionUsed {
+                    action: WorkspaceAction::Stage,
+                });
+            }
         }
     }
     publish(&app);
@@ -184,8 +244,22 @@ pub fn archive_workspace(app: AppHandle, state: State<AppState>, id: String, arc
 /// separate, confirmed decision.
 #[tauri::command(async)]
 pub fn finish_workspace(app: AppHandle, state: State<AppState>, id: String) {
-    crate::workspace_lifecycle::finish(&mut lock(&state.board), &id);
+    let changed = {
+        let mut board = lock(&state.board);
+        let before = board
+            .workspace_mut(&id)
+            .map(|ws| (ws.stage.clone(), ws.archived));
+        crate::workspace_lifecycle::finish(&mut board, &id);
+        before.is_some_and(|(stage, archived)| {
+            !archived || board.workspace_mut(&id).is_some_and(|ws| ws.stage != stage)
+        })
+    };
     archive(&app, &state, &id, true);
+    if changed {
+        analytics::track(Event::WorkspaceActionUsed {
+            action: WorkspaceAction::Finish,
+        });
+    }
 }
 
 fn archive(app: &AppHandle, state: &State<AppState>, id: &str, archived: bool) {
@@ -213,6 +287,13 @@ fn archive(app: &AppHandle, state: &State<AppState>, id: &str, archived: bool) {
     stop(state, &effects.stop_tabs);
     publish(app);
     if effects.changed {
+        analytics::track(Event::WorkspaceActionUsed {
+            action: if archived {
+                WorkspaceAction::Archive
+            } else {
+                WorkspaceAction::Restore
+            },
+        });
         crate::telemetry::journey(
             app,
             generation,
@@ -246,7 +327,13 @@ pub fn rename_workspace(app: AppHandle, state: State<AppState>, id: String, titl
     }
     {
         let mut board = lock(&state.board);
-        let _ = workspace_lifecycle::apply(&mut board, &id, Change::Rename(title.into()));
+        let changed = board.workspace_mut(&id).is_some_and(|ws| ws.title != title);
+        let applied = workspace_lifecycle::apply(&mut board, &id, Change::Rename(title.into()));
+        if changed && applied.is_ok() {
+            analytics::track(Event::WorkspaceActionUsed {
+                action: WorkspaceAction::Rename,
+            });
+        }
     }
     publish(&app);
 }
@@ -256,7 +343,19 @@ pub fn rename_workspace(app: AppHandle, state: State<AppState>, id: String, titl
 pub fn pin_workspace(app: AppHandle, state: State<AppState>, id: String, pinned: bool) {
     {
         let mut board = lock(&state.board);
-        let _ = workspace_lifecycle::apply(&mut board, &id, Change::Pin(pinned));
+        let changed = board
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.pinned != pinned);
+        let applied = workspace_lifecycle::apply(&mut board, &id, Change::Pin(pinned));
+        if changed && applied.is_ok() {
+            analytics::track(Event::WorkspaceActionUsed {
+                action: if pinned {
+                    WorkspaceAction::Pin
+                } else {
+                    WorkspaceAction::Unpin
+                },
+            });
+        }
     }
     publish(&app);
 }
@@ -298,7 +397,16 @@ pub fn set_workspace_mcp(
 ) -> Result<(), String> {
     let parsed = axis_patch(request.body(), "mcp", Axis::Mcp)?;
     if let Some(value) = parsed {
+        let changed = lock(&state.board)
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.mcp != value);
         workspace_tools::change(&state.board, &id, Axis::Mcp, value);
+        if changed {
+            analytics::track(Event::ResourceSelectionChanged {
+                kind: ResourceKind::Mcp,
+                scope: ResourceScope::Workspace,
+            });
+        }
     }
     publish(&app);
     Ok(())
@@ -315,7 +423,16 @@ pub fn set_workspace_plugins(
 ) -> Result<(), String> {
     let parsed = axis_patch(request.body(), "plugins", Axis::Plugins)?;
     if let Some(value) = parsed {
+        let changed = lock(&state.board)
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.plugins != value);
         workspace_tools::change(&state.board, &id, Axis::Plugins, value);
+        if changed {
+            analytics::track(Event::ResourceSelectionChanged {
+                kind: ResourceKind::Plugin,
+                scope: ResourceScope::Workspace,
+            });
+        }
     }
     publish(&app);
     Ok(())
@@ -332,7 +449,16 @@ pub fn set_workspace_skills(
 ) -> Result<(), String> {
     let parsed = axis_patch(request.body(), "skills", Axis::Skills)?;
     if let Some(value) = parsed {
+        let changed = lock(&state.board)
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.skills != value);
         workspace_tools::change(&state.board, &id, Axis::Skills, value);
+        if changed {
+            analytics::track(Event::ResourceSelectionChanged {
+                kind: ResourceKind::Skill,
+                scope: ResourceScope::Workspace,
+            });
+        }
     }
     publish(&app);
     Ok(())
@@ -353,13 +479,31 @@ pub fn set_tools_global(
     {
         let mut board = lock(&state.board);
         if let Some(value) = mcp {
-            board.tools.mcp = value;
+            if board.tools.mcp != value {
+                board.tools.mcp = value;
+                analytics::track(Event::ResourceSelectionChanged {
+                    kind: ResourceKind::Mcp,
+                    scope: ResourceScope::Global,
+                });
+            }
         }
         if let Some(value) = plugins {
-            board.tools.plugins = value;
+            if board.tools.plugins != value {
+                board.tools.plugins = value;
+                analytics::track(Event::ResourceSelectionChanged {
+                    kind: ResourceKind::Plugin,
+                    scope: ResourceScope::Global,
+                });
+            }
         }
         if let Some(value) = skills {
-            board.tools.skills = value;
+            if board.tools.skills != value {
+                board.tools.skills = value;
+                analytics::track(Event::ResourceSelectionChanged {
+                    kind: ResourceKind::Skill,
+                    scope: ResourceScope::Global,
+                });
+            }
         }
     }
     publish(&app);
@@ -671,6 +815,9 @@ pub fn remove_workspace(app: AppHandle, state: State<AppState>, id: String) {
     };
     stop(&state, &dead);
     if removed {
+        analytics::track(Event::WorkspaceActionUsed {
+            action: WorkspaceAction::Remove,
+        });
         crate::plugins::forget_codex_workspace(&id);
     }
     publish(&app);
@@ -732,6 +879,9 @@ pub fn cleanup_worktree(
     stop(&state, &dead);
 
     state.worktree_cleanup.remove(&ws)?;
+    analytics::track(Event::WorkspaceActionUsed {
+        action: WorkspaceAction::Cleanup,
+    });
     // Remove the application-owned directory that grouped the worktrees after its children are
     // gone.
     if ws.multi() {
@@ -1979,7 +2129,11 @@ mod tests {
     fn project_order_follows_ids_and_keeps_unlisted_projects_last() {
         let mut board = crate::state::Board::default();
         for path in ["/a", "/b", "/c", "/d"] {
-            super::register_project(&mut board, Path::new(path));
+            super::register_project(
+                &mut board,
+                Path::new(path),
+                crate::analytics::ProjectAction::Add,
+            );
         }
         let ids = ["/c", "/gone", "/a"].map(String::from);
         super::sort_projects(&mut board.projects, &ids);
@@ -1993,7 +2147,11 @@ mod tests {
         use std::time::Duration;
 
         let mut initial = crate::state::Board::default();
-        super::register_project(&mut initial, Path::new("/old"));
+        super::register_project(
+            &mut initial,
+            Path::new("/old"),
+            crate::analytics::ProjectAction::Add,
+        );
         let board = Mutex::new(initial);
         let sync = crate::catalog::guard();
         let (started, ready) = mpsc::channel();
@@ -2001,7 +2159,11 @@ mod tests {
         std::thread::scope(|scope| {
             let add = scope.spawn(|| {
                 started.send(()).unwrap();
-                super::register_local_project(&board, Path::new("/new"));
+                super::register_local_project(
+                    &board,
+                    Path::new("/new"),
+                    crate::analytics::ProjectAction::Add,
+                );
                 finished.send(()).unwrap();
             });
             let remove = scope.spawn(|| {

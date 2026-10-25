@@ -14,6 +14,7 @@ export function start(
   const input = document.createElement("input");
   input.className = `rename ${kind}`.trim();
   input.value = value;
+  input.dataset.track = "inline.rename";
   input.spellcheck = false;
   node.replaceWith(input);
   open = input;

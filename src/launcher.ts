@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as accounts from "./accounts";
 import { button, checkbox, dropdown, field, input } from "./ui";
 export type { Group } from "./ui";
@@ -169,12 +170,14 @@ export function openLauncher(board: Board, opts: Open) {
       <span class="hint" id="d-hint" role="status"></span>
       <div class="launcher-actions" id="d-actions"></div>
     </footer>`;
+  sheet.dataset.trackArea = "launcher";
   paint(sheet);
 
   const $ = <T extends HTMLElement>(id: string) => sheet.querySelector(`#${id}`) as T;
-  const pick = (id: string) => {
+  const pick = (id: "d-project" | "d-base" | "d-issuebtn" | "d-model" | "d-effort" | "d-mcp" | "d-plugins") => {
     const control = button("");
     control.id = id;
+    control.dataset.track = `launcher.${id.slice(2)}`;
     control.className = "ui-select pick";
     control.append(h("span", ""));
     control.insertAdjacentHTML("beforeend", icon("chevron-down", 12));
@@ -184,46 +187,46 @@ export function openLauncher(board: Board, opts: Open) {
   projectButton.disabled = !!git?.source;
   const baseButton = pick("d-base");
   baseButton.querySelector("span")!.id = "d-basename";
-  const projectField = field(t("launcher.project"), projectButton);
-  const branchField = field(t("launcher.base.label"), baseButton);
+  const projectField = field(t("launcher.project"), projectButton, undefined, "launcher.project");
+  const branchField = field(t("launcher.base.label"), baseButton, undefined, "launcher.base.label");
   $("d-repository-fields").append(projectField, branchField);
-  $("d-issue-field").append(field(t("launcher.issue.label"), pick("d-issuebtn")));
-  $("d-model-field").append(field(t("actions.model"), pick("d-model")));
+  $("d-issue-field").append(field(t("launcher.issue.label"), pick("d-issuebtn"), undefined, "launcher.issue.label"));
+  $("d-model-field").append(field(t("actions.model"), pick("d-model"), undefined, "actions.model"));
   const effortButton = pick("d-effort");
   effortButton.classList.add("effort");
   effortButton.querySelector("span")!.className = "el";
   effortButton.insertAdjacentHTML("afterbegin", '<span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>');
-  $("d-effort-field").append(field(t("models.effort"), effortButton));
-  $("d-mcp-field").append(field(t("launcher.mcp"), pick("d-mcp")));
-  $("d-plugins-field").append(field(t("launcher.plugins"), pick("d-plugins")));
-  const worktree = checkbox(t("launcher.worktree"), draft.worktree);
+  $("d-effort-field").append(field(t("models.effort"), effortButton, undefined, "models.effort"));
+  $("d-mcp-field").append(field(t("launcher.mcp"), pick("d-mcp"), undefined, "launcher.mcp"));
+  $("d-plugins-field").append(field(t("launcher.plugins"), pick("d-plugins"), undefined, "launcher.plugins"));
+  const worktree = checkbox(t("launcher.worktree"), draft.worktree, "launcher.worktree");
   worktree.control.id = "d-wt";
-  const newBranch = checkbox(t("launcher.newBranch"), draft.newBranch);
+  const newBranch = checkbox(t("launcher.newBranch"), draft.newBranch, "launcher.newBranch");
   newBranch.control.id = "d-nb";
   $("d-switches").append(worktree.label, newBranch.label);
-  const planMode = checkbox(t("launcher.plan.start"), draft.plan);
+  const planMode = checkbox(t("launcher.plan.start"), draft.plan, "launcher.plan.start");
   planMode.control.id = "d-plan";
   $("d-plan-field").append(planMode.label);
-  const moreButton = button(t("launcher.addRepo.label"), undefined, "ghost");
+  const moreButton = button(t("launcher.addRepo.label"), undefined, "ghost", "launcher.addRepo.label");
   moreButton.id = "d-more";
   moreButton.insertAdjacentHTML("afterbegin", icon("plus", 14));
   $("d-extra-repositories").append(moreButton);
-  const prompt = input("", true);
+  const prompt = input("", true, "launcher.prompt");
   prompt.id = "d-prompt";
   $("d-prompt-box").prepend(prompt);
-  const attach = button(t("launcher.attach.label"), undefined, "ghost");
+  const attach = button(t("launcher.attach.label"), undefined, "ghost", "launcher.attach.label");
   attach.id = "d-add";
   attach.title = t("launcher.attach");
   attach.insertAdjacentHTML("afterbegin", icon("paperclip", 14));
   // The starting skill sits next to the prompt it opens, sharing the attachment row.
-  const kickoffBtn = button("", undefined, "ghost");
+  const kickoffBtn = button("", undefined, "ghost", "launcher.skill");
   kickoffBtn.id = "d-kickoff";
   kickoffBtn.classList.add("launcher-kickoff");
   kickoffBtn.insertAdjacentHTML("afterbegin", icon("sparkles", 14));
   kickoffBtn.append(h("span", ""));
   $("d-attachments").append(attach, kickoffBtn);
-  const cancel = button(t("account.cancel"), () => hide(), "ghost");
-  const create = button(t("launcher.go"), undefined, "pri");
+  const cancel = button(t("account.cancel"), () => hide(), "ghost", "account.cancel");
+  const create = button(t("launcher.go"), undefined, "pri", "launcher.go");
   create.id = "d-go";
   create.append(h("kbd", "", "↵"));
   $("d-actions").append(cancel, create);
@@ -286,6 +289,7 @@ export function openLauncher(board: Board, opts: Open) {
         const chip = template("span", "injchip repo", `${icon("git-branch", 12)}<span></span><button class="ico sm">${icon("x", 12)}</button>`);
         chip.children[1].textContent = nameOf(id);
         (chip.children[2] as HTMLElement).title = t("launcher.removeRepo", { name: nameOf(id) });
+        (chip.children[2] as HTMLElement).dataset.track = "launcher.repository.remove";
         chip.children[2].addEventListener("click", () => {
           draft.extras = draft.extras.filter((x) => x !== id);
           drawExtras();
@@ -299,9 +303,9 @@ export function openLauncher(board: Board, opts: Open) {
   more.addEventListener("click", () => {
     const at = more.getBoundingClientRect();
     menu.openAt(
-      { x: at.left, y: at.bottom + 4 },
+      { area: "launcher", x: at.left, y: at.bottom + 4 },
       others().map((p) => ({
-        label: p.name,
+        label: p.name, track: "launcher.repository.add",
         run: () => {
           branchChoices = null;
           draft.extras.push(p.id);
@@ -369,12 +373,12 @@ export function openLauncher(board: Board, opts: Open) {
 
   /* Model, effort, and plan controls. */
 
-  const accountButton = button("", () => accounts.openPicker(draft.agent), "ghost");
+  const accountButton = button("", () => accounts.openPicker(draft.agent), "ghost", "launcher.account");
   accountButton.id = "d-account";
   accountButton.classList.add("launcher-account");
   const accountName = h("span", "launcher-account-name");
   accountButton.append(accountName, h("span", "launcher-account-change", t("launcher.account.change")));
-  const accountField = field(t("launcher.account.label"), accountButton);
+  const accountField = field(t("launcher.account.label"), accountButton, undefined, "launcher.account.label");
   const accountMeta = h("p", "ui-hint");
   accountField.append(accountMeta);
   $("d-account-field").append(accountField);
@@ -485,7 +489,7 @@ export function openLauncher(board: Board, opts: Open) {
         draft.mcp = ids;
         drawMcp();
       },
-      at: () => ({ x: at.left, y: at.bottom + 4 }),
+      at: () => ({ x: at.left, y: at.bottom + 4, anchor: mcpBtn }),
     });
   });
   const forgetMcp = mcp.onChange(drawMcp);
@@ -510,7 +514,7 @@ export function openLauncher(board: Board, opts: Open) {
         draft.plugins = ids;
         drawPlugins();
       },
-      at: () => ({ x: at.left, y: at.bottom + 4 }),
+      at: () => ({ x: at.left, y: at.bottom + 4, anchor: plugBtn }),
     });
   });
   const forgetPlugins = plugins.onChange(drawPlugins);
@@ -671,6 +675,7 @@ export function openLauncher(board: Board, opts: Open) {
       chip.children[2].textContent = issue.title;
       chip.title = `${issue.title}\n${issue.url}`;
       chip.querySelector("button")!.disabled = !!git?.source;
+      (chip.children[3] as HTMLElement).dataset.track = "launcher.issue.remove";
       chip.children[3].addEventListener("click", () => {
         setSeed(undefined);
         prompt.focus();
@@ -758,6 +763,7 @@ export function openLauncher(board: Board, opts: Open) {
         row.innerHTML = `<span></span><button class="ico sm">${icon("x", 12)}</button>`;
         row.children[0].textContent = path.split("/").pop() ?? path;
         row.children[0].setAttribute("title", path);
+        (row.children[1] as HTMLElement).dataset.track = "launcher.attachment.remove";
         row.children[1].addEventListener("click", () => {
           draft.inject.splice(i, 1);
           drawInject();
@@ -768,7 +774,9 @@ export function openLauncher(board: Board, opts: Open) {
   };
   const addFiles = (paths: string[]) => {
     if (!capabilitiesOf(draft.agent).attachments) return;
+    const before = draft.inject.length;
     for (const path of paths) if (path && !draft.inject.includes(path)) draft.inject.push(path);
+    if (draft.inject.length > before) track({ name: "attachment_added" });
     drawInject();
   };
   // Pasted screenshots and copied files become attachments, like a drop on the launcher.
@@ -857,6 +865,7 @@ function picker(o: {
   el.innerHTML = `<label class="pfind">${icon("search", 14)}<input spellcheck="false" /></label><div class="plist"></div>`;
   const find = el.querySelector("input")!;
   find.placeholder = o.placeholder;
+  find.dataset.track = `${btn.dataset.track}.search`;
   const list = el.querySelector<HTMLElement>(".plist")!;
   let marked = 0;
 
@@ -877,6 +886,7 @@ function picker(o: {
       ...hits.slice(0, 300).map((row, i) => {
         const b = document.createElement("button");
         b.className = "prow" + (i === marked ? " on" : "");
+        b.dataset.track = `${btn.dataset.track}.select`;
         b.innerHTML =
           `<span class="pc">${row.id === o.current() ? icon("check", 14) : (row.glyph ?? "")}</span>` +
           (row.sub === undefined ? "" : `<span class="iid"></span>`) +

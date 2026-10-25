@@ -2,7 +2,7 @@ import * as actions from "./actions";
 import * as background from "./background";
 import * as cloud from "./cloud";
 import { invoke } from "./ipc";
-import { trackClicks, viewScreen, type Screen } from "./analytics";
+import { track, trackClicks, viewScreen, type Screen } from "./analytics";
 import { onConnectionRestored } from "./connection";
 import { listen } from "@tauri-apps/api/event";
 import { openProjects } from "./projects";
@@ -48,7 +48,7 @@ import * as viewer from "./viewer";
 import * as ws from "./workspace";
 import { announceWorkspaceUsage } from "./workspace-usage";
 
-// Before rendering, so only index.html IDs count as stable click regions.
+// Capture explicit control identities and surface metadata, independent of visible text.
 trackClicks();
 // Use the backend mock when running outside Tauri.
 if (!("__TAURI_INTERNALS__" in window)) await import("./mock");
@@ -104,7 +104,7 @@ const hooks: sidebar.Hooks = {
   toNotifications: () => showNotifications(),
   notifications: () => notificationCenter.count(),
   pin: (id, pinned) => invoke("pin_workspace", { id, pinned }),
-  unread: (id, unread) => invoke("set_unread", { id, unread }),
+  unread: (id, unread) => invoke("set_unread", { id, unread }).then(() => track({ name: "workspace_action_used", action: unread ? "mark_unread" : "mark_read" })),
   reveal: (id) => invoke("reveal_path", { id, rel: "" }).catch((e) => say(fromBack(e), true)),
   copyPath: async (w) => {
     try {
@@ -210,6 +210,7 @@ function showOnly(view: keyof typeof SCREENS | null, screen: Screen = view ? SCR
   $("issuesView").hidden = view !== "issuesView";
   $("notificationsView").hidden = view !== "notificationsView";
   $("archivedView").hidden = view !== "archivedView";
+  if (view !== "settingsView") settings.hide();
   if (view !== "issuesView") issues.hide();
   if (view !== "notificationsView") notificationCenter.hide();
   if (view !== "archivedView") archived.hide();
@@ -686,6 +687,7 @@ links.init(say);
 initCodeCopy(() => {
   const version = messageVersion;
   return (message, isError) => {
+    if (!isError) track({ name: "output_copied", kind: "code" });
     // A delayed copy confirmation must not replace a newer application status.
     if (isError || version === messageVersion) say(message, isError);
   };

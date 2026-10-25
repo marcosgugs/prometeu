@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { emptyCatalog, initializeDefaults, commandNames, expand, findCommand, type Action } from "./actions";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { emptyCatalog, initializeDefaults, commandNames, expand, findCommand, init, start, type Action } from "./actions";
+
+vi.mock("./analytics", () => ({ track: vi.fn() }));
+vi.mock("./ipc", () => ({ invoke: vi.fn() }));
+import { track } from "./analytics";
+import { invoke } from "./ipc";
+
+beforeEach(() => vi.clearAllMocks());
 
 const prompt: Action = { name: "review", kind: "prompt", prompt: "Review the diff.", description: "", profile: null };
 const task: Action = { ...prompt, name: "deliver", kind: "agent", profile: "owner" };
@@ -32,5 +39,21 @@ describe("built-in Code review", () => {
     const custom = { ...emptyCatalog(), commands: [{ ...prompt, name: "review" }] };
     expect(initializeDefaults(custom).commands).toEqual(custom.commands);
     expect(initializeDefaults(custom).profiles).toEqual([]);
+  });
+});
+
+
+describe("action usage", () => {
+  it("counts a successful launch once even if opening its view fails", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ id: "tab" });
+    init(async () => { throw new Error("View unavailable"); });
+    await expect(start("workspace", task, "Private context")).rejects.toThrow("View unavailable");
+    expect(track).toHaveBeenCalledExactlyOnceWith({ name: "action_used", kind: "agent" });
+  });
+
+  it("does not report rejected launches", async () => {
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("Launch unavailable"));
+    await expect(start("workspace", task)).rejects.toThrow("Launch unavailable");
+    expect(track).not.toHaveBeenCalled();
   });
 });

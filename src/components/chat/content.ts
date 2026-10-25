@@ -20,7 +20,7 @@ export function browserContextChip(context: BrowserContext, remove?: () => void)
   const open = button(t("web.element"), () => {
     const { selection } = context;
     const { rect, viewport } = selection;
-    const dialog = formDialog({
+    const dialog = formDialog({ track: "chat.browser_context", area: "chat",
       title: t("web.contextDetails"), save: t("web.contextClose"), cancel: t("web.contextClose"),
       submit: async () => {}, error: String,
     });
@@ -40,13 +40,13 @@ export function browserContextChip(context: BrowserContext, remove?: () => void)
       html, css,
     );
     dialog.open();
-  }, "ghost");
+  }, "ghost", "web.element");
   open.classList.add("browser-context-open");
   open.setAttribute("aria-haspopup", "dialog");
   open.title = context.selection.selector;
   chip.append(open);
   if (remove) {
-    const close = button("×", remove, "ghost");
+    const close = button("×", remove, "ghost", "chat.browser_context.remove");
     close.classList.add("browser-context-remove");
     close.setAttribute("aria-label", t("web.removeElement"));
     close.title = t("web.removeElement");
@@ -132,14 +132,14 @@ export function contextPanel(r: Report): HTMLElement {
   el.append(rows);
 
   for (const s of r.sections) {
-    const sec = template("details", "ctxsec", `<summary><span class="title"></span><span class="count"></span><span class="n"></span></summary>`);
+    const sec = template("details", "ctxsec", `<summary data-track="chat.context.section"><span class="title"></span><span class="count"></span><span class="n"></span></summary>`);
     sec.querySelector(".title")!.textContent = s.title;
     sec.querySelector(".count")!.textContent = String(s.rows.length);
     sec.querySelector(".n")!.textContent = kilo(sectionTotal(s));
     const groups = grouped(s);
     if (groups) {
       for (const g of groups) {
-        const grp = template("details", "ctxgrp", `<summary><span class="title"></span><span class="count"></span><span class="n"></span></summary>`);
+        const grp = template("details", "ctxgrp", `<summary data-track="chat.context.group"><span class="title"></span><span class="count"></span><span class="n"></span></summary>`);
         grp.querySelector(".title")!.textContent = g.name;
         grp.querySelector(".count")!.textContent = String(g.rows.length);
         grp.querySelector(".n")!.textContent = kilo(g.n);

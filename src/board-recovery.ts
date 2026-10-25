@@ -13,6 +13,7 @@ export async function announceBoardRecovery() {
 
 function openBoardRecovery(recovery: BoardRecovery) {
   const dialog = formDialog({
+    track: "recovery", area: "recovery",
     title: t(`boardRecovery.${recovery.source}.title`),
     save: t("boardRecovery.open"),
     cancel: t("boardRecovery.close"),

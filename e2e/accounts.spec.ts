@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./fixtures";
 
 async function openAccounts(page: Page, provider = "codex") {
   await page.locator(`#status [data-provider="${provider}"]`).click();

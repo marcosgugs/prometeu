@@ -40,17 +40,17 @@ export function fileGroups(subject: Subject, ctx: Context): menu.Item[] {
   const attachable = !subject.dir && !subject.missing;
   if (attachable && absolute && hooks.attach) {
     const attach = hooks.attach;
-    items.push({ label: t("file.menu.attach"), glyph: icon("paperclip"), run: () => attach(absolute) }, "sep");
+    items.push({ label: t("file.menu.attach"), track: "file.menu.attach", glyph: icon("paperclip"), run: () => attach(absolute) }, "sep");
   } else if (attachable && ctx.attachHint) {
     items.push({ label: t("file.menu.attach"), glyph: icon("paperclip"), disabled: true, hint: ctx.attachHint }, "sep");
   }
 
-  items.push({ label: t("file.menu.copyPath"), glyph: icon("copy"), run: () => hooks.copy(subject.path) });
+  items.push({ label: t("file.menu.copyPath"), track: "file.menu.copyPath", glyph: icon("copy"), run: () => hooks.copy(subject.path) });
   if (absolute) {
-    items.push({ label: t("file.menu.copyAbsolute"), glyph: icon("copy"), run: () => hooks.copy(absolute) });
+    items.push({ label: t("file.menu.copyAbsolute"), track: "file.menu.copyAbsolute", glyph: icon("copy"), run: () => hooks.copy(absolute) });
   }
   if (!subject.missing) {
-    items.push({ label: t("file.menu.reveal"), glyph: icon("external-link"), run: () => hooks.reveal(subject.path) });
+    items.push({ label: t("file.menu.reveal"), track: "file.menu.reveal", glyph: icon("external-link"), run: () => hooks.reveal(subject.path) });
   }
   return items;
 }

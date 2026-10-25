@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "./ipc";
 import { t, type Key } from "./i18n";
@@ -13,9 +14,10 @@ let chosenWorkspace = "";
 export function telemetryRows(): HTMLElement[] {
   const root = h("div", "telemetry-settings");
   const controls = h("div", "telemetry-controls");
-  const from = input(chosenFrom); from.type = "date";
-  const through = input(chosenThrough); through.type = "date";
+  const from = input(chosenFrom, false, "usage_history.from"); from.type = "date";
+  const through = input(chosenThrough, false, "usage_history.through"); through.type = "date";
   const workspace = select(chosenWorkspace, [["", t("telemetry.all")], ...(chosenWorkspace ? [[chosenWorkspace, t("telemetry.missingWorkspace", { id: chosenWorkspace.slice(0, 8) })] as [string, string]] : [])]);
+  workspace.control.dataset.track = "usage_history.workspace";
   const summary = h("dl", "telemetry-summary");
   const details = h("p", "ui-hint"); details.hidden = true;
   const status = h("p", "ui-hint"); status.setAttribute("role", "status");
@@ -63,28 +65,31 @@ export function telemetryRows(): HTMLElement[] {
       const hints = [insights.usage.costUsd === null ? "" : t("usage.costHint"), insights.origins.length ? t("usage.originsHint") : ""].filter(Boolean);
       details.hidden = hints.length === 0; details.textContent = hints.join(" ");
       status.textContent = t(result.health.unavailable ? "err.telemetry.storage" : result.health.failures ? "telemetry.incompleteHistory" : "telemetry.local");
+      return true;
     } catch (error) { if (mine === revision) { summary.replaceChildren(); details.hidden = true; failure(error); } }
   };
-  const update = button(t("telemetry.refresh"), () => void refresh(), "ghost");
+  const update = button(t("telemetry.refresh"), () => { void refresh().then(shown => { if (shown) track({ name: "usage_history_action_used", action: "refresh" }); }); }, "ghost", "usage_history.refresh");
   const exportButton = button(t("telemetry.export"), async () => {
     exportButton.disabled = true;
     try {
       const selected = filter();
       const path = await save({ defaultPath: "prometeu-telemetry.jsonl", filters: [{ name: "JSONL", extensions: ["jsonl"] }] });
-      if (path) { await invoke("telemetry_export", { filter: selected, path }); status.textContent = t("telemetry.exported"); }
+      if (path) { await invoke("telemetry_export", { filter: selected, path }); track({ name: "usage_history_action_used", action: "export" }); status.textContent = t("telemetry.exported"); }
     } catch (error) { failure(error); }
     finally { exportButton.disabled = false; }
   }, "ghost");
+  exportButton.dataset.track = "usage_history.export";
   const erase = button(t("telemetry.clear"), async () => {
-    if (!await confirmDialog({ title: t("telemetry.clear"), message: t("telemetry.clearConfirm"), accept: t("telemetry.clear"), cancel: t("telemetry.cancel") })) return;
+    if (!await confirmDialog({ track: "usage_history.clear", area: "usage_history", title: t("telemetry.clear"), message: t("telemetry.clearConfirm"), accept: t("telemetry.clear"), cancel: t("telemetry.cancel") })) return;
     erase.disabled = true; ++revision;
-    try { await invoke("telemetry_clear"); telemetryCleared(); workspace.value = ""; chosenWorkspace = ""; await refresh(); }
+    try { await invoke("telemetry_clear"); track({ name: "usage_history_action_used", action: "clear" }); telemetryCleared(); workspace.value = ""; chosenWorkspace = ""; await refresh(); }
     catch (error) { failure(error); }
     finally { erase.disabled = false; }
   }, "ghost");
-  from.onchange = () => { chosenFrom = from.value; void refresh(); };
-  through.onchange = () => { chosenThrough = through.value; void refresh(); };
-  workspace.onchange = () => { chosenWorkspace = workspace.value; void refresh(); };
+  erase.dataset.track = "usage_history.clear";
+  from.onchange = () => { chosenFrom = from.value; track({ name: "usage_history_action_used", action: "filter" }); void refresh(); };
+  through.onchange = () => { chosenThrough = through.value; track({ name: "usage_history_action_used", action: "filter" }); void refresh(); };
+  workspace.onchange = () => { chosenWorkspace = workspace.value; track({ name: "usage_history_action_used", action: "filter" }); void refresh(); };
   controls.append(field(t("telemetry.from"), from), field(t("telemetry.through"), through), field(t("telemetry.workspace"), workspace.control));
   const actions = h("div", "telemetry-controls"); actions.append(update, exportButton, erase);
   root.append(h("p", "ui-hint", t("telemetry.description")), controls, summary, details, status, actions);

@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import changelog from "../CHANGELOG.md?raw";
 import { getVersion } from "@tauri-apps/api/app";
 import { icon } from "./icons";
@@ -121,6 +122,8 @@ export function openNews(releases: Release[], sub: string) {
 
   const bar = template("div", "sheetbar", `<span class="spacer"></span>`);
   const close = h("button", "pri md", t("news.close")) as HTMLButtonElement;
+  close.dataset.track = "news.close";
+  sheet.dataset.trackArea = "release_notes";
   bar.append(close);
   sheet.append(bar);
 
@@ -142,6 +145,7 @@ export function openNews(releases: Release[], sub: string) {
 
 /// Show updater release notes before the new version is installed.
 export function openNotes(next: string, body: string) {
+  track({ name: "release_notes_viewed" });
   openNews([{ version: next, date: "", body }], t("news.sub.next", { version: `v${next}` }));
 }
 
@@ -157,9 +161,11 @@ export function settingsRow(): HTMLElement {
   row.querySelector(".txt b")!.textContent = t("settings.news");
   row.querySelector(".txt span")!.textContent = t("settings.news.body");
   const btn = h("button", "outline md", t("settings.news.open")) as HTMLButtonElement;
-  btn.addEventListener("click", () =>
-    openNews(all(), t("news.sub.app", { version: version ? `v${version}` : "" })),
-  );
+  btn.dataset.track = "news.open";
+  btn.addEventListener("click", () => {
+    track({ name: "release_notes_viewed" });
+    openNews(all(), t("news.sub.app", { version: version ? `v${version}` : "" }));
+  });
   row.querySelector(".act")!.append(btn);
   return row;
 }

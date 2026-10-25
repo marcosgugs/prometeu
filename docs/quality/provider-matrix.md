@@ -23,16 +23,6 @@ agent-independent; tests are in `src-tauri/src/github_notifications.rs` and
 `src/notification-feed.test.ts` ([contract](../contracts/github-notifications.md)).
 Windows/WSL has no GitHub command implementation yet.
 
-## Product analytics
-
-Product analytics is separate from local telemetry. Claude, Codex and Antigravity
-share the same default-off consent in Settings / General / Privacy; the setting
-gates native and frontend events without changing agent execution or local history.
-Rust consent/persistence/batch tests live in `src-tauri/src/analytics.rs`; Settings
-tests live in `src/analytics-settings.test.ts`. Windows/WSL and mobile send no
-analytics; the browser mock persists the choice but ignores events. See the
-[analytics contract](../contracts/product-analytics.md).
-
 ## Local telemetry foundation
 
 [ADR 0059](../decisions/0059-local-telemetry-foundation.md) adds the same local
@@ -91,6 +81,42 @@ Verification additions shared by the existing features:
   for Claude/Antigravity; see the [runtime contract](../contracts/agent-runtime.md#process-boundary-verification).
 - `crates/core/src/workspace_lifecycle.rs` tests finish/archive/restore state preservation for
   every provider through shared board rules, without invoking any provider.
+
+## Product analytics
+
+[ADR 0093](../decisions/0093-anonymous-product-analytics.md) separates named
+control activations from explicit feature use. The
+[contract](../contracts/product-analytics.md) defines triggers and the
+[coverage map](product-analytics-coverage.md) inventories product modules.
+
+Claude, Codex and Antigravity share the same default-off consent in
+Settings / General / Privacy. The setting gates native and frontend events
+without changing agent execution or local history. Rust consent/persistence/batch
+tests live in `src-tauri/src/analytics.rs`; Settings tests live in
+`src/analytics-settings.test.ts`.
+
+| Measurement | Claude | Codex | Antigravity |
+| --- | --- | --- | --- |
+| Named controls and navigation | Shared desktop UI | Shared desktop UI | Shared desktop UI |
+| Files, Git, review, terminal and preview | Shared feature paths | Shared feature paths | Shared feature paths |
+| Model and effort selection | Available choices only | Available choices only | Available choices only |
+| Requests and approvals | Only capabilities exposed by the adapter | Only capabilities exposed by the adapter | Interactive approval and plan controls unavailable |
+| Resource setup and actions | Configuration/use separated | Configuration/use separated | Only supported resources/actions |
+
+Product events no longer observe canonical turn completion or assistant output.
+Feature availability remains governed by the capability matrix; absence of an
+unsupported control is not evidence of non-use. No provider payload or content
+is sent.
+
+Native analytics tests and shared fixtures validate the closed event schema;
+TypeScript tests check parity, identity capture and feature triggers. The
+real-DOM analytics check verifies metadata on shared controls and portals.
+These checks do not certify live PostHog delivery or every CLI version.
+
+Only opted-in macOS/Linux desktop builds compiled with the key send events.
+Windows/WSL and mobile do not; the browser mock persists the choice but ignores
+events. Missing events from those shells or installations without consent must
+not be counted as missing usage.
 
 ## Legend
 

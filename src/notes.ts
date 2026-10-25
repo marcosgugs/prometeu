@@ -153,10 +153,12 @@ function render() {
   resolvedButton.textContent = `${t("notes.resolved")} ${resolved}`;
   openButton.classList.toggle("on", filter === "open");
   resolvedButton.classList.toggle("on", filter === "resolved");
+  openButton.dataset.track = "notes.filter.open";
   openButton.onclick = () => {
     filter = "open";
     render();
   };
+  resolvedButton.dataset.track = "notes.filter.resolved";
   resolvedButton.onclick = () => {
     filter = "resolved";
     render();
@@ -164,6 +166,7 @@ function render() {
   const create = bar.querySelector<HTMLButtonElement>(".newcomment")!;
   create.innerHTML = `${icon("plus", 12)}<span></span>`;
   create.querySelector("span")!.textContent = t("notes.new");
+  create.dataset.track = "notes.new";
   create.onclick = () => compose();
   host.append(bar);
 
@@ -187,6 +190,7 @@ function draftCard(ws: string, draft: Draft): HTMLElement {
   const close = card.querySelector<HTMLButtonElement>(".close")!;
   close.innerHTML = icon("x", 13);
   close.title = t("notes.cancel");
+  close.dataset.track = "notes.cancel";
   close.onclick = () => {
     drafts.delete(draftKey(ws, draft.tab));
     render();
@@ -204,6 +208,7 @@ function draftCard(ws: string, draft: Draft): HTMLElement {
     );
   }
   const area = card.querySelector<HTMLTextAreaElement>("textarea")!;
+  area.dataset.track = "notes.compose";
   area.maxLength = NOTE_TEXT_MAX;
   area.placeholder = t("notes.write");
   area.value = draft.text;
@@ -228,9 +233,11 @@ function draftCard(ws: string, draft: Draft): HTMLElement {
   const mention = card.querySelector<HTMLButtonElement>(".mention")!;
   mention.innerHTML = icon("at-sign", 13);
   mention.title = t("notes.mention");
+  mention.dataset.track = "notes.mention";
   mention.onclick = () => pickMention(area, () => (draft.text = area.value));
   const send = card.querySelector<HTMLButtonElement>(".submit")!;
   send.textContent = t("notes.send");
+  send.dataset.track = "notes.send";
   send.onclick = submit;
   return card;
 }
@@ -253,6 +260,7 @@ function threadCard(note: Note, items: Note[]): HTMLElement {
   card.querySelector(".replycount")!.textContent = count ? tn(count, "notes.replies") : t("notes.noReplies");
   const mine = team.inboxItems().some((item) => item.ws === note.ws && item.id === note.id);
   card.querySelector(".forme")!.textContent = mine ? t("notes.you") : "";
+  card.dataset.track = "notes.thread.open";
   card.onclick = () => openThread(note.id);
   return card;
 }
@@ -263,6 +271,7 @@ function threadDetail(ws: string, root: Note, items: Note[]): HTMLElement {
   const back = head.querySelector<HTMLButtonElement>(".back")!;
   back.innerHTML = icon("arrow-left", 14);
   back.title = t("notes.back");
+  back.dataset.track = "notes.back";
   back.onclick = () => {
     selected = null;
     render();
@@ -276,6 +285,7 @@ function threadDetail(ws: string, root: Note, items: Note[]): HTMLElement {
     context.textContent = root.quote ?? t("notes.context.open");
     context.title = root.anchor ? t("notes.context.open") : "";
     context.disabled = !root.anchor;
+    context.dataset.track = "notes.context.open";
     if (root.anchor) context.onclick = () => ctx.focus(root.anchor!);
     panel.append(context);
   }
@@ -296,6 +306,7 @@ function threadDetail(ws: string, root: Note, items: Note[]): HTMLElement {
     `<textarea rows="2" spellcheck="true"></textarea><div><button class="ico sm mention"></button><button class="ghost md resolve"></button><span class="spacer"></span><button class="pri md submit"></button></div>`,
   );
   const area = answer.querySelector<HTMLTextAreaElement>("textarea")!;
+  area.dataset.track = "notes.reply";
   area.maxLength = NOTE_TEXT_MAX;
   area.placeholder = t("notes.reply.write");
   area.value = replies.get(root.id) ?? "";
@@ -318,15 +329,18 @@ function threadDetail(ws: string, root: Note, items: Note[]): HTMLElement {
   const mention = answer.querySelector<HTMLButtonElement>(".mention")!;
   mention.innerHTML = icon("at-sign", 13);
   mention.title = t("notes.mention");
+  mention.dataset.track = "notes.mention";
   mention.onclick = () => pickMention(area, () => replies.set(root.id, area.value));
   const resolve = answer.querySelector<HTMLButtonElement>(".resolve")!;
   resolve.innerHTML = `${icon("check", 12)}<span></span>`;
   resolve.querySelector("span")!.textContent = t("notes.resolve");
+  resolve.dataset.track = "notes.resolve";
   resolve.onclick = async () => {
     if (!(await team.resolveNote(ws, root.id))) ctx.say(t("err.team.down"), true);
   };
   const send = answer.querySelector<HTMLButtonElement>(".submit")!;
   send.textContent = t("notes.reply.send");
+  send.dataset.track = "notes.reply.send";
   send.onclick = submit;
   panel.append(answer);
   return panel;
@@ -356,6 +370,7 @@ function quoteChip(quote: string, drop: () => void): HTMLElement {
   chip.children[1].textContent = tn(quote.split("\n").length, "notes.quote");
   const x = template("button", "ico sm", icon("x", 12));
   x.title = t("notes.quote.drop");
+  x.dataset.track = "notes.quote.drop";
   x.addEventListener("click", drop);
   chip.append(x);
   return chip;
@@ -420,9 +435,9 @@ export function pickMention(area: HTMLTextAreaElement, onChange: () => void) {
     area.selectionStart = area.selectionEnd = from + name.length + 2;
   };
   menu.openAt(
-    { x: box.left, y: box.top - 4 },
+    { area: "comments", x: box.left, y: box.top - 4 },
     list.map((member) => ({
-      label: member.name,
+      label: member.name, track: "notes.mention.select",
       glyph: avatar(member.name),
       hint: member.online ? undefined : t("team.offline"),
       run: () => put(member.name),

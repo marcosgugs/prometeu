@@ -405,8 +405,11 @@ pub fn catalog_install_project(
         return Ok(project);
     }
     let path = checkout(item, Path::new(&directory), existing)?;
-    let project =
-        crate::session::register_project(&mut lock(&app.state::<AppState>().board), &path);
+    let project = crate::session::register_project(
+        &mut lock(&app.state::<AppState>().board),
+        &path,
+        crate::analytics::ProjectAction::Add,
+    );
     publish(&app);
     crate::state::persist_now(&app).map_err(|_| i18n::t("err.cloud.storage"))?;
     let links = match organization {
@@ -579,10 +582,10 @@ mod tests {
         );
         assert!(!path.join("SETUP_RAN").exists());
         let mut board = Board::default();
-        crate::session::register_project(&mut board, &path);
+        crate::session::register_project(&mut board, &path, crate::analytics::ProjectAction::Add);
         std::fs::write(path.join("README.md"), "local changes").unwrap();
         let retry = checkout(&item, &root, false).unwrap();
-        crate::session::register_project(&mut board, &retry);
+        crate::session::register_project(&mut board, &retry, crate::analytics::ProjectAction::Add);
         assert_eq!(board.projects.len(), 1);
         assert_eq!(
             matching_project(&item, &project_remotes(&board.projects), &board.projects)

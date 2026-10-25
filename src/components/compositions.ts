@@ -31,8 +31,8 @@ export function sectionHeader(options: {
   return root;
 }
 
-export function overflowAction(options: { label: string; key: string; items: Item[]; busy?: boolean }) {
-  const control = menuButton("…", () => options.items);
+export function overflowAction(options: { label: string; key: string; items: Item[]; busy?: boolean; track?: string }) {
+  const control = menuButton("…", () => options.items, options.track);
   control.classList.add("desktop-overflow");
   control.setAttribute("aria-label", options.label);
   control.dataset.focus = options.key;
@@ -62,7 +62,7 @@ export function itemRow(options: {
 }
 
 export type ListState = { kind: "ready" } | { kind: "empty" | "loading"; text: string }
-  | { kind: "error"; text: string; retry?: { label: string; run: () => void; key?: string } };
+  | { kind: "error"; text: string; retry?: { label: string; run: () => void; key?: string; track?: string } };
 
 export function listState(state: ListState) {
   const root = h("div", "desktop-list-state");
@@ -71,7 +71,7 @@ export function listState(state: ListState) {
   if (state.kind === "error") {
     root.append(notice(state.text, "error"));
     if (state.retry) {
-      const retry = button(state.retry.label, state.retry.run);
+      const retry = button(state.retry.label, state.retry.run, "outline", state.retry.track);
       if (state.retry.key) retry.dataset.focus = state.retry.key;
       root.append(retry);
     }

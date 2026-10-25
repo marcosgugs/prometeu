@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 
 async function boot(page: Page) {
   await page.goto("/");
@@ -46,6 +46,8 @@ test("analytics saves restore keyboard focus without stealing it @webkit", async
   await page.locator(".setnavitem").getByText("General", { exact: true }).click();
   const control = page.getByRole("switch", { name: "Share usage data", exact: true });
   await expect(control).toBeEnabled();
+  await expect(control).toHaveAttribute("data-track", "settings.analytics.enabled");
+  expect(await control.evaluate(element => element.closest<HTMLElement>("[data-track-area]")?.dataset.trackArea)).toBe("settings.privacy");
   await hold(page, "analytics_set_enabled");
   await control.press("Space");
   await waiting(page);

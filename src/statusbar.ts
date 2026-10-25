@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as accountUI from "./accounts";
 import { accounts } from "./accounts";
 export type { Account, Accounts } from "./accounts";
@@ -218,6 +219,7 @@ function chip(which: Which, html: string, title: string, provider?: ProviderId):
   const button = document.createElement("button");
   button.className = "uchip";
   button.dataset.chip = which;
+  button.dataset.track = `status.${which}`;
   button.title = title;
   button.innerHTML = html;
   if (provider) button.dataset.provider = provider;
@@ -288,9 +290,9 @@ function toggle(which: Which, at: HTMLElement, e: MouseEvent, provider?: Provide
   if (which === "awake") {
     const box = at.getBoundingClientRect();
     return menu.openAt(
-      { x: box.left, y: box.top - 6, above: true },
+      { area: "statusbar", x: box.left, y: box.top - 6, above: true },
       AWAKE.map((mode) => ({
-        label: t(`status.awake.${mode}`),
+        label: t(`status.awake.${mode}`), track: `status.awake.${mode}`,
         hint: t(`status.awake.${mode}.note`),
         checked: awake === mode,
         run: () => pick(mode),
@@ -299,10 +301,12 @@ function toggle(which: Which, at: HTMLElement, e: MouseEvent, provider?: Provide
     );
   }
   open = which;
+  track({ name: which === "usage" ? "quota_viewed" : "machine_panel_opened" });
   if (which === "res") void invoke("set_resource_detail", { open: true }).catch(() => {});
   if (which === "usage") void invoke("usage_refresh", { provider }).catch(() => {});
   panel = document.createElement("div");
   panel.className = `upop ${which}`;
+  panel.dataset.trackArea = "statusbar";
   panel.setAttribute("role", "dialog");
   panel.tabIndex = -1;
   panel.setAttribute("aria-label", t(which === "usage" ? "status.usage" : which === "res" ? "status.res" : "status.ports"));
@@ -346,12 +350,15 @@ function fill() {
   }
   panel.scrollTop = scroll;
   if (open === "res") {
-    panel.querySelector("#u-clean")?.addEventListener("click", () => {
+    const clean = panel.querySelector<HTMLElement>("#u-clean");
+    if (clean) clean.dataset.track = "status.cleanup";
+    clean?.addEventListener("click", () => {
       close();
       openCleanup(say);
     });
   }
   for (const row of panel.querySelectorAll<HTMLElement>("[data-port]")) {
+    row.dataset.track = "status.port.open";
     row.addEventListener("click", () => {
       invoke("open_external", { url: `http://localhost:${row.dataset.port}` }).catch((err) =>
         say(fromBack(err), true),

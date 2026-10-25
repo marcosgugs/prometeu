@@ -1,6 +1,7 @@
 import { icon, fileIcon } from "./icons";
 import { invoke } from "./ipc";
 import * as menu from "./menu";
+import { track } from "./analytics";
 
 export { mentions, short } from "./mentions";
 
@@ -49,13 +50,15 @@ export async function typed(area: HTMLTextAreaElement, id: string, recent: strin
     area.focus();
     area.selectionStart = area.selectionEnd = from + entry.path.length + 1 + tail.length;
     if (entry.dir) void typed(area, id, recent, onChange);
+    else track({ name: "context_attached" });
   };
 
   const box = area.getBoundingClientRect();
   menu.openAt(
-    { x: box.left, y: box.top - 4, above: true },
+    { x: box.left, y: box.top - 4, above: true, anchor: area },
     list.map((entry) => ({
       label: entry.path,
+      track: entry.dir ? "chat.path.folder" : "chat.path.select",
       glyph: entry.dir ? icon("folder", 14) : fileIcon(entry.name),
       run: () => put(entry),
     })),

@@ -20,7 +20,7 @@ export function diffReview(body: HTMLElement, head: HTMLElement, repo: string, c
   let editor: ReturnType<typeof reviewEditor> | undefined;
   let cardSignature = "";
   let editingAnchor: ReviewAnchor | undefined;
-  const fileButton = button(t("review.file"), () => open(), "ghost"); fileButton.classList.add("review-file");
+  const fileButton = button(t("review.file"), () => open(), "ghost", "review.file"); fileButton.classList.add("review-file");
   const count = document.createElement("span"); count.className = "review-count";
   head.append(fileButton, count);
   const available = () => !!options() && all.some(r => r.kind !== "hunk");
@@ -136,7 +136,7 @@ export function diffReview(body: HTMLElement, head: HTMLElement, repo: string, c
   return {
     mount() {
       for (const cell of body.querySelectorAll<HTMLElement>(".dno[data-review-index]")) {
-        const plus = button("+", undefined, "ghost"); plus.classList.add("review-add");
+        const plus = button("+", undefined, "ghost", "review.line.select"); plus.classList.add("review-add");
         plus.onclick = null; // The file body delegates activation and owns editor focus.
         plus.tabIndex = -1; plus.setAttribute("aria-label", t("review.add")); cell.append(plus);
       }

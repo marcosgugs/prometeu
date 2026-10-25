@@ -100,9 +100,10 @@ it("persists remote control independently and encrypts only for owner devices", 
   expect(Object.keys(share!.share.encrypted!.boxes).sort()).toEqual(["membership1", "phone1"]);
 
   await team.remoteControl(work.id, false);
-  expect(fake.invoke).toHaveBeenLastCalledWith("set_shared", {
+  expect(fake.invoke.mock.calls.filter(([command]) => command === "set_shared").slice(-1)[0]).toEqual(["set_shared", {
     id: work.id, shared: false, audience: null, remoteControl: false, team: null, rights: null,
-  }, undefined);
+  }, undefined]);
+  expect(fake.invoke).toHaveBeenLastCalledWith("analytics_track", { event: { name: "collaboration_action_used", action: "companion_disable" } }, undefined);
 
   const teamWork = workspace("organization:organization1:membership1");
   team.boardChanged(board(teamWork));

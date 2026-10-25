@@ -71,6 +71,7 @@ export class Term {
     this.sink = sink;
     this.term.loadAddon(this.fit);
     this.term.open(host);
+    if (this.term.textarea) this.term.textarea.dataset.track = "terminal.input";
     // Capture on the host so the check runs before xterm's listeners on its textarea.
     const lone = loneCompositionEnds();
     for (const type of ["compositionstart", "compositionend"]) {

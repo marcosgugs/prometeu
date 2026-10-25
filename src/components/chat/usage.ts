@@ -6,7 +6,7 @@ export type UsagePanel = {
   title: string; description?: string;
   metrics?: { label: string; value: string }[];
   groups?: { title: string; description?: string; rows: { label: string; value: string; detail?: string }[] }[];
-  actions?: { label: string; disabled?: boolean; run: () => void }[];
+  actions?: { label: string; disabled?: boolean; track?: string; run: () => void }[];
 };
 
 /** A read-only measurement panel; callbacks and translated values come from its host. */
@@ -35,7 +35,7 @@ export function usagePanel(data: UsagePanel): HTMLElement {
   if (data.actions?.length) {
     const actions = h("div", "usage-actions");
     for (const action of data.actions) {
-      const control = button(action.label, () => { menu.close(); action.run(); }, "ghost");
+      const control = button(action.label, () => { menu.close(); action.run(); }, "ghost", action.track);
       control.disabled = action.disabled ?? false; actions.append(control);
     }
     root.append(actions);
@@ -71,7 +71,7 @@ export function contextGauge() {
     if (panel?.isConnected) { menu.close(); return; }
     root.setAttribute("aria-expanded", "true");
     panel = openUsagePanel(root, data.panel, () => { panel = null; root.setAttribute("aria-expanded", "false"); });
-  }, "ghost");
+  }, "ghost", "chat.context.usage");
   root.classList.add("context-gauge"); root.hidden = true;
   root.setAttribute("aria-haspopup", "dialog"); root.setAttribute("aria-expanded", "false");
   const meter = h("span", "meter"); meter.setAttribute("aria-hidden", "true");
