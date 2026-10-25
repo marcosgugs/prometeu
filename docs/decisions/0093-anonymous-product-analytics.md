@@ -104,9 +104,13 @@ as unique operations, or treat app starts as daily activity.
 
 Low observed use is not sufficient to remove a feature. Check availability,
 discovery, recurrence, concentrated use, unsupported shells and delivery loss,
-then gather qualitative context. Existing PostHog dashboard titles were corrected
-without changing their queries; adoption dashboards require released events and
-verified ingestion.
+then gather qualitative context. PostHog dashboards separate observed
+installation/activity/retention from feature adoption and filter for version 2.
+Activity uses explicit interaction rather than process starts. Preparing and
+validating these queries does not establish live ingestion; adoption conclusions
+require released events and verified delivery. Excluding the old vocabulary from
+queries does not delete historical events. See the tracking contract for the
+dashboard definitions and verification boundary.
 
 Opt-in reduces coverage and introduces selection bias, but gives people control
 over external product tracking. The preference belongs in the backend so startup

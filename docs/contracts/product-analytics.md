@@ -145,10 +145,35 @@ instrumentation, missing consent, unsupported shells or delivery loss. Opt-in
 introduces selection bias. Removing features needs
 verified coverage, sufficient observation and qualitative context.
 
-Existing dashboard descriptions distinguish initializations, reopens,
-additional conversations and captured controls. Old queries and history remain
-unchanged. New adoption dashboards require a release and verified ingestion;
-this PR does not manufacture new data from old clicks.
+The PostHog project separates installation/activity/retention from feature
+adoption. Both dashboards require `analytics_version = 2`; this excludes older
+events from analysis without deleting them. First observed installations are
+not new installations: an existing installation can update or opt in later.
+There is no download, installation-completed, accepted-message or completed-turn
+event in this contract.
+
+The shared PostHog activity action includes the feature vocabulary except
+`delegation_action_used` and `project_script_started`, plus `ui_clicked` and
+`conversation_created`. It excludes process starts, screen navigation and
+workspace creation, which can also come from delegation. Daily, weekly and
+monthly activity and retention use this same observed-interaction definition,
+not process reopens or a claim of completed work.
+
+The adoption inventory includes all 50 feature events and the two creation
+events, including entries with no observations. Its fixed trailing 28-day
+window counts feature use among active installations, repeats across at least
+two days or weeks, and the busiest installation's share of occurrences.
+Zero denominators produce null percentages. The separate variant table includes
+observed operation/resource combinations, including automation-only activity;
+it is not the adoption denominator. SQL tables explicitly retain their fixed
+window when the dashboard date selector changes.
+
+On 2026-10-25, query validation found no ingested v2 events. The inventory
+therefore reports awaiting ingestion, not unused features. Release and consent
+must precede live delivery verification. A requested historical deletion through
+the MCP persons endpoint found no profiles and queued no event deletion; all
+observed identities were propertyless. The analytical reset is not a storage
+reset, and old clicks are never manufactured into new feature facts.
 
 ## Payload, privacy and delivery
 
