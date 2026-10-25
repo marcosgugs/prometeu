@@ -154,6 +154,7 @@ test("a read-only Linear connection opens the assignment permission in settings"
 test("an unavailable team issue list keeps assigned issues visible", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("mock:linearAvailableFailure", "1"));
   await page.goto("/");
+  await expect(page.locator("#deskView")).toBeVisible();
   await page.evaluate(async () => {
     type Invoke = (command: string) => Promise<unknown>;
     const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
