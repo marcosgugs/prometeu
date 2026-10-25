@@ -4,6 +4,18 @@ What changes in Prometeu, version by version, for whoever uses the app.
 Versions come from `sh scripts/release.sh`; this file is generated from the
 commits by git-cliff, and each release's notes on GitHub are its section.
 
+## [0.35.0] - 2026-10-25
+
+### New
+
+- **cursor:** Add cli sessions and account quotas
+- **analytics:** Ask before sharing usage data
+- **Breaking:** **scripts:** Require prometeu project settings
+
+### Fixes
+
+- **cursor:** Restore retries and correct tool and answer selections
+
 ## [0.34.0] - 2026-10-25
 
 ### New
