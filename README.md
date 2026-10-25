@@ -10,7 +10,7 @@
   </a>
 </p>
 
-Prometeu is an open-source desktop app for working with Claude Code, Codex, and
+Prometeu is an open-source desktop app for working with Claude Code, Codex, Cursor, and
 Antigravity CLI on macOS and Linux. An experimental Windows app runs Codex in WSL.
 Organize parallel tasks into workspaces, give each task its own Git worktree,
 and keep conversations, files, terminals, and code review in one place.
@@ -33,12 +33,13 @@ optional for local work; model access comes from your own provider account.
   its worktree and local branch after explicit confirmation. Group projects in
   collapsible sidebar folders and filter projects or workspaces as the list
   grows.
-- **Claude Code, Codex, and Antigravity CLI.** Choose a model and supported effort
+- **Claude Code, Codex, Cursor, and Antigravity CLI.** Choose a model and supported effort
   level, manage accounts in Settings, and resume conversations after an agent
   process stops. A turn cut off by closing or updating the app is marked
   interrupted, with a **Continue** action. Antigravity CLI uses the account
   already connected in `agy`; quotas are shown by model group. App-managed
   login, interactive approvals and plan mode are unavailable.
+  Cursor uses its existing CLI login and supports interactive approvals through ACP.
   See the [provider matrix](docs/quality/provider-matrix.md) for validation limits.
   Search models by name or agent, pin favorites, and select the effort directly.
   Catalogs refresh from each CLI; failed refreshes are visible and extra Codex
@@ -407,3 +408,14 @@ a Prometeu account and delivers reports privately to the Prometeu team. See the
 ## License
 
 Prometeu is licensed under the [MIT License](LICENSE).
+
+### Cursor CLI
+
+Cursor is available on the macOS/Linux desktop with an installed CLI that supports
+ACP. Sign in with `agent login`, then open Settings / Accounts, attach the Cursor
+CLI account and select its card. Choose Cursor and a live model in the launcher.
+Existing paid CLI credentials stay in Cursor. Chat supports streaming, tools,
+resume, stop, questions and plan approvals. Account quotas refresh automatically
+from Cursor's dashboard using the existing CLI login, including the shared weekly
+allowance. Hub tool selections and per-turn token/cost meters remain unavailable.
+See the [Cursor contract](docs/contracts/cursor.md).
