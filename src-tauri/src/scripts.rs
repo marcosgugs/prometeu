@@ -1,5 +1,5 @@
-//! Repository configuration declares setup, run, and archive commands. Prefer
-//! .prometeu/settings.toml over Conductor settings, and inherit the original clone's complete
+//! Repository configuration declares setup, run, and archive commands in
+//! .prometeu/settings.toml and inherits the original clone's complete
 //! configuration when a worktree has none. Copy configured secrets and ignored files before setup;
 //! absent a copy declaration, include root .env variants. The app can ask an agent to write
 //! configuration, but does not infer project commands itself.
@@ -115,13 +115,13 @@ mod tests {
         assert_eq!(s.file.as_deref(), Some(".prometeu/settings.toml"));
     }
 
-    /// Support Conductor's named run tables and place the configured default first.
+    /// Place the configured named run default first.
     #[test]
     fn named_run_places_the_default_first() {
-        let dir = tmp("nomeado");
+        let dir = tmp("named");
         write(
             &dir,
-            ".conductor/settings.toml",
+            ".prometeu/settings.toml",
             r#"[scripts]
 setup = "pnpm i"
 
@@ -139,22 +139,23 @@ default = true
         assert_eq!(s.run(Some("api")).unwrap().command, "bin/api");
     }
 
-    /// Prometeu settings replace the entire Conductor fallback rather than merging partial files.
+    /// The removed settings fallback stays ignored.
     #[test]
-    fn prometeu_configuration_takes_precedence_without_merging() {
-        let dir = tmp("prioridade");
+    fn ignores_removed_settings_fallback() {
+        let dir = tmp("priority");
         write(
             &dir,
             ".conductor/settings.toml",
-            "[scripts]\nsetup = \"velho\"\nrun = \"velho\"\n",
+            "[scripts]\nsetup = \"old\"\nrun = \"old\"\n",
         );
+        assert!(read(&dir).file.is_none());
         write(
             &dir,
             ".prometeu/settings.toml",
-            "[scripts]\nrun = \"novo\"\n",
+            "[scripts]\nrun = \"new\"\n",
         );
         let s = read(&dir);
-        assert_eq!(s.run(None).unwrap().command, "novo");
+        assert_eq!(s.run(None).unwrap().command, "new");
         assert!(s.setup.is_none());
     }
 
@@ -222,13 +223,15 @@ default = true
     }
 
     #[test]
-    fn environment_includes_both_prefixes_and_the_standalone_port() {
+    fn environment_includes_project_variables_and_the_standalone_port() {
         let pairs = env(Path::new("/wt"), Path::new("/repo"), "x", Some(3100));
         let get = |k: &str| pairs.iter().find(|(a, _)| a == k).map(|(_, b)| b.clone());
         assert_eq!(get("PROMETEU_PORT").as_deref(), Some("3100"));
-        assert_eq!(get("CONDUCTOR_PORT").as_deref(), Some("3100"));
         assert_eq!(get("PORT").as_deref(), Some("3100"));
-        assert_eq!(get("CONDUCTOR_WORKSPACE_PATH").as_deref(), Some("/wt"));
+        assert_eq!(get("PROMETEU_WORKSPACE_PATH").as_deref(), Some("/wt"));
+        assert!(pairs
+            .iter()
+            .all(|(key, _)| key.starts_with("PROMETEU_") || key == "PORT"));
         // Omit PORT when unavailable instead of passing an empty value to scripts.
         assert!(env(Path::new("/wt"), Path::new("/repo"), "x", None)
             .iter()

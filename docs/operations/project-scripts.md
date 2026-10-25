@@ -1,7 +1,6 @@
 # Project scripts
 
 Projects can define workspace lifecycle commands in `.prometeu/settings.toml`.
-Existing `.conductor/settings.toml` files are also supported.
 
 ```toml
 [scripts]
@@ -26,7 +25,6 @@ default = true
 Scripts receive `PROMETEU_WORKSPACE_PATH`, `PROMETEU_ROOT_PATH`,
 `PROMETEU_WORKSPACE_NAME`, and `PROMETEU_PORT`. Each workspace reserves ten
 ports starting at `PROMETEU_PORT`; `PORT` has the same starting value.
-Equivalent `CONDUCTOR_` variables preserve compatibility with existing scripts.
 Use these ports instead of a fixed port when running multiple workspaces.
 
 Scripts and workspace terminals run in Prometeu's own terminal: they see
@@ -37,6 +35,3 @@ identity of the terminal that started Prometeu (such as `TMUX` or
 
 If a worktree has no settings file, it inherits the original checkout's file.
 This lets you keep private setup commands outside version control.
-
-When both files exist, `.prometeu/settings.toml` takes precedence as a whole;
-Prometeu does not merge it with `.conductor/settings.toml`.

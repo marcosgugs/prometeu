@@ -52,6 +52,14 @@ document; see [Git projects](cloud-catalog.md#git-projects).
 
 Worktrees live in `~/prometeu/worktrees[-dev]/...`, outside the state root.
 
+Repository scripts, tool declarations and method settings load only from
+`.prometeu/settings.toml`. A worktree without this file inherits the original
+checkout's file; a worktree with its own file replaces it as a whole. Workspace
+scripts receive `PROMETEU_WORKSPACE_PATH`, `PROMETEU_ROOT_PATH`,
+`PROMETEU_WORKSPACE_NAME`, `PROMETEU_PORT` when a port is reserved, and the same
+port as `PORT`. No other configuration file or environment prefix is used as a
+fallback. See [project scripts](../operations/project-scripts.md).
+
 A Linux AppImage launch keeps a desktop entry for the running file outside the
 state root, in `$XDG_DATA_HOME` (`~/.local/share` by default):
 `applications/co.prometeu.desktop.desktop` and its icon

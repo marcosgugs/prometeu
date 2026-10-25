@@ -158,7 +158,7 @@ const board: Board = {
       // This tab overrides the workspace model so its footer differs from sibling tabs.
       { id: "t2", title: "", status: "pronta", note: null, tokens: 112_400, pending_prompt: "What is interesting about this project?", choice: { agent: "claude", model: "sonnet", effort: "medium" } },
     ]),
-    ws("ui-2231", "p2", "prometeu", "Match the Conductor screen", "Fazendo", [
+    ws("ui-2231", "p2", "prometeu", "Polish the chat screen", "Fazendo", [
       { id: "t3", title: "", status: "rodando", note: "Edit src/style.css", tokens: 23_800 },
     ]),
     // Two repositories on one branch exercise separate change sections.
@@ -539,7 +539,7 @@ const SAMPLE =
 /// One workspace has setup and two run scripts; another has none to exercise the add-script prompt.
 const scripts: Record<string, Scripts> = {
   "sessao-0929": {
-    file: ".conductor/settings.toml",
+    file: ".prometeu/settings.toml",
     inherited: false,
     setup: "bin/setup",
     runs: [
@@ -2261,7 +2261,7 @@ const mockCommands: IpcHandlers = {
       procs: [
         { kind: "app", name: "Prometeu", detail: "", rss: 640 * 1024 * 1024, cpu: 0.8,
           hist: [0.4, 0.6, 1.2, 0.9, 0.7, 2.1, 1.4, 0.8, 0.6, 0.8] },
-        { kind: "chat", name: "Match the Conductor screen", detail: "Conversation 1", rss: 128 * 1024 * 1024, cpu: 2.2,
+        { kind: "chat", name: "Polish the chat screen", detail: "Conversation 1", rss: 128 * 1024 * 1024, cpu: 2.2,
           hist: [0, 0, 4.5, 8.2, 6.1, 3.3, 1.2, 2.8, 5.4, 2.2] },
         { kind: "term", name: "App icon", detail: "run", rss: 54 * 1024 * 1024, cpu: 0.4,
           hist: [0.2, 0.3, 0.2, 0.5, 0.4, 0.3, 0.4, 0.4, 0.3, 0.4] },

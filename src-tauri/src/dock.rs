@@ -457,7 +457,7 @@ pub fn workspace_scripts(app: AppHandle, state: State<AppState>, id: String) -> 
 
 /// Create the commented settings example only when no configuration exists. For worktrees
 /// inheriting clone settings, copy those settings into the worktree instead, allowing isolated
-/// edits. Existing Prometeu or Conductor files are returned without overwriting them.
+/// edits. Existing settings files are returned without overwriting them.
 #[tauri::command]
 pub fn create_scripts_file(state: State<AppState>, id: String) -> Result<String, String> {
     let ws = workspace_copy(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;

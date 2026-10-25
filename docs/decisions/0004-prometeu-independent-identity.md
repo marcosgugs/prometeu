@@ -35,6 +35,10 @@ project configuration and environment variables:
 - releases published in `prometeucorp/prometeu`, alongside the source, as defined
   in [ADR 0040](0040-open-source.md).
 
+Project settings load only from `.prometeu/settings.toml`. Workspace scripts
+receive `PROMETEU_` variables and the conventional `PORT` variable. Other
+configuration files and variable prefixes are not used as fallbacks.
+
 The application neither reads nor modifies Prometheus data automatically. The
 temporary importer has been removed. Already-imported boards and transcripts
 remain readable. Cleanup accepts an inherited multi-repository worktree only

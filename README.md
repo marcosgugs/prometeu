@@ -27,13 +27,6 @@ Run Claude Code, Codex, Cursor CLI and Antigravity agents in parallel — each i
 - Use Claude Code, Codex, Cursor CLI and Antigravity in one app on macOS and Linux.
 - Free and open source under the MIT license. Bring your own provider account; model usage is billed by your provider.
 
-## Switching from Conductor?
-
-Prometeu reads `.conductor/settings.toml`, including setup, run and archive scripts,
-so your existing project setup carries over. `CONDUCTOR_` environment variables
-remain available. If both settings files exist, `.prometeu/settings.toml` takes
-precedence without merging. See [project scripts](docs/operations/project-scripts.md).
-
 ## Features
 
 - **Cursor CLI:** external CLI login, interactive approvals and account quotas. See [Cursor setup](#cursor-cli).
