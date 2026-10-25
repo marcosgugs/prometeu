@@ -139,13 +139,13 @@ default = true
         assert_eq!(s.run(Some("api")).unwrap().command, "bin/api");
     }
 
-    /// Only the project settings file is read.
+    /// The removed settings fallback stays ignored.
     #[test]
-    fn ignores_other_settings_files() {
+    fn ignores_removed_settings_fallback() {
         let dir = tmp("priority");
         write(
             &dir,
-            ".other/settings.toml",
+            ".conductor/settings.toml",
             "[scripts]\nsetup = \"old\"\nrun = \"old\"\n",
         );
         assert!(read(&dir).file.is_none());
