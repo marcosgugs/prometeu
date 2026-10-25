@@ -1,0 +1,15 @@
+.sheet.analytics-consent.ui-dialog { width: min(440px, calc(100vw - 32px)); }
+.analytics-consent.ui-dialog .sheettop { border-bottom: 0; padding-bottom: var(--space-3); }
+.analytics-consent .sheettop b { width: 100%; text-align: center; text-wrap: balance; }
+.analytics-consent-art { position: relative; width: 220px; height: 104px; margin: 0 auto var(--space-2); flex: none; }
+.analytics-consent-art > span { position: absolute; display: grid; place-items: center; }
+.analytics-consent-flame { inset: 4px 62px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--tab-line) 16%, transparent), transparent 72%); }
+.analytics-consent-bubble, .analytics-consent-signal { width: 44px; height: 44px; border: 1px solid var(--line-raised); border-radius: var(--r-xl); background: var(--bg-side); color: var(--tab-line); }
+.analytics-consent-bubble { left: 12px; top: 32px; transform: rotate(-12deg); }
+.analytics-consent-signal { right: 12px; top: 42px; transform: rotate(10deg); }
+.analytics-consent-spark { right: 51px; top: 8px; color: var(--tab-line); }
+.analytics-consent .ui-form-body { padding-top: 0; }
+.analytics-consent-intro { margin: 0; color: var(--fg-2); line-height: 1.6; text-align: center; text-wrap: pretty; }
+.analytics-consent .ui-card { padding: var(--space-4); gap: var(--space-1); border-radius: var(--r-lg); }
+.analytics-consent .ui-card h2 { margin: 0; font-size: inherit; font-weight: 500; }
+.analytics-consent.ui-dialog .ui-form-footer { border-top: 0; padding-top: 0; padding-bottom: var(--space-6); }

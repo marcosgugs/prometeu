@@ -92,7 +92,9 @@ Relevant permanent tests:
   closed fields, content exclusion, non-null identities, batch offsets and consent.
 - [`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) and
   [`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts): consent
-  saves, errors, unsupported backends, control metadata and focus restoration.
+  saves, errors, unsupported backends, control metadata and focus restoration;
+  the first-run browser scenario also exercises real accept/decline buttons,
+  Escape, pending-save dismissal guards, failed-save retries and reloads.
 - [`src/actions.test.ts`](../../src/actions.test.ts),
   [`src/workspace-review.test.ts`](../../src/workspace-review.test.ts),
   [`src/voice.test.ts`](../../src/voice.test.ts): actual action acceptance,

@@ -225,7 +225,8 @@ to infer an identity. Shared controls propagate metadata without importing the
 analytics service. A generated catalog and runtime checks expose missing coverage.
 Counts are per installation. A background thread batches deliveries with timing
 offsets and an analytics version. Tracking defaults to off, including upgrades.
-Settings / General / Privacy saves explicit consent in the backend; both capture
+The desktop asks on startup when no saved choice exists, including upgrades.
+Settings / General / Privacy can change that choice; both capture
 and pending delivery respect it. Only builds compiled with the key and explicit
 consent send events.
 See the [contract](docs/contracts/product-analytics.md),

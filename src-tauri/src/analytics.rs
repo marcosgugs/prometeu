@@ -559,6 +559,7 @@ impl Delivery {
 
 struct Consent {
     enabled: bool,
+    decided: bool,
     generation: u64,
 }
 
@@ -567,10 +568,10 @@ impl Consent {
         // Missing, unreadable and malformed preferences never imply consent, including upgrades.
         let enabled = std::fs::read(path)
             .ok()
-            .and_then(|bytes| serde_json::from_slice::<bool>(&bytes).ok())
-            .unwrap_or(false);
+            .and_then(|bytes| serde_json::from_slice::<bool>(&bytes).ok());
         Self {
-            enabled,
+            enabled: enabled.unwrap_or(false),
+            decided: enabled.is_some(),
             generation: 0,
         }
     }
@@ -582,6 +583,7 @@ impl Consent {
     fn save(&mut self, path: &Path, enabled: bool) -> Result<bool, String> {
         paths::write_private(path, if enabled { "true" } else { "false" })
             .map_err(|_| i18n::t("err.analytics.storage"))?;
+        self.decided = true;
         if self.enabled != enabled {
             self.generation += 1;
             self.enabled = enabled;
@@ -604,6 +606,15 @@ impl Consent {
 
 fn delivery() -> &'static Delivery {
     DELIVERY.get_or_init(|| Delivery::new(&paths::root().join("analytics-enabled.json")))
+}
+
+#[tauri::command]
+pub fn analytics_needs_consent() -> bool {
+    !delivery()
+        .consent
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .decided
 }
 
 #[tauri::command]
@@ -810,9 +821,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(Consent::load(&path).generation(), None);
+        assert!(!Consent::load(&path).decided);
         for invalid in ["", "null", "{}", "\"true\"", "broken"] {
             paths::write_private(&path, invalid).unwrap();
             assert_eq!(Consent::load(&path).generation(), None);
+            assert!(!Consent::load(&path).decided);
         }
         let mut consent = Consent::load(&path);
         assert!(consent
@@ -824,8 +837,29 @@ mod tests {
             .is_empty());
         assert!(consent.save(&path, true).unwrap());
         assert!(Consent::load(&path).enabled);
+        assert!(Consent::load(&path).decided);
         assert!(!consent.save(&path, false).unwrap());
+        assert!(consent.decided);
+        assert!(Consent::load(&path).decided);
         assert_eq!(Consent::load(&path).generation(), None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn first_decline_and_existing_boolean_choices_suppress_the_prompt() {
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        let mut consent = Consent::load(&path);
+        assert!(!consent.decided);
+        consent.save(&path, false).unwrap();
+        assert!(consent.decided);
+        for stored in ["false", "true"] {
+            paths::write_private(&path, stored).unwrap();
+            let loaded = Consent::load(&path);
+            assert!(loaded.decided);
+            assert_eq!(loaded.enabled, stored == "true");
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -882,12 +916,14 @@ mod tests {
         let mut consent = Consent::load(&root);
         assert_eq!(consent.generation(), None);
         assert!(consent.save(&root, true).is_err());
+        assert!(!consent.decided);
         assert_eq!(consent.generation(), None);
         consent
             .save(&root.join("analytics-enabled.json"), true)
             .unwrap();
         let generation = consent.generation();
         assert!(consent.save(&root, false).is_err());
+        assert!(consent.decided);
         assert_eq!(consent.generation(), generation);
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -896,6 +932,7 @@ mod tests {
     fn consent_filters_stale_events_without_changing_capture_offsets() {
         let consent = Consent {
             enabled: true,
+            decided: true,
             generation: 2,
         };
         let captured = Instant::now();

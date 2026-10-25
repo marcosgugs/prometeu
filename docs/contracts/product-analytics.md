@@ -2,7 +2,7 @@
 
 Prometeu optionally records two kinds of product evidence: identified control
 activations and explicit feature use. Tracking is off until the person enables
-it in Settings / General / Privacy. The decision is in
+it in the startup prompt or Settings / General / Privacy. The decision is in
 [ADR 0093](../decisions/0093-anonymous-product-analytics.md). Execution diagnostics
 remain in [local telemetry](telemetry.md), which never leaves the machine.
 
@@ -191,9 +191,17 @@ is sent. The PostHog US project must discard client IP data.
 Tracking defaults to off for new and existing installations. An existing
 `analytics-id` is not consent. The preference is a JSON boolean in the private,
 atomically written `<root>/analytics-enabled.json`; missing, unreadable or
-malformed values mean off. Explicitly saving a choice replaces that value.
+malformed values mean off and need a choice. On startup, the desktop asks to
+share or decline when there is no valid saved boolean, including upgrades. Both
+answers persist through the same command; existing `true` and `false` values
+suppress the prompt without a migration or a separate asked marker. Escape
+leaves the preference unanswered and asks again at the next startup. Save errors
+stay in the dialog for retry. Release notes wait until the privacy dialog closes.
+Explicitly saving a choice replaces the value, and Settings can change it later.
 
-`analytics_enabled` takes no arguments and returns a boolean.
+`analytics_needs_consent` takes no arguments and returns whether no valid saved
+choice exists. Unsupported backends skip the prompt. `analytics_enabled` takes
+no arguments and returns a boolean.
 `analytics_set_enabled` takes `{ enabled: boolean }`, persists it and returns
 the saved boolean. A write failure rejects with `err.analytics.storage` and
 leaves the running preference unchanged. These preference commands are additive;
@@ -255,9 +263,14 @@ persistence across restarts, failed writes and pending event rejection across
 disable/enable cycles. Dispatch tests cover disabling after batch preparation,
 serialization with an in-flight send and capture without waiting for the network.
 [`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) covers
-loading and changing consent, pending saves, error recovery and unsupported
-backends. The analytics scenario in
-[`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts) covers focus
+first-run save/close orchestration, loading and changing consent, pending saves,
+error recovery and unsupported backends. The first-run scenario in
+[`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts) presses Escape,
+clicks both real consent buttons, holds saves to check disabled controls and blocked
+dismissal, and retries failed saves before checking persistence across reloads.
+This protects the consent boundary through native dialog cancellation and form
+submission in Chromium and WebKit; invoking mocked callbacks cannot prove their
+wiring. The separate Settings scenario covers focus
 after successful and failed saves in Chromium and WebKit, including moving to
 another control while saving. This needs real DOM replacement and native
 disabled-input focus behavior, which the mocked settings unit tests cannot prove.
