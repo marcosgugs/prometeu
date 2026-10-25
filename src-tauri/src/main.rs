@@ -190,6 +190,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             analytics::analytics_track,
             analytics::analytics_enabled,
+            analytics::analytics_needs_consent,
             analytics::analytics_set_enabled,
             background::background_context,
             notifications::notification_permission,

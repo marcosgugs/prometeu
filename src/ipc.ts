@@ -16,6 +16,7 @@ import type { TeamConfig, Organization } from "./team";
 export type Commands = {
   analytics_track: { args: { event: import("./analytics").AnalyticsEvent }; result: void };
   analytics_enabled: { args: undefined; result: boolean };
+  analytics_needs_consent: { args: undefined; result: boolean };
   analytics_set_enabled: { args: { enabled: boolean }; result: boolean };
   background_context: { args: undefined; result: import("./background").BackgroundContext };
   notification_permission: { args: { request: boolean }; result: import("./notifications").NoticePermission };

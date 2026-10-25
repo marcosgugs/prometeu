@@ -89,11 +89,12 @@ control activations from explicit feature use. The
 [contract](../contracts/product-analytics.md) defines triggers and the
 [coverage map](product-analytics-coverage.md) inventories product modules.
 
-Claude, Codex and Antigravity share the same default-off consent in
-Settings / General / Privacy. The setting gates native and frontend events
+Claude, Codex and Antigravity share the same startup consent question when no
+valid saved choice exists. Both answers persist; Settings / General / Privacy
+can change the choice. Tracking stays off until acceptance. The setting gates native and frontend events
 without changing agent execution or local history. Rust consent/persistence/batch
-tests live in `src-tauri/src/analytics.rs`; Settings tests live in
-`src/analytics-settings.test.ts`.
+tests live in `src-tauri/src/analytics.rs`; startup accept/decline/defer and
+Settings tests live in `src/analytics-settings.test.ts`.
 
 | Measurement | Claude | Codex | Antigravity |
 | --- | --- | --- | --- |

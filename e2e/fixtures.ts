@@ -19,6 +19,8 @@ export const test = base.extend({
       gaps.set(JSON.stringify(gap), gap);
     });
     await context.addInitScript(() => {
+      // Existing journeys start with a saved privacy choice; first-run tests can remove it.
+      if (localStorage.getItem("mock:analyticsEnabled") === null) localStorage.setItem("mock:analyticsEnabled", "false");
       const token = (value?: string) => value && /^[A-Za-z0-9._-]{1,80}$/.test(value) ? value : undefined;
       document.addEventListener("analytics-unidentified", event => {
         const { element, missing } = (event as CustomEvent).detail;

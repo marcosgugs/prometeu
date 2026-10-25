@@ -77,7 +77,12 @@ trusting the client clock. Network delay still shifts absolute time. Existing
 lifecycle/navigation meanings remain; old click series with null or inferred
 identities are historical data, not backfilled into the new catalog.
 
-Tracking requires explicit opt-in in Settings / General / Privacy. New and
+Tracking requires explicit opt-in. The desktop asks on startup if no valid saved
+choice exists, including upgrades; both sharing and declining persist the existing
+boolean preference. Existing choices are respected. Escape defers the question
+until the next startup, and failed saves leave the dialog open for retry.
+Settings / General / Privacy can change the choice later. Asking makes the
+choice discoverable without silently enabling external tracking. New and
 existing installations default to off; a pre-existing installation ID is not
 consent. Rust persists the choice and enforces it before queuing and before
 delivery. Disabling also invalidates pending events across later opt-ins;

@@ -226,6 +226,12 @@
       ]
     },
     {
+      "target": "analytics.consent",
+      "sources": [
+        "src/analytics-settings.ts"
+      ]
+    },
+    {
       "target": "app.update",
       "sources": [
         "index.html"

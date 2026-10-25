@@ -3,6 +3,7 @@ import * as background from "./background";
 import * as cloud from "./cloud";
 import { invoke } from "./ipc";
 import { track, trackClicks, viewScreen, type Screen } from "./analytics";
+import { askAnalyticsConsent } from "./analytics-settings";
 import { onConnectionRestored } from "./connection";
 import { listen } from "@tauri-apps/api/event";
 import { openProjects } from "./projects";
@@ -833,10 +834,11 @@ team.boardChanged(state);
 alert.boardChanged(state);
 island.boardChanged(state);
 showDesk();
-void announceBoardRecovery();
-
-// Show release notes after the initial page renders so the dialog overlays the application.
-void news.init();
+void askAnalyticsConsent().then(async () => {
+  await announceBoardRecovery();
+  // Release notes must not cover the privacy choice on first launch or upgrade.
+  void news.init();
+});
 
 // General discovery is advisory.
 const prScan = new PrScanPolicy();

@@ -38,7 +38,7 @@ In release, the default root is `~/.prometeu`. In debug, `~/.prometeu-dev`.
 | Linear issue cache | `<root>/linear-issues.json` | `linear.rs`; private assigned and available lists with fetch time; see [Linear issues](linear-issues.md) |
 | GitHub App credential | `<root>/github.json` | `github_auth.rs`; private access and refresh tokens, expiry and login, never sent over IPC; see [GitHub issues](github-issues.md). The retired `<root>/github-issues.json` is ignored |
 | optional TypeSafe key and enablement | `<root>/typesafe.json` | `typesafe.rs`; private, disabled by default; see [context evaluation](context-evaluation.md) |
-| product analytics consent | `<root>/analytics-enabled.json` | `analytics.rs`; private JSON boolean, default false on new installs and upgrades, including missing or invalid files; see [product analytics](product-analytics.md) |
+| product analytics consent | `<root>/analytics-enabled.json` | `analytics.rs`; private JSON boolean, missing or invalid files disable capture and trigger the startup question; either saved boolean suppresses the question; see [product analytics](product-analytics.md) |
 | product analytics identity | `<root>/analytics-id` | `analytics.rs`; private random UUID, created only when consent and the build key allow capture; its presence does not imply consent |
 | Codex and Antigravity V1 transcript | `<root>/chats/<tab>.jsonl` | `transcript_store.rs`, via the core conversation stream |
 | files received through a native promise | `<root>/attachments/<uuid>/<name>` | `file_drop.rs`; private `0700` directory, `0600` file |
