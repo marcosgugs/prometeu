@@ -592,6 +592,7 @@ pub fn transcript_of(ws: &Workspace, session: &str) -> PathBuf {
     {
         crate::state::ProviderId::Codex
         | crate::state::ProviderId::Antigravity
+        | crate::state::ProviderId::Cursor
         | crate::state::ProviderId::RetiredGemini => paths::chat_log(session),
         crate::state::ProviderId::Claude => paths::transcript(session, Path::new(&ws.worktree)),
     }

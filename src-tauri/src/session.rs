@@ -919,7 +919,7 @@ pub(crate) fn workspace_launch_of(
             .and_then(|t| t.choice.clone()),
         tools,
     );
-    if launch.agent == ProviderId::Antigravity {
+    if matches!(launch.agent, ProviderId::Antigravity | ProviderId::Cursor) {
         if let Some(tab) = workspace.tabs.iter().find(|t| t.id == tab) {
             launch.plan = tab.plan;
             launch.permission = tab.permission;
@@ -1558,7 +1558,7 @@ fn spawn_tab_with_id(
     )?;
     // The caller publishes the tab before chat::ready_now releases its pending prompt.
     Ok(Tab {
-        plan: launch.agent == ProviderId::Antigravity && launch.plan,
+        plan: matches!(launch.agent, ProviderId::Antigravity | ProviderId::Cursor) && launch.plan,
         permission: launch.permission,
         task: None,
         id,
@@ -2553,9 +2553,10 @@ mod tests {
             ] {
                 let expected = match provider {
                     ProviderId::Claude => crate::paths::transcript(id, Path::new(&ws.worktree)),
-                    ProviderId::Codex | ProviderId::Antigravity | ProviderId::RetiredGemini => {
-                        crate::paths::chat_log(id)
-                    }
+                    ProviderId::Codex
+                    | ProviderId::Antigravity
+                    | ProviderId::Cursor
+                    | ProviderId::RetiredGemini => crate::paths::chat_log(id),
                 };
                 assert_eq!(crate::chat::transcript_of(&ws, id), expected, "tab {id}");
             }
@@ -2898,7 +2899,10 @@ mod tests {
                         )
                         .unwrap();
                     }
-                    ProviderId::Codex | ProviderId::Antigravity | ProviderId::RetiredGemini => {
+                    ProviderId::Codex
+                    | ProviderId::Antigravity
+                    | ProviderId::Cursor
+                    | ProviderId::RetiredGemini => {
                         crate::mcp::codex_config("test", launch.mcp.as_deref()).unwrap();
                     }
                 }
