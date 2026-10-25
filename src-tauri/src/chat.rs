@@ -74,7 +74,7 @@ impl Chat {
     }
 
     pub fn alive(&self) -> bool {
-        self.process.control.running()
+        self.process.control.running() && self.wire.is_connected()
     }
 
     /// Deliver an app-generated warning into the conversation as a `system.notice`, the same path

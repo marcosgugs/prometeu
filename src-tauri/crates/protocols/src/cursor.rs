@@ -47,6 +47,9 @@ impl prometeu_core::conversation::stream::ConversationInput for Input {
     }
 }
 impl prometeu_core::session::provider::AgentInput for Input {
+    fn is_connected(&self) -> bool {
+        lock(&self.0).out.is_some()
+    }
     fn close(&mut self) {
         lock(&self.0).out.take();
     }
@@ -187,6 +190,7 @@ impl Link {
         };
         if let Err(error) = link.call("initialize", initialize(), Sent::Init) {
             link.failed = Some(error);
+            link.out.take();
         }
         link
     }
@@ -339,6 +343,7 @@ impl Link {
         };
         result.unwrap_or_else(|error| {
             self.failed = Some(error.clone());
+            self.out.take();
             self.pending = None;
             let mut events = self.finish("error", &error);
             events.push(event(
@@ -748,13 +753,16 @@ fn question_answer(params: &Value, response: &Value) -> Result<Value, String> {
             })
             .map(|o| o["id"].clone())
             .collect();
-        let selected_labels: Vec<_> = options
+        let mut selected_labels: Vec<_> = options
             .iter()
             .filter(|o| selected.contains(&o["id"]))
             .filter_map(|o| o["label"].as_str())
             .collect();
         if selected_labels.join(", ") != answer {
-            free_text = true;
+            let mut supplied: Vec<_> = answer.split(", ").collect();
+            supplied.sort_unstable();
+            selected_labels.sort_unstable();
+            free_text |= question["allowMultiple"] != true || supplied != selected_labels;
         }
         feedback.push(format!("{prompt}: {answer}"));
         answers.push(json!({"questionId":question["id"],"selectedOptionIds":selected}));

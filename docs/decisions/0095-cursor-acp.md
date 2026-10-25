@@ -44,16 +44,21 @@ queries are bounded and terminate the process without inference.
 
 Suppress native replay while loading a session; Prometeu replays its own V1 log.
 A failed native load reports an error and keeps history, never silently replacing
-it with a new conversation. Ask profiles surface permission requests; ordinary
-automatic profiles choose the advertised one-time allow option. Unknown client
+it with a new conversation. Terminal handshake failures close input and mark the
+connection disconnected, allowing the next user message to restart through the
+shared host lifecycle even if the old child has not exited. Existing adapters
+retain their process-based liveness through the default connected state. Ask
+profiles surface permission requests; ordinary automatic profiles choose the advertised one-time allow option. Unknown client
 requests receive a JSON-RPC error rather than blocking indefinitely.
 
 ## Consequences
 
 Cursor is available on the macOS/Linux desktop. Windows/WSL still registers only
 Codex. Hub MCP/plugin/skill selections are unavailable and explicit nonempty
-selections fail startup; Cursor's own configuration remains active. No isolated
-configuration, per-turn token/cost meter, context report or compaction control is
+workspace selections fail startup. Absent workspace axes resolve to empty hub
+selections rather than inheriting global or project tools that Cursor cannot
+accept; this applies on both startup and resume. Cursor's own configuration
+remains active. No isolated configuration, per-turn token/cost meter, context report or compaction control is
 advertised. Cursor owns subagent execution; no independently verified background
 lifecycle signal is exposed.
 

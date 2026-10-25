@@ -26,8 +26,11 @@ by the shared session core. `session/cancel` interrupts the active prompt.
 The native session ID is saved in `Tab.agent_session`. Prometeu retains V1
 presentation in `chats/<session>.jsonl`; native replay during `session/load` is
 ignored to avoid duplicate messages. Authentication, model, mode or resume
-errors end pending work with a translated error. Native stderr diagnostics do not enter
-the shared transcript; text delivered as an ACP assistant chunk is preserved,
+errors end pending work with a translated error and close input. The desktop
+treats the connection as stopped even if the child has not exited yet; the next
+user message replaces it through the normal shutdown and resume lifecycle.
+Authentication runs again, and a saved native session ID is retained. Native
+stderr diagnostics do not enter the shared transcript; text delivered as an ACP assistant chunk is preserved,
 including errors embedded by Cursor itself. There is no automatic new-session fallback on resume
 failure. An unprompted native session may not survive process exit.
 
@@ -54,8 +57,8 @@ No approval rewrites Cursor's persistent allowlist. Explicit CLI deny rules stay
 in Cursor. Stop cancels pending client requests as well as the prompt.
 
 `cursor/ask_question` maps prompts/options to the common question card and maps
-selected labels back to native IDs. Free text is returned in a skipped response's
-reason, since the extension only accepts option IDs as structured answers.
+selected labels back to native IDs independently of multi-select click order.
+Free text is returned in a skipped response's reason, since the extension only accepts option IDs as structured answers.
 `cursor/create_plan` renders the plan text and waits for existing plan approval
 controls. Unknown client methods receive `-32601` rather than remaining pending.
 
@@ -64,8 +67,10 @@ controls. Unknown client methods receive `-32601` rather than remaining pending.
 Streaming, tools, resume, stop, initial plan mode, approvals, questions and local
 path mentions are available. Hub MCP/plugins/skills, managed multiple accounts,
 per-turn token/cost reporting, context reports and explicit compaction are not.
-Nonempty hub selections fail rather than being silently dropped. Cursor may
-load its own project/user rules, skills, hooks and MCP configuration; Prometeu
+Absent workspace selections resolve to empty hub selections for unsupported axes,
+so global and trusted-project tools cannot block startup or resume. Explicit
+nonempty workspace selections still fail rather than being silently dropped.
+Cursor may load its own project/user rules, skills, hooks and MCP configuration; Prometeu
 makes no isolated-configuration claim. Team-level MCP support is limited by
 Cursor itself. Windows/WSL registration is outside this integration.
 

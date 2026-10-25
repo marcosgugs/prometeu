@@ -825,7 +825,21 @@ pub(crate) fn resolve_workspace_tools(
     agent: ProviderId,
 ) -> ResolvedTools {
     let project = trusted_project(trust, ws);
-    let workspace = ws.tools();
+    let mut workspace = ws.tools();
+    let capabilities = crate::agents::capabilities(agent);
+    // Hidden tool axes must not inherit unsupported hub selections. Preserve explicit workspace
+    // requests so the provider can reject them instead of silently dropping requested tools.
+    if !capabilities.workspace_mcp_selection {
+        workspace.mcp.get_or_insert_with(|| Selection::only(vec![]));
+    }
+    if !capabilities.workspace_plugin_selection {
+        workspace
+            .plugins
+            .get_or_insert_with(|| Selection::only(vec![]));
+        workspace
+            .skills
+            .get_or_insert_with(|| Selection::only(vec![]));
+    }
     let (mcp_base, mut mcp_universe) = mcp_base_and_universe(ws, agent);
     if agent == ProviderId::Claude {
         keep_selected_connectors(&mut mcp_universe, [global, &project, &workspace]);
@@ -2908,6 +2922,81 @@ mod tests {
                 }
             }
         }
+        // Unsupported providers must not inherit global or trusted-project tools on any axis.
+        std::fs::write(
+            crate::paths::root().join("plugins.json"),
+            r#"[{"id":"reviewer","source":"/fixture"},{"id":"skill-review","source":"/fixture"}]"#,
+        )
+        .unwrap();
+        let inherited = Tools {
+            mcp: Some(Selection::only(vec!["hub".into()])),
+            plugins: Some(Selection::only(vec!["reviewer".into()])),
+            skills: Some(Selection::only(vec!["skill-review".into()])),
+        };
+        ws.repo = ws.worktree.clone();
+        ws.repos.clear();
+        ws.mcp = None;
+        ws.plugins = None;
+        ws.skills = None;
+        let root = Path::new(&ws.worktree);
+        std::fs::create_dir_all(root.join(".prometeu")).unwrap();
+        std::fs::write(root.join(".prometeu/settings.toml"),
+            "[tools]\nmcp = { add = [\"hub\"] }\nplugins = { add = [\"reviewer\"] }\nskills = { add = [\"skill-review\"] }\n").unwrap();
+        let declaration = super::project_declaration(root, root).unwrap();
+        let trust = vec![crate::state::ToolTrust {
+            repo: declaration.repo,
+            hash: declaration.hash,
+            approved: true,
+            at: 0,
+        }];
+        for global in [&inherited, &Tools::default()] {
+            for agent in [ProviderId::Cursor, ProviderId::Antigravity] {
+                let tools = resolve_workspace_tools(global, &trust, &ws, agent);
+                assert_eq!(tools.mcp, Some(vec![]));
+                assert_eq!(tools.plugins, Some(vec![]));
+                assert_eq!(tools.skills, Some(vec![]));
+                let choice = Choice {
+                    agent,
+                    ..Choice::default()
+                };
+                ws.tabs = vec![tab("mixed", Some(choice.clone()))];
+                for launch in [
+                    workspace_launch_with(&ws, Some(choice), &tools),
+                    workspace_launch_of(&ws, "mixed", &tools),
+                ] {
+                    assert_eq!(launch.mcp, Some(vec![]));
+                    assert_eq!(launch.plugins, Some(vec![]));
+                    assert_eq!(launch.skills, Some(vec![]));
+                }
+            }
+        }
+        // Explicit workspace requests still reach Cursor's rejection guard.
+        ws.mcp = inherited.mcp;
+        ws.plugins = inherited.plugins;
+        ws.skills = inherited.skills;
+        let tools = resolve_workspace_tools(&Tools::default(), &trust, &ws, ProviderId::Cursor);
+        assert_eq!(tools.mcp, Some(vec!["hub".into()]));
+        assert_eq!(tools.plugins, Some(vec!["reviewer".into()]));
+        assert_eq!(tools.skills, Some(vec!["skill-review".into()]));
+        let launch = workspace_launch_with(
+            &ws,
+            Some(Choice {
+                agent: ProviderId::Cursor,
+                ..Choice::default()
+            }),
+            &tools,
+        );
+        assert_eq!(
+            crate::cursor::prepare(
+                "test",
+                Path::new(&ws.worktree),
+                None,
+                &launch,
+                &crate::account_profiles::native()
+            )
+            .err(),
+            Some(crate::i18n::t("err.cursor.unsupported"))
+        );
     }
 
     /// The setters' payload gate: `null` means inherit, a well-formed `Selection` passes, a

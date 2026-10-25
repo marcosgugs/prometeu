@@ -228,9 +228,75 @@ fn startup_errors_never_leak_diagnostics_or_replace_lost_history() {
             .contains("secret-token"));
         assert!(serde_json::to_string(&events).unwrap().contains(code));
         assert!(output.take().is_empty());
+        assert!(link.out.is_none());
         assert!(link
             .write(&json!({"v":1,"type":"message.send","text":"retry"}))
             .is_err());
+    }
+}
+
+#[test]
+fn failed_handshake_disconnects_host_input_and_releases_the_child_pipe() {
+    let output = Output::default();
+    let mut protocol = connect(Box::new(output.clone()), start(true));
+    assert!(protocol.input.is_connected());
+    protocol
+        .input
+        .send(
+            &json!({"v":1,"type":"message.send","text":"Check workspace"}),
+            "",
+        )
+        .unwrap();
+    (protocol.translate)(&json!({"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true}}}).to_string());
+    (protocol.translate)(
+        &json!({"jsonrpc":"2.0","id":2,"error":{"message":"Login required"}}).to_string(),
+    );
+    assert!(!protocol.input.is_connected());
+    assert_eq!(
+        Arc::strong_count(&output.0),
+        1,
+        "stdin must be dropped while the reader still exists"
+    );
+
+    // The host replaces a disconnected conversation on the next input. Its new connection must
+    // authenticate again and retain the requested native session, not silently create another.
+    let (mut resumed, output) = ready(true);
+    assert_eq!(resumed.session.as_deref(), Some("fixture-session"));
+    assert_eq!(
+        result(&mut resumed, 6, json!({"stopReason":"end_turn"}))
+            .last()
+            .unwrap()["outcome"],
+        "ok"
+    );
+    assert!(output.take().is_empty());
+}
+
+#[test]
+fn multiple_choice_answers_ignore_click_order_but_preserve_free_text() {
+    let (mut link, output) = ready(false);
+    for (answer, outcome) in [
+        ("Red, Blue", "answered"),
+        ("Blue, Red", "answered"),
+        ("Blue, Red, Green", "skipped"),
+    ] {
+        let opened = frame(
+            &mut link,
+            json!({"jsonrpc":"2.0","id":"q","method":"cursor/ask_question","params":{"questions":[{"id":"color","prompt":"Colors?","options":[{"id":"red","label":"Red"},{"id":"blue","label":"Blue"}],"allowMultiple":true}]}}),
+        );
+        link.write(&json!({"v":1,"type":"request.respond","requestId":opened[0]["requestId"],"response":{"outcome":"answer","answers":{"Colors?":answer}}})).unwrap();
+        let reply = output.take().remove(0);
+        assert_eq!(reply["result"]["outcome"]["outcome"], outcome);
+        if outcome == "answered" {
+            assert_eq!(
+                reply["result"]["outcome"]["answers"][0]["selectedOptionIds"],
+                json!(["red", "blue"])
+            );
+        } else {
+            assert_eq!(
+                reply["result"]["outcome"]["reason"],
+                "Colors?: Blue, Red, Green"
+            );
+        }
     }
 }
 #[test]
