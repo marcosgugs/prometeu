@@ -52,7 +52,7 @@ test.each([true, false])("first-run choice persists %s and leaves failed saves r
   expect(state.control!.checked).toBe(share);
 });
 
-test("Escape defers the prompt without persisting consent", async () => {
+test("closing without submission leaves consent unanswered", async () => {
   const dialog = { root: element(), body: element(), save: {}, cancel: {}, open: vi.fn() };
   state.formDialog.mockReturnValue(dialog);
   state.invoke.mockResolvedValueOnce(true);

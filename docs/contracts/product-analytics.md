@@ -263,9 +263,14 @@ persistence across restarts, failed writes and pending event rejection across
 disable/enable cycles. Dispatch tests cover disabling after batch preparation,
 serialization with an in-flight send and capture without waiting for the network.
 [`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) covers
-first-run accept/decline/defer, loading and changing consent, pending saves, error
-recovery and unsupported backends. The analytics scenario in
-[`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts) covers focus
+first-run save/close orchestration, loading and changing consent, pending saves,
+error recovery and unsupported backends. The first-run scenario in
+[`e2e/audit-regressions.spec.ts`](../../e2e/audit-regressions.spec.ts) presses Escape,
+clicks both real consent buttons, holds saves to check disabled controls and blocked
+dismissal, and retries failed saves before checking persistence across reloads.
+This protects the consent boundary through native dialog cancellation and form
+submission in Chromium and WebKit; invoking mocked callbacks cannot prove their
+wiring. The separate Settings scenario covers focus
 after successful and failed saves in Chromium and WebKit, including moving to
 another control while saving. This needs real DOM replacement and native
 disabled-input focus behavior, which the mocked settings unit tests cannot prove.
