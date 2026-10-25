@@ -2,6 +2,10 @@
 
 Status: current desktop contract. Decision: [ADR 0088](../decisions/0088-github-app.md).
 
+A disconnected provider shows a compact connection card. Scope tabs, filters
+and column headings stay hidden until a connection exists; column headings
+only appear with matching tasks. Hidden controls do not enter keyboard navigation.
+
 ## Connection
 
 GitHub access goes through the Prometeu GitHub App (`prometeu-app`, owned by
@@ -31,7 +35,7 @@ page. Agents may still run `gh` in their own terminals; the app does not.
 
 ## Discovery and interaction
 
-Issues contains Linear and GitHub provider tabs. GitHub has four scopes, all
+Tasks contains Linear and GitHub provider tabs. GitHub has four scopes, all
 open items: **My issues** (assigned to the connected login), **Available**
 (unassigned issues in installed repositories), **My PRs** (authored, including
 drafts) and **To review** (requested reviews, including applicable team
@@ -48,10 +52,14 @@ GitHub has no conditional assignment and silently ignores people without
 triage access, so the result must contain the login; otherwise the claim fails.
 A claim clears the list cache and moves the row to My issues.
 
-Both providers use the same compact search field, scope tabs, refresh button
-and filter pills from `src/issues-controls.ts`. Rows reuse the Linear layout.
+Both providers use shared search, scope tabs, refresh buttons and dropdown
+filters from `src/issues-controls.ts`, composed with the Desktop toolbar.
+GitHub combines repository and label filters with text search, including author
+and labels. Filters apply to the loaded scope and can be cleared together.
+Rows share labeled columns with Linear and show repository, author and labels
+beneath the title. Narrow layouts retain the title and workspace action.
 Clicking a row, or Enter on a focused row, opens its github.com URL. **Open
-workspace** reuses a live workspace or opens the launcher with title,
+workspace** reuses a live workspace; **Start** opens the launcher with title,
 description and URL. There is no details panel. Discovery does not post
 reviews, merge PRs or start agents.
 
@@ -176,7 +184,9 @@ and batches spanning a lost connection or a different login.
 
 `e2e/issues.spec.ts` extends the workspace creation journey: provider keyboard
 navigation, source-link versus nested workspace-button event routing, claiming
-from Available, and PR source preservation through the launcher. These are
+from Available, and PR source preservation through the launcher. The same
+journey checks menu focus restoration and narrow-layout action visibility;
+`src/issues-filter.test.ts` covers combined search and filters. These are
 DOM/focus integration risks that pure query and mapping tests cannot establish.
 The browser mock proves UI behavior, not real GitHub authorization, the device
 flow or native Git networking; those need a manual check against github.com.

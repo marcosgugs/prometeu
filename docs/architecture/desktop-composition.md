@@ -24,8 +24,8 @@ existing primitives.
 
 | Component | Input and responsibility | Production use |
 | --- | --- | --- |
-| `sectionHeader` | Optional title, count, description, supporting controls and actions. Wraps at available width. | Resources introduction; Actions command and profile sections |
-| `toolbar` | Leading and trailing control arrays. Arranges search, filters and actions without owning their rules. | Resources search/filter bar; both screens through `sectionHeader` |
+| `sectionHeader` | Optional title, count, description, supporting controls and actions. Wraps at available width. | Resources introduction; Actions command and profile sections; Tasks introduction |
+| `toolbar` | Leading and trailing control arrays. Arranges search, filters and actions without owning their rules. | Resources and Tasks search/filter bars; section headers |
 | `itemRow` | Title, description, typed icon, optional status/busy state, metadata and action slots. Returns named DOM parts for local additions. | Resource rows; command and profile cards |
 | `overflowAction` | Accessible label, stable focus key, menu items and busy flag. Reuses shared keyboard/menu lifecycle; disables unavailable actions. | Resource menus; Actions card and template menus |
 | `listState` | Discriminated ready, empty, loading or error state; optional labeled retry callback. | Resource feedback; empty command/profile lists |

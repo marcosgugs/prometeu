@@ -144,9 +144,9 @@ two independent diff readers for visual inspection.
 ## Reusable Desktop compositions
 
 `src/components/compositions.ts` provides typed section headers, toolbars, item rows,
-overflow actions and list states above the package primitives. Resources and
-Actions both use them. `src/components/compositions.css` owns common layout; screen
-styles retain only their variants. These Desktop components have no feature
+overflow actions and list states above the package primitives. Resources, Actions
+and the Tasks inbox use them. `src/components/compositions.css` owns common
+layout; screen styles retain only their variants. These Desktop components have no feature
 imports or application effects and do not change the distributed Cloud API.
 The [composition recipe](desktop-composition.md) lists each API and real use.
 `/design-system.html#components-preview` demonstrates an independent screen
