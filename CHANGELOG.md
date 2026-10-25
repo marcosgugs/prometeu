@@ -930,7 +930,7 @@ commits by git-cliff, and each release's notes on GitHub are its section.
 ### New
 
 - **Breaking:** **quadro:** Remove o Kanban e usa Issues como tela inicial
-- **conversa:** A conversa e o painel no desenho do Conductor
+- **conversa:** A conversa e o painel ganharam um novo desenho
 
 ### Fixes
 

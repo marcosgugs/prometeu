@@ -227,7 +227,7 @@ test("clicking a project opens clone files without a workspace", async ({ page }
 
   // The chevron still collapses the project list.
   await project.locator(".gc").click();
-  await expect(page.locator("#railbody .navitem.sub", { hasText: "Match the Conductor screen" })).toHaveCount(0);
+  await expect(page.locator("#railbody .navitem.sub", { hasText: "Polish the chat screen" })).toHaveCount(0);
 });
 
 test("project file viewer previews image bytes", { tag: "@webkit" }, async ({ page }) => {
@@ -390,7 +390,7 @@ test("the sidebar lists agents by workspace, tracks status and opens the selecte
   await expect(page.locator("#chatwrap")).toBeVisible();
   await expect(page.locator("#viewer")).toBeHidden();
   await second.click();
-  await openWorkspace(page, "Match the Conductor screen");
+  await openWorkspace(page, "Polish the chat screen");
   await openWorkspace(page, "Hello");
   await expect(second).toHaveAttribute("aria-current", "true");
   await expect(page.locator("#tabbar .tab.on")).toHaveAttribute("data-tab", "t2");

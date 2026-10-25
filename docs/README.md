@@ -4,7 +4,7 @@ This directory is the project's technical source of truth. `AGENTS.md` works
 as a short index for agents and `README.md` presents the product.
 
 - [Repository presentation](operations/repository-presentation.md): demo provenance, social preview and GitHub verification.
-- [Project scripts](operations/project-scripts.md): setup, run, archive and Conductor compatibility.
+- [Project scripts](operations/project-scripts.md): setup, run and archive.
 
 ## Architecture
 

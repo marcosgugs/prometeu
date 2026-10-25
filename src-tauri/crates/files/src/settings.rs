@@ -13,9 +13,7 @@ impl RepositorySettings for NativeSettings {
     }
 }
 
-/// Search Prometeu settings first so local overrides do not require changing Conductor
-/// configuration.
-pub const FILES: [&str; 2] = [".prometeu/settings.toml", ".conductor/settings.toml"];
+pub const FILES: [&str; 1] = [".prometeu/settings.toml"];
 
 /// The commented example documents the repository/app contract when no settings file exists.
 pub const TEMPLATE: &str = r#"# Scripts Prometeu runs in this repository.

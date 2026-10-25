@@ -338,7 +338,7 @@ export const dockLabel = (kind: DockKind) => {
 /// A dock may be running or retain output after exit.
 export type DockState = { kind: DockKind; alive: boolean };
 
-/// Repository script settings from .prometeu/settings.toml or legacy .conductor/settings.toml, plus the workspace port.
+/// Repository script settings from .prometeu/settings.toml, plus the workspace port.
 export type Scripts = {
   /// Null settings source means no declared scripts; show the setup invitation instead of an empty terminal.
   file: string | null;
