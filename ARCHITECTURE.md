@@ -118,10 +118,10 @@ stay in their existing owners. See the
 
 The optional Linear connection is owned by `src-tauri/src/linear.rs`. It
 queries assigned and unassigned issues in the user's teams and assigns a chosen
-issue after explicit action; `src/issues.ts` owns the screen. See the
+issue after explicit action; `src/issues.ts` owns the Tasks screen. See the
 [Linear issue contract](docs/contracts/linear-issues.md).
 
-The same Issues destination has a GitHub tab owned by `src/github-issues.ts`.
+The same Tasks destination has a GitHub tab owned by `src/github-issues.ts`.
 `src-tauri/src/github_auth.rs` holds the GitHub App credential from the device
 flow; `github_issues.rs` lists assigned and available issues, authored PRs and
 requested reviews, claims issues and prepares isolated PR branches while the

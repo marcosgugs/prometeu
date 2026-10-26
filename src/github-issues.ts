@@ -3,7 +3,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "./ipc";
 import { fromBack, t } from "./i18n";
 import { button, field, formDialog, select } from "./ui";
-import { issueTab, issueSearch, issueRefresh, issueFilter } from "./issues-controls";
+import { issueTab, issueSearch, issueRefresh, issueFilter, issueColumns } from "./issues-controls";
+import { toolbar } from "./components/compositions";
+import { filterGitHubItems } from "./issues-filter";
 import { icon } from "./icons";
 import { empty, h, template } from "./util";
 import { githubScopes, githubWorkspace, loadGitHubInbox } from "./github-issues-model";
@@ -20,7 +22,7 @@ type Context = {
 };
 
 export function githubIssues(host: HTMLElement, ctx: Context) {
-  let scope: GitHubScope = "mine", login = "", installed: string[] = [], query = "", repository = "";
+  let scope: GitHubScope = "mine", login = "", installed: string[] = [], query = "", repository = "", label = "";
   let visible = false, loading = false, revision = 0, opening = false, claiming = false;
   const snapshots = new Map<GitHubScope, GitHubIssues>();
   const errors = new Map<GitHubScope, string>();
@@ -30,13 +32,17 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
   const search = searchField.control;
   const meta = h("span", "imeta"); meta.setAttribute("role", "status");
   const refreshButton = issueRefresh(t("issues.refresh"), () => void refresh(true));
-  bar.append(searchField.root, h("span", "spacer"), meta, refreshButton);
-  const filters = h("div", "iteams");
+  const repositoryFilter = issueFilter(t("github.repositories.label"), value => { repository = value; drawList(); });
+  const labelFilter = issueFilter(t("issues.labels"), value => { label = value; drawList(); });
+  const clearFilters = button(t("issues.clearFilters"), () => {
+    repository = label = query = search.value = ""; drawList(); search.focus();
+  }, "ghost", "issues.filter.clear");
+  bar.append(toolbar([repositoryFilter.control, labelFilter.control, searchField.root], [clearFilters, refreshButton]));
   const list = h("div", "ilist"); list.id = "github-list"; list.setAttribute("role", "tabpanel");
   const controls = new Map<GitHubScope, HTMLButtonElement>();
   for (const key of githubScopes) {
     const control = issueTab(t(`github.${key}`), () => {
-      scope = key; repository = ""; draw();
+      scope = key; repository = label = ""; draw();
     });
     control.dataset.track = `issues.github.scope.${key}`;
     control.id = `github-${key}`; control.setAttribute("aria-controls", list.id);
@@ -51,7 +57,9 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
   });
   search.oninput = () => { query = search.value.toLowerCase().trim(); drawList(); };
   search.onkeydown = event => { if (event.key === "Escape") { query = search.value = ""; drawList(); } };
-  host.append(tabs, bar, filters, list);
+  tabs.append(meta);
+  const columns = issueColumns();
+  host.append(tabs, bar, columns, list);
 
   async function refresh(force: boolean) {
     const request = ++revision;
@@ -61,7 +69,7 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
     try {
       const found = await loadGitHubInbox(scope => invoke("github_issues", { scope, force }));
       if (request !== revision) return;
-      if (login !== found.login) repository = "";
+      if (login !== found.login) repository = label = "";
       login = found.login; installed = found.repositories;
       snapshots.clear();
       found.lists.forEach((list, key) => snapshots.set(key, list));
@@ -93,12 +101,25 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
   }
 
   function drawList() {
-    list.replaceChildren(); filters.replaceChildren(); filters.hidden = true;
+    list.replaceChildren();
+    const connected = ctx.github().connected;
+    host.classList.toggle("task-disconnected", !connected);
+    tabs.hidden = bar.hidden = !connected;
+    columns.hidden = true;
     const snapshot = snapshots.get(scope);
+    repositoryFilter.control.disabled = labelFilter.control.disabled = !ctx.github().connected || !snapshot;
+    clearFilters.hidden = !query && !repository && !label;
+    if (!snapshot || !ctx.github().connected) {
+      repositoryFilter.setOptions([["", t("github.repositories.all")]], "");
+      labelFilter.setOptions([["", t("issues.labels.all")]], "");
+    }
     const error = errors.get(scope) ?? "";
     list.setAttribute("aria-busy", String(loading));
     if (!ctx.github().connected) {
-      list.append(empty(t("github.off.title"), t("github.off.body"), [t("github.connect"), ctx.toSettings, "github.connect"]));
+      list.setAttribute("aria-labelledby", "issues-provider-github");
+      const connect = empty(t("github.off.title"), t("github.off.body"));
+      connect.append(button(t("github.connect"), ctx.toSettings, "outline", "github.connect"));
+      list.append(connect);
       return;
     }
     if (!snapshot) {
@@ -107,36 +128,29 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
     }
     if (snapshot.truncated) list.append(h("p", "ui-notice warning", t("github.truncated")));
     const repositories = [...new Set(snapshot.items.map(item => item.repository))].sort();
+    const labels = [...new Set(snapshot.items.flatMap(item => item.labels))].sort();
     if (repository && !repositories.includes(repository)) repository = "";
-    filters.hidden = repositories.length < 2;
-    const matching = snapshot.items.filter(item => query.split(/\s+/).every(word => `${item.identifier} ${item.title} ${item.repository} ${item.labels.join(" ")}`.toLowerCase().includes(word)));
-    if (!filters.hidden) {
-      const label = template("span", "tlabel", `${icon("filter", 13)}<span></span>`);
-      label.children[1].textContent = t("github.repositories.label");
-      const pills = h("div", "tpills");
-      for (const name of ["", ...repositories]) {
-        const count = name ? matching.filter(item => item.repository === name).length : matching.length;
-        const control = issueFilter(name || t("github.repositories.all"), count, name === repository, () => {
-          repository = name; drawList();
-          [...filters.querySelectorAll<HTMLButtonElement>(".tpill")].find(control => control.getAttribute("aria-pressed") === "true")?.focus();
-        });
-        pills.append(control);
-      }
-      filters.append(label, pills);
-    }
-    const found = matching.filter(item => !repository || item.repository === repository);
+    if (label && !labels.includes(label)) label = "";
+    repositoryFilter.setOptions([["", t("github.repositories.all")], ...repositories.map(key => [key, key] as [string, string])], repository);
+    labelFilter.setOptions([["", t("issues.labels.all")], ...labels.map(key => [key, key] as [string, string])], label);
+    clearFilters.hidden = !query && !repository && !label;
+    const found = filterGitHubItems(snapshot.items, query, repository, label);
     if (!found.length) {
       list.append(!installed.length && !query
         ? empty(t("github.install.title"), t("github.install.body"), [t("github.install.action"), install, "github.install"])
-        : empty(t("github.empty"), t(query || repository ? "issues.noMatch.body" : "github.empty.hint")));
+        : empty(t("github.empty"), t(query || repository || label ? "issues.noMatch.body" : "github.empty.hint")));
       return;
     }
+    columns.hidden = false;
     for (const item of found) {
-      const row = template("div", "irow github-row", `<span class="github-glyph"></span><span class="iid"></span><span class="ititle"><b></b><span class="iproj"></span></span><span class="istate"><i class="dot"></i><span></span></span><span class="iact"></span><span class="iago"></span>`);
+      const row = template("div", "irow github-row", `<span class="github-glyph"></span><span class="iid"></span><span class="ititle"><b></b><span class="iproj"></span></span><span class="istate"><i class="dot"></i><span></span></span><span class="iago"></span><span class="iact"></span>`);
       row.tabIndex = 0; row.setAttribute("role", "link"); row.setAttribute("aria-label", item.title); row.title = item.description ?? item.title;
       row.querySelector(".github-glyph")!.innerHTML = icon(item.kind === "pr" ? "git-pull-request" : "inbox", 14);
       row.querySelector(".iid")!.textContent = `#${item.number}`;
-      row.querySelector(".ititle b")!.textContent = item.title; row.querySelector(".iproj")!.textContent = item.repository;
+      row.querySelector(".ititle b")!.textContent = item.title;
+      const context = row.querySelector(".iproj")!;
+      context.append(h("span", "", item.repository), h("span", "task-author", `@${item.author}`));
+      for (const label of item.labels) context.append(h("span", "task-label", label));
       row.querySelector(".istate span")!.textContent = t(item.draft ? "github.draft" : scope === "reviews" ? "github.reviewRequested" : "github.open");
       (row.querySelector(".istate .dot") as HTMLElement).style.background = item.draft ? "var(--fg-3)" : "var(--done)";
       row.querySelector(".iago")!.textContent = new Date(item.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -145,7 +159,7 @@ export function githubIssues(host: HTMLElement, ctx: Context) {
       row.onclick = visit;
       row.onkeydown = event => { if (event.key === "Enter" && event.target === row) visit(); };
       const available = scope === "available";
-      const action = button(t(available ? "issues.claim" : "issues.open"), () => void (available ? claim(item) : launch(item)), "ghost");
+      const action = button(t(available ? "issues.claim" : githubWorkspace(item, ctx.board().workspaces) ? "issues.open" : "issues.start"), () => void (available ? claim(item) : launch(item)), "outline");
       action.dataset.track = available ? "issues.github.claim" : "issues.github.open_workspace";
       action.classList.add("sm"); action.dataset.focus = item.id;
       action.addEventListener("click", event => event.stopPropagation()); action.disabled = opening || claiming;

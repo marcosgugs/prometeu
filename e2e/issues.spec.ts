@@ -2,9 +2,13 @@ import { expect, test } from "./fixtures";
 
 // The workspace journey needs a browser: row navigation must not swallow its nested action,
 // Provider tabs must retain focus and identical control geometry; native dialogs must restore focus
-// after asynchronous content replacement. These CSS and focus regressions need a real browser.
+// after asynchronous content replacement. Filter menus must return focus to their stable trigger;
+// narrow layouts must keep the workspace action reachable without horizontal overflow.
+// Disconnected panes must remove inbox controls from layout and keyboard navigation.
+// These CSS and focus regressions need a real browser.
 test("GitHub issues and requested PR reviews launch workspaces without opening the source link", async ({ page }) => {
   await page.addInitScript(() => {
+    localStorage.setItem("mock:githubOff", "1");
     localStorage.setItem("prometeu:model-choice", JSON.stringify({ agent: "codex", model: "gpt-5.6-sol" }));
     localStorage.setItem("mock:accounts", JSON.stringify({ accounts: [
       { id: "codex", provider: "codex", email: "user@example.com", plan: "pro", connected: true, revision: 0 },
@@ -14,7 +18,24 @@ test("GitHub issues and requested PR reviews launch workspaces without opening t
   await expect(page.locator("#deskView")).toBeVisible();
   const visited: string[] = [];
   page.on("console", message => { if (message.text().startsWith("open in GitHub:")) visited.push(message.text()); });
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
+  for (const provider of ["linear", "github"]) {
+    const tab = page.locator(`#issues-provider-${provider}`);
+    const pane = page.locator(`#${provider}-issues-pane`);
+    await tab.click();
+    await expect(pane.locator(".itabs")).toBeHidden();
+    await expect(pane.locator(".ibar")).toBeHidden();
+    await expect(pane.locator(".task-columns")).toBeHidden();
+    await page.keyboard.press("Tab");
+    await expect(pane.locator(".iempty button")).toBeFocused();
+  }
+  await page.evaluate(async () => {
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    await internals.invoke("linear_connect");
+    await internals.invoke("github_connect");
+  });
+  await page.locator("#issues-provider-linear").click();
+  await expect(page.locator("#ilist .irow").first()).toBeVisible();
   const measurements = () => page.locator('.issue-provider-pane:not([hidden])').evaluate(pane => {
     const size = (selector: string) => {
       const node = pane.querySelector<HTMLElement>(selector)!;
@@ -42,14 +63,22 @@ test("GitHub issues and requested PR reviews launch workspaces without opening t
   await expect(page.locator("#issues-provider-github")).toBeFocused();
   const row = page.locator("#github-list .irow", { hasText: "Restore terminal state" });
   await expect(row).toBeVisible();
-  const repositoryFilters = page.locator("#github-issues-pane .tpills");
-  await repositoryFilters.getByRole("button", { name: "acme/design-system" }).click();
+  const repositoryFilter = page.locator("#github-issues-pane").getByRole("button", { name: "Repositories", exact: true });
+  await repositoryFilter.focus(); await page.keyboard.press("ArrowDown");
+  await page.getByRole("menuitemcheckbox", { name: "acme/design-system", exact: true }).click();
   await expect(page.locator("#github-list .irow")).toHaveCount(1);
-  await expect(repositoryFilters.getByRole("button", { name: "acme/design-system" })).toBeFocused();
-  await repositoryFilters.getByRole("button", { name: "All repositories" }).click();
+  await expect(repositoryFilter).toBeFocused();
+  await repositoryFilter.click();
+  await page.getByRole("menuitemcheckbox", { name: "All repositories", exact: true }).click();
+  const viewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 900, height: 800 });
+  const pane = page.locator("#github-issues-pane");
+  expect(await pane.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect(row.getByRole("button", { name: "Start", exact: true })).toBeInViewport();
+  await page.setViewportSize(viewport);
   await row.focus(); await page.keyboard.press("Enter");
   await expect.poll(() => visited.length).toBe(1);
-  await row.getByRole("button", { name: "Open workspace", exact: true }).click();
+  await row.getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.locator(".launcher")).toBeVisible();
   await expect(page.locator("#d-project")).toContainText("prometeu");
   await expect(page.locator("#d-issue")).toContainText("prometeucorp/prometeu#428");
@@ -57,7 +86,7 @@ test("GitHub issues and requested PR reviews launch workspaces without opening t
   await expect(page.locator("#veil")).toBeHidden();
   expect(visited).toHaveLength(1);
 
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
   await page.locator("#github-available").click();
   const available = page.locator("#github-list .irow", { hasText: "Add repository shortcuts" });
   await available.getByRole("button", { name: "Claim", exact: true }).click();
@@ -67,7 +96,7 @@ test("GitHub issues and requested PR reviews launch workspaces without opening t
   await page.locator("#github-available").focus();
   await page.keyboard.press("End");
   await expect(page.locator("#github-reviews")).toBeFocused();
-  await page.locator("#github-list .irow").getByRole("button", { name: "Open workspace", exact: true }).click();
+  await page.locator("#github-list .irow").getByRole("button", { name: "Start", exact: true }).click();
   await expect(page.locator("#d-basename")).toContainText("prometeu-pr-438/github-pr-438-preview");
   await expect(page.locator("#d-wt")).toBeChecked();
   await expect(page.locator("#d-nb")).not.toBeChecked();
@@ -95,7 +124,7 @@ test("claiming a team issue keeps keyboard focus after the available row disappe
     await internals.invoke("linear_connect");
   });
 
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
   const tabs = page.locator("#itabs .itab");
   await tabs.last().click();
   const row = page.locator("#ilist .irow.available", { hasText: "MOA-211" });
@@ -124,7 +153,7 @@ test("a read-only Linear connection opens the assignment permission in settings"
     await internals.invoke("linear_connect");
   });
 
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
   await page.locator("#itabs .itab").last().click();
   await page.locator("#ilist .irow.available").first().getByRole("button", { name: "Authorize" }).click();
   await expect(page.locator("#settingsView")).toBeVisible();
@@ -136,7 +165,7 @@ test("a read-only Linear connection opens the assignment permission in settings"
   });
   await page.getByRole("button", { name: "Authorize assignments" }).click();
   await expect(page.getByRole("button", { name: "Authorize assignments" })).toBeEnabled();
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
   await expect(page.locator("#itabs .itab").first().locator(".c")).toHaveText("7");
   await expect(page.locator("#ilist .irow").first()).toBeVisible();
   await page.locator("#itabs .itab").last().click();
@@ -161,7 +190,7 @@ test("an unavailable team issue list keeps assigned issues visible", async ({ pa
     await internals.invoke("linear_connect");
   });
 
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
   const tabs = page.locator("#itabs .itab");
   await expect(tabs.first().locator(".c")).toHaveText("7");
   await expect(page.locator("#ilist .irow").first()).toBeVisible();

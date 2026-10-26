@@ -1,6 +1,7 @@
 import { iconButton } from "./components/icon-button";
 import { icon } from "./icons";
-import { button, input } from "./ui";
+import { button, input, select } from "./ui";
+import { t } from "./i18n";
 import { h, template } from "./util";
 
 // Both providers use the compact Linear controls. The legacy md class also styles Markdown.
@@ -34,11 +35,20 @@ export function issueRefresh(label: string, run: () => void) {
   return control;
 }
 
-export function issueFilter(label: string, count: number, selected: boolean, run: () => void) {
-  const control = issueAction(label, run);
-  control.dataset.track = "issues.filter";
-  control.classList.add("tpill"); control.classList.toggle("on", selected);
-  control.setAttribute("aria-pressed", String(selected));
-  control.append(h("span", "c", String(count)));
-  return control;
+export function issueFilter(label: string, run: (value: string) => void) {
+  const choice = select("", [["", label]], { track: "issues.filter" });
+  choice.control.setAttribute("aria-label", label);
+  choice.control.classList.add("task-filter");
+  choice.onchange = () => run(choice.value);
+  return choice;
+}
+
+export function issueColumns() {
+  const root = h("div", "task-columns");
+  root.setAttribute("aria-hidden", "true");
+  for (const [className, key] of [
+    ["iid", "issues.column.id"], ["ititle", "issues.column.title"],
+    ["istate", "issues.column.status"], ["iago", "issues.column.updated"],
+  ] as const) root.append(h("span", className, t(key)));
+  return root;
 }

@@ -802,7 +802,7 @@ body.noside .side { display: none; }
 
 .issue-provider-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 #github-issues-pane .github-glyph { display: flex; color: var(--done); }
-.github-row:focus-visible { outline: 2px solid var(--tab-line); outline-offset: -2px; }
+.irow:focus-visible { outline: 2px solid var(--tab-line); outline-offset: -2px; }
 
 .issues .tab.ui-button { font-size: 13px; line-height: normal; }
 .issues .tab.ui-button:hover { background: none; }
@@ -823,30 +823,6 @@ body.noside .side { display: none; }
 .ibar .imeta { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 .ibar .imeta.err { color: var(--err); }
 
-/* Allow team filter pills to scroll when numerous. */
-.iteams {
-  display: flex; align-items: center; gap: 10px; flex: none;
-  padding: 10px 16px 0; min-width: 0;
-}
-.iteams .tlabel {
-  display: inline-flex; align-items: center; gap: 6px; flex: none;
-  font-size: 12px; color: var(--fg-3); white-space: nowrap;
-}
-.iteams .tpills {
-  display: flex; align-items: center; gap: 2px; min-width: 0; padding: 2px;
-  overflow-x: auto; background: var(--bg); border: 1px solid var(--line-raised);
-  border-radius: var(--r); scrollbar-width: none;
-}
-.iteams .tpills::-webkit-scrollbar { display: none; }
-.iteams .tpill {
-  display: inline-flex; align-items: center; gap: 6px; flex: none; height: 24px; min-height: 0;
-  padding: 0 10px; border-radius: calc(var(--r) - 2px); background: none;
-  color: var(--fg-2); font-size: 12px; white-space: nowrap;
-}
-.iteams .tpill:hover { color: var(--fg); }
-.iteams .tpill.on { background: var(--bg-raised); color: var(--fg); }
-.iteams .tpill .c { color: var(--fg-3); }
-
 .ilist { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px 32px; }
 /* Collapsed issue groups always show their chevron; expanded groups show it on hover. */
 .igroup {
@@ -860,22 +836,24 @@ body.noside .side { display: none; }
 .igroup .gc { display: flex; color: var(--fg-3); opacity: 0; }
 .igroup:hover .gc, .igroup.shut .gc { opacity: 1; }
 .irow {
-  display: grid; grid-template-columns: 22px 64px minmax(0, 1fr) auto auto 56px;
-  align-items: center; gap: 12px; height: 38px; padding: 0 8px; border-radius: var(--r);
+  display: grid; grid-template-columns: 16px 84px minmax(0, 1fr) 120px 76px 120px;
+  align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; border-bottom: 1px solid var(--line);
 }
 .irow:hover { background: var(--bg-raised); }
 .irow .iid { font-family: var(--mono); font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 .irow .ititle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.irow .ititle b { font-weight: 400; color: var(--fg); }
-.irow .ititle .iproj { color: var(--fg-3); font-size: 12px; margin-left: 8px; }
-.irow .istate { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-2); white-space: nowrap; }
+.irow .ititle b { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: var(--fg); }
+.irow .ititle .iproj { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--fg-3); font-size: 12px; overflow: hidden; }
+.irow .iproj > span { overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 100%; }
+.irow .iproj > span:first-child { flex-shrink: 1; min-width: 60px; }
+.task-label { padding: 0 6px; border: 1px solid var(--line-raised); border-radius: var(--r); }
+.irow .istate { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-2); white-space: nowrap; overflow: hidden; }
+.irow .istate > span { overflow: hidden; text-overflow: ellipsis; }
 .irow .istate .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-/* Reveal and highlight shortcuts on hover. */
-.irow .iact { display: flex; gap: 6px; justify-content: flex-end; opacity: 0.55; }
-.irow:hover .iact, .irow:focus-within .iact { opacity: 1; }
-.irow.available .iact { opacity: 1; }
+/* Keep the workspace action visible without requiring hover. */
+.irow .iact { display: flex; gap: 6px; justify-content: flex-end; }
 .irow.available button[aria-disabled="true"] { opacity: .45; cursor: default; }
-.irow .iago { font-size: 12px; color: var(--fg-3); text-align: right; white-space: nowrap; }
+.irow .iago { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
 /* Priority bars use a full mark for urgent issues. */
 .prio { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
 .prio i { width: 3px; border-radius: 1px; background: var(--line-ghost); }
@@ -904,10 +882,50 @@ body.noside .side { display: none; }
 .isuggestions-head strong { font-weight: 500; }
 .isuggestions .irow { min-height: 48px; height: auto; border-radius: 0; }
 .isuggestions .irow + .irow { border-top: 1px solid var(--line); }
-@media (max-width: 900px) {
-  .issue-provider-pane .irow { grid-template-columns: 22px 64px minmax(0, 1fr) auto; }
-  .issue-provider-pane .irow .istate, .issue-provider-pane .irow .iago { display: none; }
+/* Tasks composes the shared controls inside a single bordered inbox. */
+#issuesView .listmain { padding: 24px; }
+#tasks-heading .desktop-section-title { font-size: 20px; margin-bottom: 6px; }
+#issuesView .subbar { background: none; box-shadow: none; }
+#issuesView #iproviders { gap: 8px; padding: 0 0 16px; height: auto; border: 0; }
+#issuesView .itab { border: 1px solid transparent; border-radius: var(--r); padding: 0 12px; height: 30px; box-shadow: none; }
+#issuesView .itab::after { display: none; }
+#issuesView .itab.on { background: var(--bg-raised); border-color: var(--line-raised); color: var(--fg); }
+#issuesView .itab:hover { background: var(--bg-raised); }
+#issuesView .issue-provider-pane { border: 1px solid var(--line-raised); border-radius: var(--r-lg); overflow: hidden; container: tasks / inline-size; }
+#issuesView .itabs { height: auto; min-height: 48px; padding: 12px 16px 0; gap: 8px; flex-wrap: wrap; border: 0; }
+#issuesView .ibar { display: block; height: auto; padding: 12px 16px; }
+#issuesView .ibar > .desktop-toolbar { flex-wrap: nowrap; }
+#issuesView .ibar .desktop-tools:first-child { flex: 1; }
+#issuesView .ibar .desktop-tools:last-child { flex-wrap: nowrap; }
+#issuesView .task-filter { width: 160px; min-width: 0; }
+#issuesView .task-filter > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#issuesView .ifind { width: auto; flex: 1 1 160px; min-width: 120px; height: var(--control-height); }
+#issuesView .ifind input { min-width: 0; width: 100%; }
+#issuesView .ibar .icon-button { width: var(--control-height); height: var(--control-height); }
+#issuesView .imeta { margin-left: auto; font-size: 12px; color: var(--fg-3); overflow-wrap: anywhere; }
+#issuesView .imeta.err { color: var(--err); }
+#issuesView .imeta:empty { display: none; }
+#issuesView .ilist { padding: 0 0 24px; }
+#issuesView .task-disconnected { border: 0; }
+#issuesView .task-disconnected .ilist { flex: none; padding: 32px 0; }
+#issuesView .task-disconnected .iempty { max-width: 480px; margin: 0 auto; padding: 32px; border: 1px solid var(--line-raised); border-radius: var(--r-lg); }
+#issuesView .igroup { margin: 0; border-radius: 0; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--bg-raised); }
+#issuesView .igroup .gc { opacity: 1; }
+.task-columns { display: grid; grid-template-columns: 16px 84px minmax(0, 1fr) 120px 76px 120px; gap: 12px; padding: 10px 16px; color: var(--fg-3); border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.task-columns .iid { grid-column: 1 / 3; }
+@container tasks (max-width: 800px) {
+  .irow, .task-columns { grid-template-columns: 16px 72px minmax(0, 1fr) 110px 110px; gap: 8px; }
+  .irow .iago, .task-columns .iago { display: none; }
+  #issuesView .ifind { flex-basis: 100%; }
 }
+@container tasks (max-width: 560px) {
+  .irow, .task-columns { grid-template-columns: 12px 64px minmax(0, 1fr) 90px; padding-inline: 10px; }
+  .irow .istate, .task-columns .istate { display: none; }
+  .irow .iact button { white-space: normal; }
+  #issuesView .task-filter { width: 130px; }
+  #issuesView .ibar > .desktop-toolbar { flex-wrap: wrap; }
+}
+@media (max-width: 900px) { #issuesView .listmain { padding: 12px; } }
 /* Archived workspaces. */
 
 /* Issue bar and list share styling, with separate repository, title/branch, stage, PR, and worktree columns. */

@@ -1275,6 +1275,13 @@
       ]
     },
     {
+      "target": "issues.filter.clear",
+      "sources": [
+        "src/github-issues.ts",
+        "src/issues.ts"
+      ]
+    },
+    {
       "target": "issues.github.add_project",
       "sources": [
         "src/github-issues.ts"

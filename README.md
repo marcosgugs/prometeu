@@ -33,7 +33,7 @@ Run Claude Code, Codex, Cursor CLI and Antigravity agents in parallel — each i
 - **Parallel workspaces:** isolated worktrees, multiple repositories and a desk for conversations side by side.
 - **Visual Git review:** unified or split diffs, review notes, staging, commits, history and conflict resolution.
 - **Built-in tools:** editor, terminal, browser preview, MCP servers, plugins, skills and reusable actions.
-- **Issue workflow:** Linear and GitHub issues, PR status and notifications.
+- **Tasks:** Filter Linear and GitHub issues and pull requests, then start a workspace. PR status and notifications keep follow-up visible.
 - **Persistent conversations:** resume stopped agents and inspect local token and cost history.
 - **Optional collaboration:** share encrypted conversations and continue from companion devices while execution stays on the owner's Mac.
 - **English and Portuguese UI**, with dictation on macOS.

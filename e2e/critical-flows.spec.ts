@@ -603,7 +603,7 @@ test("the issue list fits the launcher and keeps titles readable", async ({ page
   // The fixture must exceed the available viewport height.
   expect(total).toBeGreaterThanOrEqual(20);
 
-  await expect(page.locator("#railbody .navitem", { hasText: "Issues" }).locator(".n")).toHaveText(String(total));
+  await expect(page.locator("#railbody .navitem", { hasText: "Tasks" }).locator(".n")).toHaveText(String(total));
 
   await page.locator("#railbody").getByRole("button", { name: "Create", exact: true }).click();
   await page.locator("#d-issuebtn").click();
@@ -1256,7 +1256,7 @@ test("the desk ignores a delayed snapshot of the same conversation", async ({ pa
 
   await page.locator("#railbody .navitem", { hasText: "Desk" }).click();
   await expect.poll(() => page.evaluate(() => !!(window as Window & { deskSnapshotCaptured?: boolean }).deskSnapshotCaptured)).toBe(true);
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
   await page.evaluate(() => {
     const mock = (window as unknown as { mock: { line: (tab: string, line: unknown) => void } }).mock;
     mock.line("t1", { type: "user", message: { role: "user", content: "NEW_SNAPSHOT" } });
