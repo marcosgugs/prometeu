@@ -78,6 +78,7 @@ The generated catalog defines all property types. This table defines meaning:
 | Event(s) | What is recorded |
 | --- | --- |
 | `app_opened` | Desktop process start; not daily activity |
+| `analytics_consent_granted` | Sharing turns on from the startup prompt or Settings; declining or disabling sends nothing |
 | `screen_viewed` | A change of visible screen |
 | `workspace_created` | Workspace creation before preparation, including delegation; `provider`, `is_worktree` |
 | `conversation_created` | An additional conversation tab, excluding the workspace's first conversation; `provider` |
@@ -198,6 +199,8 @@ suppress the prompt without a migration or a separate asked marker. Escape
 leaves the preference unanswered and asks again at the next startup. Save errors
 stay in the dialog for retry. Release notes wait until the privacy dialog closes.
 Explicitly saving a choice replaces the value, and Settings can change it later.
+Turning sharing on emits `analytics_consent_granted` as the first event under
+the new consent; saving `true` again or saving `false` emits nothing.
 
 `analytics_needs_consent` takes no arguments and returns whether no valid saved
 choice exists. Unsupported backends skip the prompt. `analytics_enabled` takes

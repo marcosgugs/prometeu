@@ -24,6 +24,7 @@ const BATCH_WINDOW: Duration = Duration::from_secs(5);
 #[serde(tag = "name", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
     AppOpened,
+    AnalyticsConsentGranted,
     ScreenViewed {
         screen: Screen,
     },
@@ -630,7 +631,13 @@ pub fn analytics_enabled() -> bool {
 pub async fn analytics_set_enabled(enabled: bool) -> Result<bool, String> {
     // An in-flight request may take up to its timeout; keep that wait off the UI thread.
     tauri::async_runtime::spawn_blocking(move || {
-        delivery().save(&paths::root().join("analytics-enabled.json"), enabled)
+        let was = analytics_enabled();
+        let saved = delivery().save(&paths::root().join("analytics-enabled.json"), enabled)?;
+        // Only opting in is observable; declining or disabling sends nothing.
+        if saved && !was {
+            track(Event::AnalyticsConsentGranted);
+        }
+        Ok(saved)
     })
     .await
     .map_err(|_| i18n::t("err.analytics.storage"))?
