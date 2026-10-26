@@ -262,8 +262,8 @@ Feature tests cover successful/failed actions, review
 persistence, dictation and configuration flows. See the coverage map for scope.
 
 Native consent tests cover default-off upgrades, invalid/unreadable preferences,
-persistence across restarts, failed writes and pending event rejection across
-disable/enable cycles. Dispatch tests cover disabling after batch preparation,
+persistence across restarts, failed writes, pending event rejection across
+disable/enable cycles and consent grants reported only when sharing turns on. Dispatch tests cover disabling after batch preparation,
 serialization with an in-flight send and capture without waiting for the network.
 [`src/analytics-settings.test.ts`](../../src/analytics-settings.test.ts) covers
 first-run save/close orchestration, loading and changing consent, pending saves,

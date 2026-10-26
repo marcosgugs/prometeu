@@ -530,12 +530,13 @@ impl Delivery {
         }
     }
 
-    fn save(&self, path: &Path, enabled: bool) -> Result<bool, String> {
+    /// Returns the saved choice and whether this save turned sharing on.
+    fn save(&self, path: &Path, enabled: bool) -> Result<(bool, bool), String> {
         let _sending = self.sending.lock().unwrap_or_else(|e| e.into_inner());
-        self.consent
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .save(path, enabled)
+        let mut consent = self.consent.lock().unwrap_or_else(|e| e.into_inner());
+        let was = consent.enabled;
+        let saved = consent.save(path, enabled)?;
+        Ok((saved, saved && !was))
     }
 
     fn send_batch(
@@ -631,10 +632,10 @@ pub fn analytics_enabled() -> bool {
 pub async fn analytics_set_enabled(enabled: bool) -> Result<bool, String> {
     // An in-flight request may take up to its timeout; keep that wait off the UI thread.
     tauri::async_runtime::spawn_blocking(move || {
-        let was = analytics_enabled();
-        let saved = delivery().save(&paths::root().join("analytics-enabled.json"), enabled)?;
+        let (saved, granted) =
+            delivery().save(&paths::root().join("analytics-enabled.json"), enabled)?;
         // Only opting in is observable; declining or disabling sends nothing.
-        if saved && !was {
+        if granted {
             track(Event::AnalyticsConsentGranted);
         }
         Ok(saved)
@@ -807,7 +808,7 @@ mod tests {
         ));
         release.send(()).unwrap();
         worker.join().unwrap();
-        assert!(!completed.recv_timeout(Duration::from_secs(2)).unwrap());
+        assert!(!completed.recv_timeout(Duration::from_secs(2)).unwrap().0);
         saver.join().unwrap();
         delivery.send_batch(
             vec![(generation, Event::AppOpened, Instant::now())],
@@ -912,6 +913,22 @@ mod tests {
         let batch = consent.batch(receiver.try_iter(), "id", Instant::now());
         assert_eq!(batch.len(), 1);
         assert_eq!(batch[0]["event"], "screen_viewed");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_turning_sharing_on_reports_a_consent_grant() {
+        let root =
+            std::env::temp_dir().join(format!("prometeu-analytics-{}", uuid::Uuid::new_v4()));
+        let path = root.join("analytics-enabled.json");
+        let delivery = Delivery::new(&path);
+        assert_eq!(delivery.save(&path, false).unwrap(), (false, false));
+        assert_eq!(delivery.save(&path, true).unwrap(), (true, true));
+        assert_eq!(delivery.save(&path, true).unwrap(), (true, false));
+        assert_eq!(delivery.save(&path, false).unwrap(), (false, false));
+        // A failed save keeps sharing off, so the next successful opt-in still counts.
+        assert!(delivery.save(&root, true).is_err());
+        assert_eq!(delivery.save(&path, true).unwrap(), (true, true));
         std::fs::remove_dir_all(root).unwrap();
     }
 
