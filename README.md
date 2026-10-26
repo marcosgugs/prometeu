@@ -8,7 +8,7 @@ Run Claude Code, Codex, Cursor CLI and Antigravity agents in parallel — each i
   <a href="#install"><img src="https://img.shields.io/badge/platforms-macOS%20%2F%20Linux%20%2F%20Windows-blue" alt="macOS / Linux / Windows"></a>
 </p>
 
-<p align="center"><img src="docs/demo.gif" width="640" alt="Prometeu UI demo with simulated agents: start parallel tasks, switch workspaces, review a diff and complete a merge."></p>
+<p align="center"><img src="docs/demo.gif" width="880" alt="Prometeu UI demo with simulated agents: Claude Code and Codex work side by side in separate worktrees; open a conversation, send a follow-up and return to the desk."></p>
 
 <p align="center">
   <strong><a href="https://github.com/prometeucorp/prometeu/releases/latest/download/Prometeu_aarch64.dmg">Download for macOS (.dmg)</a> ·
@@ -40,7 +40,7 @@ Run Claude Code, Codex, Cursor CLI and Antigravity agents in parallel — each i
 
 See the [provider matrix](docs/quality/provider-matrix.md) for agent differences,
 platform limits and test coverage. The demo above uses the real interface with
-simulated agent and Git data; it is not a live provider benchmark.
+simulated agent data; it is not a live provider benchmark.
 
 ## Install
 
