@@ -10,6 +10,7 @@ export type Screen = "desk" | "settings" | "issues" | "notifications" | "archive
 export type ClickEvent = { name: "ui_clicked"; control: Control; target: string; area: string };
 export type AnalyticsEvent =
   | { name: "app_opened" }
+  | { name: "analytics_consent_granted" }
   | { name: "screen_viewed"; screen: Screen }
   | { name: "workspace_created"; provider: ProviderId; is_worktree: boolean }
   | { name: "conversation_created"; provider: ProviderId }
