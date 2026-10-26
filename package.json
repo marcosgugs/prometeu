@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "demo:record": "npm run design-system:build && node scripts/record-demo.mjs",
     "typecheck": "tsc --noEmit && tsc -p relay && tsc -p packages/design-system --noEmit",
     "build": "npm run design-system:build && npm run typecheck && vite build",
     "app": "sh scripts/app.sh",

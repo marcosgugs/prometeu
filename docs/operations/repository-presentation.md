@@ -7,21 +7,41 @@ shows GitHub's file tree above the README; the README cannot change that layout.
 
 ## Media
 
-- [Demo GIF](../demo.gif): 15 seconds, 1200 × 650, looping, under 10 MB.
+- [Demo GIF](../demo.gif): 20 seconds, 1280 × 820, 15 fps, looping, under 10 MB.
   Captured from the real browser interface in English, using `src/mock.ts`
-  with two synthetic tasks and Claude/Codex conversation events. It shows
-  sending both tasks, switching workspaces, reviewing a diff, resolving an
-  incoming change and completing the merge through the Git controls.
+  with two synthetic tasks and Claude/Codex conversation events. It shows two
+  agents working side by side, separate workspace branches, opening a focused
+  conversation, sending a follow-up and returning to the desk. Captions and the
+  simulation label sit outside the app window. The closing frames blend back
+  into the opening shot.
   The recording identifies the simulated agents; it is not evidence of native
   execution, provider performance or actual changes to a repository.
 - [Social preview](../social-preview.png): 1280 × 640 PNG, under 1 MB,
-  composed from the existing logo, tagline and the same interface capture.
+  composed from the existing logo, tagline and a browser interface capture.
 
-To refresh the demo, run `npm run dev`, use synthetic project and conversation
-data in the browser mock, and capture the above sequence in English. Do not
-capture credentials, private projects or real conversations. Keep the mock
-label visible, encode a looping 10–20 second GIF under 10 MB, and inspect the
-first, review and merge frames. Keep captions outside interactive controls.
+### Refresh the demo
+
+Install the normal development dependencies, Playwright's Chromium and FFmpeg.
+FFmpeg must be on `PATH`, or `FFMPEG` must name its executable. Then run:
+
+```sh
+npx playwright install chromium
+npm run demo:record
+```
+
+The [recorder](../../scripts/record-demo.mjs) starts its own loopback Vite server
+and an isolated browser context. It uses the existing mock and real UI controls;
+it does not connect to providers or read local projects. It replaces `docs/demo.gif`
+and writes PNG frames, an MP4 and a local `preview.html` under the ignored
+`test-results/demo/` directory. The MP4 is useful for sharing outside the README.
+No new npm dependency or product capture mode is needed.
+
+The recorder checks that both agents fit on screen, the follow-up reaches the
+conversation, the completed response appears, no uncaught browser errors occur
+and the GIF stays under 10 MB. These checks validate the capture, not native
+agent execution. Inspect the opening, focused conversation and closing shots
+at the README's 880 px display width. Keep synthetic content and the simulation
+label; never capture credentials, private projects or real conversations.
 
 Upload the PNG in GitHub **Settings → General → Social preview → Edit →
 Upload an image**. Committing the PNG alone does not configure the preview.
@@ -30,8 +50,10 @@ GitHub documents the [upload procedure and image limits](https://docs.github.com
 ## Verification
 
 Run `npm run docs:check`. Check that the GIF loops inline in GitHub's README
-rendering and the logo through the star request fit a 1366 × 768 viewport when
-the README begins. GitHub's file tree remains outside that measurement.
+rendering, scales without horizontal overflow and has the download links
+immediately below it. The larger display favors readable captions over fitting
+the entire introduction into one viewport. GitHub's file tree remains above
+the README.
 
 Follow all three `/releases/latest/download/` links and confirm successful
 responses. Their stable asset names are part of the
