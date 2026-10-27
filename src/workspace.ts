@@ -1480,10 +1480,11 @@ export function openTerminal(session: TerminalSession) {
   $("tab-comments").hidden = true;
   center("termview");
   const epoch = navigation;
-  dock.open(session.id, "terminal").then(() => {
-    terminals.started(session.id);
-    if (navigation === epoch) dock.focus("shell");
-  }, (error) => ctx.say(fromBack(error), true));
+  dock.open(session.id, "terminal")
+    .then(() => {
+      if (navigation === epoch) dock.focus("shell");
+    }, (error) => ctx.say(fromBack(error), true))
+    .finally(() => void terminals.check(session.id));
 }
 
 /// Keep the breadcrumb in step with a rename of the session on screen.

@@ -46,10 +46,13 @@ export function init(context: Ctx) {
 
 export const isLive = (id: string) => live.has(id);
 
-/// The view starts or reattaches the shell at its own size, then reports it running.
-export function started(id: string) {
-  if (live.has(id)) return;
-  live.add(id);
+/// The view starts or reattaches the shell at its own size. Its attachment can end after a newer view replaced it, whether or not the shell started, so only the backend says whether one runs.
+export async function check(id: string) {
+  const docks = await invoke("dock_state", { id }).catch(() => []);
+  const running = docks.some((dock) => dock.alive);
+  if (running === live.has(id)) return;
+  if (running) live.add(id);
+  else live.delete(id);
   ctx.changed();
 }
 
@@ -101,13 +104,7 @@ export function closed(key: string) {
 
 /// Shells outlive a webview reload; ask which listed sessions still have one.
 export async function sync() {
-  const sessions = ctx.sessions();
-  const docks = await Promise.all(sessions.map((session) => invoke("dock_state", { id: session.id }).catch(() => [])));
-  live.clear();
-  sessions.forEach((session, i) => {
-    if (docks[i].some((dock) => dock.alive)) live.add(session.id);
-  });
-  ctx.changed();
+  await Promise.all(ctx.sessions().map((session) => check(session.id)));
 }
 
 /// Command-W ends the session on screen while its terminal has focus, as it closes a focused dock shell.

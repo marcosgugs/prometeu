@@ -73,14 +73,22 @@ describe("terminal sessions", () => {
     expect(events[0]).toMatch(/^said .*\/gone/);
   });
 
-  it("learn which sessions still run a shell after a reload", async () => {
-    invoke.mockImplementation(async (_command: string, args: { id: string }) => [{ kind: "terminal", alive: args.id === named.id }]);
+  it("ask the backend which sessions run a shell, after a reload or an attachment", async () => {
+    let running = new Set([named.id]);
+    invoke.mockImplementation(async (_command: string, args: { id: string }) => [{ kind: "terminal", alive: running.has(args.id) }]);
     await terminals.sync();
     expect([home, named].map((session) => terminals.isLive(session.id))).toEqual([false, true]);
-    terminals.started(home.id);
-    terminals.started(home.id);
-    expect(terminals.isLive(home.id)).toBe(true);
-    expect(events).toEqual(["changed", "changed"]);
+    // An attachment that a newer view replaced ends quietly even when its shell failed to start.
+    await terminals.check(home.id);
+    expect(terminals.isLive(home.id)).toBe(false);
+    running = new Set([home.id]);
+    await terminals.check(home.id);
+    await terminals.check(named.id);
+    expect([home, named].map((session) => terminals.isLive(session.id))).toEqual([true, false]);
+    invoke.mockRejectedValueOnce("gone");
+    await terminals.check(home.id);
+    expect(terminals.isLive(home.id)).toBe(false);
+    expect(events).toEqual(["changed", "changed", "changed", "changed"]);
   });
 
   it("close the session on screen with Command-W only while its terminal has focus", async () => {
