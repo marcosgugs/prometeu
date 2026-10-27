@@ -3,7 +3,7 @@
 
 use crate::analytics::{self, Event, ProjectAction, ScriptKind};
 use crate::lock::lock;
-use crate::session::cwd_of;
+use crate::session::cwd_in;
 use crate::state::{Board, Workspace};
 use crate::{chat, i18n, pty, scripts, AppState};
 use portable_pty::CommandBuilder;
@@ -47,12 +47,14 @@ pub fn open_dock(
     // workspace can still open a shell using only its directory, without workspace script
     // variables.
     if is_terminal(&kind) {
-        let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
-        let cmd = shell_command(&crate::platform::shell(), &root, found.as_ref());
-        let handle = pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())?;
-        lock(&state.ptys).insert(key.clone(), handle);
-        crate::machine::publish_counts(&app);
-        analytics::track(Event::TerminalOpened);
+        let started = start_shell(&state.ptys, &state.board, &id, &key, |root| {
+            let cmd = shell_command(&crate::platform::shell(), root, found.as_ref());
+            pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())
+        })?;
+        if started {
+            crate::machine::publish_counts(&app);
+            analytics::track(Event::TerminalOpened);
+        }
         return Ok(key);
     }
 
@@ -88,6 +90,26 @@ pub fn open_dock(
     };
     start_script(&app, &state, &ws, script, cols, rows)?;
     Ok(key)
+}
+
+/// Resolve the shell's folder and insert the new shell under one PTY lock. Removing its owner stops
+/// docks through the same lock, so it either finds the shell or leaves no folder to start in; a
+/// shell spawned between the two would outlive its project. Returns whether a shell started.
+pub(crate) fn start_shell(
+    ptys: &Mutex<HashMap<String, pty::Pty>>,
+    board: &Mutex<Board>,
+    id: &str,
+    key: &str,
+    spawn: impl FnOnce(&Path) -> Result<pty::Pty, String>,
+) -> Result<bool, String> {
+    let mut ptys = lock(ptys);
+    if ptys.get(key).is_some_and(|p| p.alive()) {
+        return Ok(false);
+    }
+    let root = cwd_in(&lock(board), id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
+    let handle = spawn(&root)?;
+    ptys.insert(key.to_string(), handle);
+    Ok(true)
 }
 
 /// Show copied files before the repository setup command. Either operation can create a Setup tab;
