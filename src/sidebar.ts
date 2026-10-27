@@ -1,13 +1,14 @@
-import { avatar, avatars, brand, icon, stageIcon } from "./icons";
+import { avatar, avatars, brand, icon, stageIcon, wave } from "./icons";
 import { stage as stageName, t, tn } from "./i18n";
 import * as menu from "./menu";
 import { keys } from "./platform";
 import { confirmDialog } from "./ui";
 import * as team from "./team";
+import * as terminals from "./terminals";
 import { accountButton } from "./cloud";
 import * as rename from "./rename";
 import { issueSearch } from "./issues-controls";
-import { hasWorktree, label, projectMatches, refillOrder, repoLabel, stateLabel, statusOf, tabLabel, type Board, type Project, type Status, type Workspace } from "./types";
+import { hasWorktree, label, projectMatches, refillOrder, repoLabel, stateLabel, statusOf, tabLabel, type Board, type Project, type Status, type TerminalSession, type Workspace } from "./types";
 import { h, template } from "./util";
 
 /// Actions shared by sidebar rows and workspace menus.
@@ -47,6 +48,21 @@ export type Hooks = {
   /// Open clone files without creating a workspace.
   openProject: (id: string) => void;
   newWorkspace: (projectId?: string) => void;
+  terminals: TerminalHooks;
+};
+
+/// Terminal sessions are shells owned by the app, listed apart from projects and workspaces (ADR 0096).
+export type TerminalHooks = {
+  /// False where the host has no terminal sessions, which hides the group.
+  available: () => boolean;
+  /// Whether the session's shell is running.
+  live: (id: string) => boolean;
+  open: (id: string) => void;
+  create: () => void;
+  createIn: () => void;
+  /// Null returns the session to its folder's name.
+  rename: (id: string, name: string | null) => void;
+  close: (id: string) => void;
 };
 
 /// The desk page uses a sentinel that cannot collide with a workspace ID.
@@ -146,6 +162,65 @@ export function attachMenu(node: HTMLElement, ws: Workspace, board: Board, hooks
     e.preventDefault();
     menu.openAt({ area: "sidebar", x: e.clientX, y: e.clientY }, wsMenu(ws, board, hooks, label, kind));
   });
+}
+
+/// Each session shows its name, a wave while its shell runs, and a close action; the folder is in the tooltip.
+function renderTerminals(rail: HTMLElement, sessions: TerminalSession[], hooks: TerminalHooks) {
+  const sect = template("div", "sect", `<span></span>`);
+  sect.children[0].textContent = t("rail.terminals");
+  const add = template("button", "ico sm", icon("plus"));
+  add.title = t("terminal.new");
+  add.dataset.track = "rail.terminal.add";
+  add.addEventListener("click", () => {
+    const at = add.getBoundingClientRect();
+    menu.openAt({ area: "sidebar", x: at.left, y: at.bottom + 4 }, [
+      { label: t("terminal.new"), track: "terminal.new", glyph: icon("square-terminal"), hint: keys("⌘⇧T"), run: hooks.create },
+      { label: t("terminal.newIn"), track: "terminal.newIn", glyph: icon("folder-open"), run: hooks.createIn },
+    ]);
+  });
+  sect.append(add);
+  rail.append(sect);
+
+  for (const session of sessions) {
+    const row = template(
+      "button",
+      "navitem railterminal" + (openId === session.id ? " on" : ""),
+      `${icon("square-terminal")}<span class="lbl"></span>`,
+    );
+    const label = row.querySelector<HTMLElement>(".lbl")!;
+    label.textContent = terminals.title(session);
+    row.title = session.folder;
+    row.dataset.track = "rail.terminal";
+    if (hooks.live(session.id)) row.insertAdjacentHTML("beforeend", wave());
+    const close = template("span", "tabx ico sm", icon("x", 12));
+    close.title = t("terminal.close");
+    close.dataset.track = "rail.terminal.close";
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hooks.close(session.id);
+    });
+    row.append(close);
+    row.addEventListener("click", () => hooks.open(session.id));
+    row.dataset.trackContextMenu = "terminal.menu";
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      menu.openAt({ area: "sidebar", x: e.clientX, y: e.clientY }, [
+        {
+          label: t("terminal.rename"), track: "terminal.rename",
+          glyph: icon("pencil"),
+          run: () => rename.start(label, terminals.title(session), (name) => {
+            if (name !== null) hooks.rename(session.id, name);
+          }),
+        },
+        ...(session.name
+          ? [{ label: t("terminal.folderName"), track: "terminal.folderName", glyph: icon("folder"), run: () => hooks.rename(session.id, null) } as menu.Item]
+          : []),
+        "sep",
+        { label: t("terminal.close"), track: "terminal.close", glyph: icon("x"), danger: true, run: () => hooks.close(session.id) },
+      ]);
+    });
+    rail.append(row);
+  }
 }
 
 /// Another owner's share only offers leaving: every device of this person stops receiving it until the owner lets them
@@ -264,6 +339,8 @@ function renderRail(board: Board, hooks: Hooks) {
   if (shared.length) {
     renderGroup(rail, board, hooks, t("rail.team"), icon("users", 14), shared, "@time", { avatars: true });
   }
+
+  if (hooks.terminals.available()) renderTerminals(rail, board.terminals ?? [], hooks.terminals);
 
   const sect = template("div", "sect", `<span></span>`);
   sect.children[0].textContent = t("rail.projects");

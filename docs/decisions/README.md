@@ -111,3 +111,4 @@ Status: Proposed
 | [0093](0093-anonymous-product-analytics.md) | Anonymous product analytics in PostHog |
 | [0094](0094-leaving-a-share.md) | Leaving a share, enforced by the relay |
 | [0095](0095-cursor-acp.md) | Cursor CLI through ACP and an explicit external account |
+| [0096](0096-terminal-sessions.md) | Terminal sessions owned by the app |

@@ -2306,16 +2306,22 @@ mod tests {
         use std::sync::{mpsc, Mutex};
         use std::time::Duration;
 
-        let board = projects(&["/repo"]);
+        // Shells start only in a folder that exists.
+        let folder =
+            std::env::temp_dir().join(format!("prometeu-project-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let id = folder.display().to_string();
+        let key = format!("{id}:terminal");
+        let board = projects(&[&id]);
         let ptys = Mutex::new(std::collections::HashMap::new());
         let started = shell();
         let (spawning, spawned) = mpsc::channel();
         let (release, go) = mpsc::channel::<()>();
         let (finished, removal) = mpsc::channel();
         std::thread::scope(|scope| {
-            let (ptys, board, started) = (&ptys, &board, &started);
+            let (ptys, board, started, id, key) = (&ptys, &board, &started, &id, &key);
             let start = scope.spawn(move || {
-                crate::dock::start_shell(ptys, board, "/repo", "/repo:terminal", |_| {
+                crate::dock::start_shell(ptys, board, id, key, |_| {
                     spawning.send(()).unwrap();
                     go.recv().unwrap();
                     Ok(pty(started))
@@ -2323,7 +2329,7 @@ mod tests {
             });
             spawned.recv().unwrap();
             scope.spawn(move || {
-                super::remove_registered_project(board, ptys, "/repo");
+                super::remove_registered_project(board, ptys, id);
                 finished.send(()).unwrap();
             });
             let waited = matches!(
@@ -2337,10 +2343,11 @@ mod tests {
         });
         assert!(ptys.lock().unwrap().is_empty());
         assert!(!started.running());
-        let late = crate::dock::start_shell(&ptys, &board, "/repo", "/repo:terminal", |_| {
+        let late = crate::dock::start_shell(&ptys, &board, &id, &key, |_| {
             panic!("a removed project has no folder to start in")
         });
         assert_eq!(late, Err(crate::i18n::t("err.session.noWorkspace")));
+        std::fs::remove_dir_all(folder).unwrap();
     }
 
     fn pr(number: u64, branch: &str, state: &str) -> Pr {

@@ -6,7 +6,7 @@ import type { FeatureEvent } from "./analytics-events";
 
 /** Product events contain only authored identifiers and closed context (ADR 0093). */
 export type Control = "button" | "link" | "menuitem" | "tab" | "option" | "checkbox" | "input";
-export type Screen = "desk" | "settings" | "issues" | "notifications" | "archived" | "workspace" | "project";
+export type Screen = "desk" | "settings" | "issues" | "notifications" | "archived" | "workspace" | "project" | "terminal";
 export type ClickEvent = { name: "ui_clicked"; control: Control; target: string; area: string };
 export type AnalyticsEvent =
   | { name: "app_opened" }

@@ -3,7 +3,6 @@
 
 use crate::analytics::{self, Event, ProjectAction, ScriptKind};
 use crate::lock::lock;
-use crate::session::cwd_in;
 use crate::state::{Board, Workspace};
 use crate::{chat, i18n, pty, scripts, AppState};
 use portable_pty::CommandBuilder;
@@ -106,7 +105,7 @@ pub(crate) fn start_shell(
     if ptys.get(key).is_some_and(|p| p.alive()) {
         return Ok(false);
     }
-    let root = cwd_in(&lock(board), id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
+    let root = crate::terminal_sessions::shell_folder(&lock(board), id)?;
     let handle = spawn(&root)?;
     ptys.insert(key.to_string(), handle);
     Ok(true)

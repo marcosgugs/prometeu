@@ -21,6 +21,8 @@ pub mod session;
 
 pub mod terminal;
 
+pub mod terminal_sessions;
+
 pub mod auxiliary;
 
 pub mod command;

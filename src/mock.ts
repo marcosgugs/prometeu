@@ -1516,6 +1516,27 @@ const mockCommands: IpcHandlers = {
     emit("board", board);
     return;
   },
+  // Terminal sessions keep the backend's rules: home by default, an absolute folder otherwise, and a blank name falls back to the folder's.
+  terminal_create(args) {
+    const folder = args.folder ?? "/Users/gustavo";
+    if (!folder.startsWith("/")) throw `i18n:${JSON.stringify({ code: "err.dock.noFolder", args: { path: folder } })}`;
+    const session = { id: `terminal-${crypto.randomUUID()}`, folder };
+    board.terminals = [...(board.terminals ?? []), session];
+    emit("board", board);
+    return session;
+  },
+  terminal_rename(args) {
+    const name = args.name?.trim() || undefined;
+    board.terminals = (board.terminals ?? []).map((session) => (session.id === args.id ? { ...session, name } : session));
+    emit("board", board);
+    return;
+  },
+  terminal_close(args) {
+    board.terminals = (board.terminals ?? []).filter((session) => session.id !== args.id);
+    docks.delete(`${args.id}:terminal`);
+    emit("board", board);
+    return;
+  },
   // Use localStorage for browser team state; Tauri stores it in team.json.
   team_config() {
     return { config: JSON.parse(localStorage.getItem("mock:team") ?? "null"), default_name: "You" };

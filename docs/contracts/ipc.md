@@ -424,6 +424,34 @@ exited Setup and Run keep their output. Tests:
 `removing_a_project_while_its_shell_starts_stops_that_shell` in
 `src-tauri/src/session.rs`, and `src/dockbar.test.ts`.
 
+## Terminal sessions
+
+Terminal sessions are local shells owned by the app
+([ADR 0096](../decisions/0096-terminal-sessions.md)). The board lists them in
+`Board.terminals`, and the `board` event carries every change.
+
+| Command | Arguments | Effect |
+| --- | --- | --- |
+| `terminal_create` | `folder`: an absolute path or `null` | adds a session in that folder, or in the home folder for `null`, and returns it; starts no shell |
+| `terminal_rename` | `id`, `name`: `null` or blank clears it | sets the name shown instead of the folder's |
+| `terminal_close` | `id` | stops the session's shell and removes the session; an id that is no session changes nothing |
+
+`terminal_create` answers `err.dock.noFolder` with `path` for anything but an
+existing absolute folder, and registers nothing as a project. The shell is an
+ordinary dock: `open_dock` with the session id and `kind: "terminal"` starts it
+in the session's folder or reattaches to the running one, and `pty_*`,
+`close_dock` and `dock_state` work by its `<id>:terminal` key. A session is not a
+file root; the file commands still accept only workspaces and projects. For every
+owner, `open_dock` answers `err.dock.noFolder` when a shell's folder no longer
+exists, instead of letting the native PTY start in the home folder.
+
+The frontend ends a session when `pty-closed` arrives for its key, so `exit`
+closes it as × does. The desktop emits no `pty-closed` for a shell it killed, and
+quitting emits nothing, so sessions outlive a quit. The browser mock keeps the
+same rules in memory; the Windows runtime rejects the commands and its entry
+point hides every way to reach them. Tests: `src-tauri/src/terminal_sessions.rs`,
+`src/terminals.test.ts` and `fixtures/backend-contract.json`.
+
 ## Tool selection
 
 The global, project and workspace layers of MCP, plugin and skill selection

@@ -181,6 +181,9 @@ export type Commands = {
   typesafe_remove_key: { args: undefined; result: import("./evaluation").EvaluationStatus };
   typesafe_save_key: { args: { key: string }; result: import("./evaluation").EvaluationStatus };
   typesafe_set_enabled: { args: { enabled: boolean }; result: import("./evaluation").EvaluationStatus };
+  terminal_close: { args: { id: string }; result: void };
+  terminal_create: { args: { folder: string | null }; result: T.TerminalSession };
+  terminal_rename: { args: { id: string; name: string | null }; result: void };
   telemetry_summary: { args: { filter: import("./telemetry").TelemetryFilter }; result: import("./telemetry").TelemetrySummary };
   telemetry_insights: { args: { filter: import("./telemetry").TelemetryFilter }; result: import("./telemetry").TelemetryInsights };
   telemetry_turns: { args: { conversation: string; messageIds: string[] }; result: import("./telemetry").TurnMeasurement[] };

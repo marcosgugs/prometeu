@@ -8,6 +8,7 @@ import { Recovery } from "./recovery";
 import { wslCommands } from "./transport";
 import type { Commands, Target } from "./host";
 import { useApplicationMenu, windowsApplicationMenu } from "../appmenu";
+import { useTerminalSessions } from "../terminals";
 import { useAttachmentPicker } from "../file-input";
 import { installWslDrops, pickWslAttachments } from "./file-input";
 import "../style.css";
@@ -27,6 +28,8 @@ try {
   localStorage.setItem(key, JSON.stringify(target));
   useIpc(wslCommands);
   useApplicationMenu(windowsApplicationMenu);
+  // The WSL runtime has no terminal sessions yet (docs/contracts/windows-application.md).
+  useTerminalSessions(false);
   useAttachmentPicker(pickWslAttachments);
   useTerminalSnapshots({ read: async session => {
     const snapshot = await invoke<TerminalOutput | number[] | null>("application_request", { command: "pty_buffer", args: { session, snapshot: true } });

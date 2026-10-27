@@ -139,6 +139,7 @@ compatibility still in use stays documented in the current contracts.
 - [ADR 0085](decisions/0085-portable-core.md): portable core with injected effects.
 
 - [ADR 0095](decisions/0095-cursor-acp.md): Cursor CLI through ACP and an explicit external account.
+- [ADR 0096](decisions/0096-terminal-sessions.md): terminal sessions owned by the app, persisted as records on the board.
 
 ## Local telemetry
 
