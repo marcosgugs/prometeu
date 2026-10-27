@@ -176,6 +176,8 @@ export function init(context: Ctx) {
 
 export async function open(ws: Workspace, tab?: string) {
   proj = null;
+  // A terminal session left this way keeps running, but it is no longer on screen.
+  shellSession = null;
   if (tab && openWs === ws.id) return selectTab(ws.id, tab);
   const epoch = ++navigation;
   // Direct workspace switching bypasses leave; hide the previous native webview here.
