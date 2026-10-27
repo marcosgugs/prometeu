@@ -407,6 +407,16 @@ Run still require a workspace and answer `err.session.noWorkspace`.
 `workspace_scripts` and `dock_state` already tolerated an id without a workspace
 — they return an empty catalog and no port.
 
+`remove_project` stops the project's shells, as archiving, cleaning up or
+removing a workspace stops its docks, so adding the same folder again starts with
+none. Dock keys are `<owner>:<kind>`, and a project owner is a folder path that
+may contain `:`; `prometeu_core::terminal::dock_kind` gives an owner only the keys
+whose remaining kind has no `:`. Tests:
+`dock_keys_belong_only_to_their_exact_owner` in
+`crates/core/src/terminal/tests.rs` and
+`removing_a_project_stops_its_shells_and_keeps_other_docks` in
+`src-tauri/src/session.rs`.
+
 ## Tool selection
 
 The global, project and workspace layers of MCP, plugin and skill selection

@@ -129,11 +129,17 @@ pub(crate) fn register_project(board: &mut Board, path: &Path, action: ProjectAc
 
 #[tauri::command(async)]
 pub fn remove_project(app: AppHandle, state: State<AppState>, id: String) {
-    remove_registered_project(&state.board, &id);
+    remove_registered_project(&state.board, &state.ptys, &id);
     publish(&app);
 }
 
-fn remove_registered_project(board: &std::sync::Mutex<Board>, id: &str) {
+/// The project's shells stop with its registration, as a workspace's docks do: otherwise they keep
+/// running out of reach, and adding the same folder again brings them back under the same keys.
+fn remove_registered_project(
+    board: &std::sync::Mutex<Board>,
+    ptys: &std::sync::Mutex<std::collections::HashMap<String, crate::pty::Pty>>,
+    id: &str,
+) {
     let _sync = crate::catalog::guard();
     let removed = {
         let mut board = lock(board);
@@ -142,6 +148,7 @@ fn remove_registered_project(board: &std::sync::Mutex<Board>, id: &str) {
         exists
     };
     if removed {
+        dock::kill_docks(ptys, id);
         analytics::track(Event::ProjectActionUsed {
             action: ProjectAction::Remove,
         });
@@ -269,7 +276,7 @@ fn archive(app: &AppHandle, state: &State<AppState>, id: &str, archived: bool) {
     if archived {
         // Stop docks before the archive script removes resources that development servers still
         // use.
-        dock::kill_docks(state, id);
+        dock::kill_docks(&state.ptys, id);
         if let Some(ws) = workspace_copy(state, id) {
             if let Some(command) = dock::scripts_of(&ws).archive {
                 let mut cmd = Command::new("/bin/sh");
@@ -802,7 +809,7 @@ pub fn look_at(app: AppHandle, state: State<AppState>, id: Option<String>) {
 /// requires a separate decision.
 #[tauri::command]
 pub fn remove_workspace(app: AppHandle, state: State<AppState>, id: String) {
-    dock::kill_docks(&state, &id);
+    dock::kill_docks(&state.ptys, &id);
     let (dead, removed): (Vec<String>, bool) = {
         let mut board = lock(&state.board);
         let removed = board.workspaces.iter().any(|ws| ws.id == id);
@@ -871,7 +878,7 @@ pub fn cleanup_worktree(
 
     // Stop agents and docks before removing their directories. The archive script already ran
     // during archiving; starting it again would race Git while the worktree disappears.
-    dock::kill_docks(&state, &id);
+    dock::kill_docks(&state.ptys, &id);
     let dead: Vec<String> = lock(&state.board)
         .workspace_mut(&id)
         .map(|ws| ws.tabs.iter().map(|t| t.id.clone()).collect())
@@ -2182,7 +2189,7 @@ mod tests {
             });
             let remove = scope.spawn(|| {
                 started.send(()).unwrap();
-                super::remove_registered_project(&board, "/old");
+                super::remove_registered_project(&board, &Mutex::default(), "/old");
                 finished.send(()).unwrap();
             });
             ready.recv().unwrap();
@@ -2209,6 +2216,82 @@ mod tests {
         let board = board.into_inner().unwrap();
         assert_eq!(board.projects.len(), 1);
         assert_eq!(board.projects[0].path, "/new");
+    }
+
+    #[test]
+    fn removing_a_project_stops_its_shells_and_keeps_other_docks() {
+        use prometeu_core::terminal::{
+            TerminalControl, TerminalEvents, TerminalOutput, TerminalSize,
+        };
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        struct Shell(AtomicBool);
+        impl TerminalControl for Shell {
+            fn resize(&self, _: TerminalSize) -> Result<(), String> {
+                Ok(())
+            }
+            fn running(&self) -> bool {
+                self.0.load(Ordering::Relaxed)
+            }
+            fn system_id(&self) -> u32 {
+                0
+            }
+            fn close(&self) {
+                self.0.store(false, Ordering::Relaxed);
+            }
+        }
+        struct Silent;
+        impl TerminalEvents for Silent {
+            fn output(&self, _: &[u8], _: u64) {}
+            fn closed(&self, _: Option<u32>) {}
+        }
+
+        let mut board = crate::state::Board::default();
+        for path in ["/repo", "/repo:v2"] {
+            super::register_project(
+                &mut board,
+                Path::new(path),
+                crate::analytics::ProjectAction::Add,
+            );
+        }
+        let board = Mutex::new(board);
+        let keys = [
+            "/repo:terminal",
+            "/repo:terminal-2",
+            "/repo:v2:terminal",
+            "workspace:terminal",
+        ];
+        let shells = keys.map(|_| Arc::new(Shell(AtomicBool::new(true))));
+        let ptys: Mutex<std::collections::HashMap<_, _>> = Mutex::new(
+            keys.iter()
+                .zip(&shells)
+                .map(|(key, shell)| {
+                    let output = Arc::new(TerminalOutput::new(Arc::new(Silent)));
+                    let pty = crate::pty::Pty::new(
+                        Box::new(std::io::sink()),
+                        shell.clone(),
+                        output,
+                        None,
+                    );
+                    (key.to_string(), pty)
+                })
+                .collect(),
+        );
+        let running = || shells.each_ref().map(|shell| shell.running());
+
+        // An id that is no registered project stops nothing, not even a workspace's shell.
+        super::remove_registered_project(&board, &ptys, "workspace");
+        assert_eq!(running(), [true; 4]);
+
+        super::remove_registered_project(&board, &ptys, "/repo");
+        let mut left: Vec<_> = ptys.lock().unwrap().keys().cloned().collect();
+        left.sort();
+        assert_eq!(left, ["/repo:v2:terminal", "workspace:terminal"]);
+        assert_eq!(running(), [false, false, true, true]);
+        let projects = board.into_inner().unwrap().projects;
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].id, "/repo:v2");
     }
 
     fn pr(number: u64, branch: &str, state: &str) -> Pr {

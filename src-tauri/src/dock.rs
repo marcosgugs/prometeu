@@ -7,6 +7,8 @@ use crate::session::cwd_of;
 use crate::state::{Board, Workspace};
 use crate::{chat, i18n, pty, scripts, AppState};
 use portable_pty::CommandBuilder;
+use prometeu_core::terminal::dock_kind;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
@@ -406,11 +408,10 @@ pub fn close_dock(state: State<AppState>, id: String, kind: String) {
     }
 }
 
-/// Stop every workspace dock when archiving or removing the workspace so hidden servers cannot
-/// remain active.
-pub(crate) fn kill_docks(state: &State<AppState>, id: &str) {
-    let prefix = format!("{id}:");
-    lock(&state.ptys).retain(|key, _| !key.starts_with(&prefix));
+/// Stop every dock of a workspace being archived, cleaned up or removed, or of a project being
+/// removed, so hidden shells and servers cannot remain active.
+pub(crate) fn kill_docks(ptys: &Mutex<HashMap<String, pty::Pty>>, id: &str) {
+    lock(ptys).retain(|key, _| dock_kind(key, id).is_none());
 }
 
 /// Expose repository script declarations and the workspace port so the frontend can render
@@ -434,12 +435,11 @@ pub struct DockView {
 /// opens a log tab.
 #[tauri::command]
 pub fn dock_state(state: State<AppState>, id: String) -> Vec<DockView> {
-    let prefix = format!("{id}:");
     lock(&state.ptys)
         .iter()
         .filter_map(|(key, pty)| {
             Some(DockView {
-                kind: key.strip_prefix(&prefix)?.to_string(),
+                kind: dock_kind(key, &id)?.to_string(),
                 alive: pty.alive(),
             })
         })

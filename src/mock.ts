@@ -1509,6 +1509,8 @@ const mockCommands: IpcHandlers = {
   },
   remove_project(args) {
     board.projects = board.projects.filter((project) => project.id !== args.id);
+    // As in the backend, the project's shells stop with its registration.
+    for (const key of [...docks.keys()]) if (key.startsWith(`${args.id}:`)) docks.delete(key);
     emit("board", board);
     return;
   },

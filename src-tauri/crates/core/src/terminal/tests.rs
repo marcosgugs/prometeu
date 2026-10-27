@@ -115,3 +115,16 @@ fn dropping_the_terminal_retires_output_and_requests_native_shutdown_once() {
     assert!(lock(&events.0).is_empty());
     assert_eq!(control.0.load(Ordering::Relaxed), 1);
 }
+#[test]
+fn dock_keys_belong_only_to_their_exact_owner() {
+    assert_eq!(dock_kind("workspace:run", "workspace"), Some("run"));
+    assert_eq!(dock_kind("/repo:terminal-2", "/repo"), Some("terminal-2"));
+    assert_eq!(dock_kind("/repo:v2:terminal", "/repo:v2"), Some("terminal"));
+    for (key, owner) in [
+        ("/repo:v2:terminal", "/repo"),
+        ("/repository:terminal", "/repo"),
+        ("/repo", "/repo"),
+    ] {
+        assert_eq!(dock_kind(key, owner), None, "{key} is not owned by {owner}");
+    }
+}

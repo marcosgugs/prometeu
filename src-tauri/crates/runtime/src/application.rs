@@ -5,6 +5,7 @@ use prometeu_core::{
     conversation::work::Work,
     lock::lock,
     session::reactions::next_status,
+    terminal::dock_kind,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -693,6 +694,12 @@ impl Host {
                 Ok(Value::Null)
             }
             Request::RemoveProject { id } => {
+                // Once the registration is gone, `file_root` no longer resolves the id, so its
+                // shells could be neither listed nor closed; stop them first, as the desktop does.
+                let board = self.catalog.snapshot().board;
+                if board.projects.iter().any(|project| project.id == id) {
+                    self.drop_docks(&id)?;
+                }
                 let catalog = self.catalog.remove_project(&id)?;
                 self.application_events.publish_board(catalog.board)?;
                 Ok(Value::Null)
@@ -892,10 +899,9 @@ impl Host {
             }
             Request::DockState { id } => {
                 self.file_root(&id)?;
-                let prefix = format!("{id}:");
                 let mut docks = Vec::new();
                 for (key, terminal) in &self.docks {
-                    if let Some(kind) = key.strip_prefix(&prefix) {
+                    if let Some(kind) = dock_kind(key, &id) {
                         let current = terminal.current()?;
                         docks.push(json!({"kind":kind,"alive":current["running"] == true}));
                     }
