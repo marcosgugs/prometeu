@@ -14,14 +14,21 @@ async function run(command, args, options) {
 // Windows checkouts build the host inside the default distribution, the same one the
 // app attaches to. A login shell loads the PATH rustup writes to ~/.profile, and a
 // Linux-side target directory keeps Linux artifacts away from the MSVC target and
-// avoids building through /mnt/c.
-const BUILD_IN_WSL = `set -eu
+// avoids building through /mnt/c. Every checkout shares that target, and Cargo
+// releases its own lock before the copy, so one lock covers both: otherwise another
+// checkout's build could replace the binary first. flock comes with util-linux;
+// without it the build runs unguarded.
+export const BUILD_IN_WSL = `set -eu
 if ! command -v cargo >/dev/null; then
   echo "Rust is not installed in the default WSL distribution. Install it there with rustup (https://rustup.rs), plus build-essential, then retry." >&2
   exit 1
 fi
 cd "$(wslpath -a "$1")"
-target="\${XDG_CACHE_HOME:-$HOME/.cache}/prometeu/runtime-target"
+cache="\${XDG_CACHE_HOME:-$HOME/.cache}/prometeu"
+target="$cache/runtime-target"
+mkdir -p "$cache"
+exec 9>"$target.lock"
+if command -v flock >/dev/null; then flock 9; fi
 CARGO_TARGET_DIR="$target" cargo build --locked --manifest-path src-tauri/Cargo.toml -p prometeu-runtime --release
 cp "$target/release/prometeu-runtime" "$(wslpath -a "$2")"
 `;

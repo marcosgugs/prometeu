@@ -339,7 +339,9 @@ without that isolation, over the default Windows root.
 `PROMETEU_WSL_RUNTIME`, all these commands first build and embed the release
 runtime: on Linux directly, on Windows through `wsl.exe` in the default
 distribution, with Cargo's target under `~/.cache/prometeu/runtime-target` there
-and the binary copied to `src-tauri/target/wsl-runtime/`. Elsewhere set
+and the binary copied to `src-tauri/target/wsl-runtime/`. Checkouts share that
+target; a `flock` held over the build and the copy keeps one checkout from
+embedding another's runtime. Elsewhere set
 `PROMETEU_WSL_RUNTIME` to a matching Linux x86_64 artifact, or automatic startup
 rejects the build. `npm run build:wsl` builds only the frontend. Packaging is in
 [release](release.md#windows-installer).
