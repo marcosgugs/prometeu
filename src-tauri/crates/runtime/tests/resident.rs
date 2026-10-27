@@ -813,15 +813,20 @@ fn application_terminal_docks_keep_one_shell_per_kind() {
             serde_json::json!({"id":"primary","kind":"terminal"}),
         )
         .unwrap();
+    // A closed shell is gone, as on the desktop, so the next refresh cannot bring its tab back.
     let docks = client
         .application("dock_state".into(), serde_json::json!({"id":"primary"}))
         .unwrap();
-    assert_eq!(docks.as_array().unwrap().len(), 2);
-    assert!(docks
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|dock| dock["kind"] == "terminal" && dock["alive"] == false));
+    assert_eq!(
+        docks,
+        serde_json::json!([{"kind":"terminal-2","alive":true}])
+    );
+    assert!(client
+        .application(
+            "pty_buffer".into(),
+            serde_json::json!({"session":first_shell})
+        )
+        .is_err());
     client.shutdown().unwrap();
     cleanup.armed = false;
     std::fs::remove_dir_all(base).unwrap();

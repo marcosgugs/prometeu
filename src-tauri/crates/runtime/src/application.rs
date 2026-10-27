@@ -895,6 +895,11 @@ impl Host {
                         terminal.stop(id)?;
                     }
                 }
+                // A closed shell leaves with its tab, as on the desktop; a stopped Setup or Run
+                // keeps its output until rerun.
+                if !matches!(kind.as_str(), "setup" | "run") {
+                    self.docks.remove(&key);
+                }
                 Ok(Value::Null)
             }
             Request::DockState { id } => {
