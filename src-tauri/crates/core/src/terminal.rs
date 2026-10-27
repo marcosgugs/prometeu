@@ -23,6 +23,11 @@ pub struct TerminalSize {
 pub trait TerminalControl: Send + Sync {
     fn resize(&self, size: TerminalSize) -> Result<(), String>;
     fn running(&self) -> bool;
+    /// Whether the terminal runs a command rather than its shell waiting for input: a job holding
+    /// the foreground, or a program the shell replaced itself with.
+    fn running_command(&self) -> bool {
+        false
+    }
     fn system_id(&self) -> u32;
     /// Request asynchronous hangup and escalation. Implementations serialize signals with reaping.
     fn close(&self);
@@ -156,6 +161,10 @@ impl Terminal {
     }
     pub fn alive(&self) -> bool {
         self.control.running()
+    }
+    /// A shell running a command, rather than waiting at its prompt.
+    pub fn running_command(&self) -> bool {
+        self.control.running_command()
     }
     pub fn pid(&self) -> u32 {
         self.control.system_id()

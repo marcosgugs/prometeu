@@ -1595,6 +1595,12 @@
       ]
     },
     {
+      "target": "menu.app.quit",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
       "target": "menu.app.settings",
       "sources": [
         "src/appmenu.ts"
@@ -2128,6 +2134,12 @@
       "target": "projects.title",
       "sources": [
         "src/projects.ts"
+      ]
+    },
+    {
+      "target": "quit.confirm",
+      "sources": [
+        "src/quit.ts"
       ]
     },
     {
@@ -3035,6 +3047,12 @@
       "target": "update.restart",
       "sources": [
         "src/update.ts"
+      ]
+    },
+    {
+      "target": "update.restart.confirm",
+      "sources": [
+        "src/quit.ts"
       ]
     },
     {

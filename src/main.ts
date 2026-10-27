@@ -31,6 +31,7 @@ import { githubIssue } from "./github-issues-model";
 import * as mcp from "./mcp";
 import * as plugins from "./plugins";
 import { PrScanPolicy } from "./pr-refresh";
+import * as quit from "./quit";
 import { fileDropTarget as launcherDropTarget, openLauncher, type Draft, type Open } from "./launcher";
 import * as menu from "./menu";
 import * as news from "./news";
@@ -601,6 +602,11 @@ grip.addEventListener("dblclick", () => {
 
 /// Dispatch actions from document shortcuts and native Mac menu accelerators. Return whether the shortcut was handled so its key event can be consumed.
 function act(a: appmenu.Action): boolean {
+  // Quitting works over any dialog, as the system's Quit did; it asks first while work would be cut off.
+  if (a === "quit") {
+    void quit.request();
+    return true;
+  }
   if (document.querySelector("dialog[open], .ui-feedback-panel:not([hidden])")) return true;
   const open = ws.id();
   // Local workspace shortcuts do nothing for remote shares instead of sending unknown IDs to the backend.
@@ -734,7 +740,7 @@ initCodeCopy(() => {
   };
 });
 feedback.init();
-void update.init(say);
+void update.init(say, (version) => quit.allow({ kind: "restart", version }));
 // Discover installations without waiting for their independently loaded model catalogs.
 void loadAgents().then(() => { statusbar.showAgents(installed()); island.changed(); });
 // Initialize team state before Settings and sidebar render its data.
@@ -884,6 +890,7 @@ terminals.init({
     return typeof folder === "string" ? folder : null;
   },
 });
+quit.init({ board: () => state });
 state = await invoke("load_board");
 void terminals.sync();
 actions.update(state);

@@ -17,7 +17,7 @@ import type { Accounts } from "./statusbar";
 import type { CloudStatus } from "./cloud";
 import type { CatalogState, Kind } from "./catalog";
 import type { Skill } from "./skills";
-import { hasWorktree, type Board, type Change, type Choice, type DockKind, type EffectiveItem, type GitBranch, type GitCommit, type GitConflict, type GitFile, type GitStatus, type Issue, type LinearStatus, type McpServer, type Plugin, type ProjectTools, type Pr, type Provenance, type ProviderId, type Scripts, type Selection, type ShareRights, type Tab, type Tools, type Workspace } from "./types";
+import { hasWorktree, isTerm, type Board, type Change, type Choice, type DockKind, type EffectiveItem, type GitBranch, type GitCommit, type GitConflict, type GitFile, type GitStatus, type Issue, type LinearStatus, type McpServer, type Plugin, type ProjectTools, type Pr, type Provenance, type ProviderId, type Scripts, type Selection, type ShareRights, type Tab, type Tools, type Workspace } from "./types";
 
 type Handler = (e: { event: string; id: number; payload: unknown }) => void;
 const handlers = new Map<string, Handler[]>();
@@ -2372,6 +2372,10 @@ const mockCommands: IpcHandlers = {
     return [...docks]
       .filter(([k]) => k.startsWith(`${args.id}:`))
       .map(([k, alive]) => ({ kind: k.split(":")[1] as DockKind, alive }));
+  },
+  /// Browser shells have no foreground jobs, so only a live Setup or Run would be cut off.
+  running_terminals() {
+    return [...docks].filter(([k, alive]) => alive && !isTerm(k.slice(k.lastIndexOf(":") + 1) as DockKind)).length;
   },
   create_scripts_file() {
     return ".prometeu/settings.toml";

@@ -1655,6 +1655,23 @@ export const EN: Record<keyof typeof pt.PT, string> = {
   "update.stuck": "the app did not restart on its own — quit and open Prometeu, {version} is already installed",
   "update.notes": "See what's coming",
 
+  /* ---------- asking before quitting ---------- */
+
+  "quit.title": "Quit Prometeu?",
+  "quit.message": "Quitting now stops {work}.",
+  "quit.accept": "Quit",
+  "quit.restart.title": "Restart to update?",
+  "quit.restart.message":
+    "Restarting now stops {work}. {version} is already installed and also takes effect the next time Prometeu opens.",
+  "quit.restart.accept": "Restart now",
+  "quit.conversations.one": "{n} conversation in progress",
+  "quit.conversations.other": "{n} conversations in progress",
+  "quit.preparing.one": "{n} workspace being prepared",
+  "quit.preparing.other": "{n} workspaces being prepared",
+  "quit.terminals.one": "{n} terminal running a command",
+  "quit.terminals.other": "{n} terminals running commands",
+  "quit.list": "{first} and {last}",
+
   /* ---------- what's new ---------- */
 
   "news.title": "What's new",

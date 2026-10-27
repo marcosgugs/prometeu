@@ -282,6 +282,7 @@ fn main() {
             dock::close_dock,
             dock::workspace_scripts,
             dock::dock_state,
+            dock::running_terminals,
             dock::create_scripts_file,
             dock::scripts_prompt,
             dock::open_run,
@@ -407,6 +408,7 @@ fn main() {
         .run(|app, event| match event {
             // Tauri exits when the last window closes, but the island overlay is only ever hidden
             // and nothing could bring the main window back. Closing it quits, as without the island.
+            // The interface holds the close first while local work would be cut off (ADR 0097).
             tauri::RunEvent::WindowEvent {
                 label,
                 event: tauri::WindowEvent::Destroyed,

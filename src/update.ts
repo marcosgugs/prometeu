@@ -123,6 +123,8 @@ export function view(phase: Phase): View {
 /// Inject update checking, restart, clock, rendering, and notices for deterministic tests.
 export type Io = {
   check: () => Promise<Found | null>;
+  /// Whether restarting may cut off local work now; the installed version also applies at the next start.
+  allow: (version: string) => Promise<boolean>;
   relaunch: () => Promise<void>;
   clock: () => string;
   show: (view: View) => void;
@@ -177,6 +179,7 @@ export function updater(io: Io) {
 
   // The bundle on disk is ready; explicit restart replaces the running app and ends its processes.
   const restart = async (version: string) => {
+    if (!(await io.allow(version))) return;
     go({ at: "restarting", version });
     try {
       await io.relaunch();
@@ -264,7 +267,7 @@ export function settingsRow(): HTMLElement {
   return el;
 }
 
-export async function init(say: Io["say"]) {
+export async function init(say: Io["say"], allow: Io["allow"]) {
   ver = `v${await getVersion()}`;
   $("ver").textContent = ver;
   // Only AppImage supports replacing itself; distro packages stay with their package manager.
@@ -276,6 +279,7 @@ export async function init(say: Io["say"]) {
 
   const up = updater({
     check,
+    allow,
     // Relaunch may terminate this process before its promise returns. This records intent only.
     relaunch: () => { track({ name: "update_action_used", action: "restart" }); return relaunch(); },
     clock,

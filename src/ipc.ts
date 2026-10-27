@@ -157,6 +157,7 @@ export type Commands = {
   rename_tab: { args: { workspace: string; tab: string; title: string }; result: void };
   rename_workspace: { args: { id: string; title: string }; result: void };
   reveal_path: { args: { id: string; rel: string }; result: void };
+  running_terminals: { args: undefined; result: number };
   scripts_prompt: { args: { id: string }; result: string };
   set_awake: { args: { mode: "off" | "system" | "display" }; result: void };
   set_confirm_messages: { args: { id: string; confirm: boolean }; result: void };

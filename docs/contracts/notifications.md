@@ -119,7 +119,9 @@ focuses the main window. The local page is not a new remote IPC surface.
 The overlay window is created once and afterwards only hidden, and Tauri ends
 the app only when its last window closes. The island depends on the main window
 and cannot bring it back, so closing the main window quits the app explicitly,
-as it does without the island; the board is saved on exit as usual.
+as it does without the island; the board is saved on exit as usual. While local
+work would be cut off, the interface asks before the window closes
+([ADR 0097](../decisions/0097-ask-before-ending-the-app.md)).
 
 The snapshot is built only in the main window from the board and live `chat`
 events; replay never reaches it:

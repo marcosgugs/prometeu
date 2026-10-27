@@ -127,6 +127,12 @@ and `terminal_close` as unimplemented, and `open_dock` refuses a session id
 through `file_root`. `Board.terminals` still round-trips through the runtime
 catalog, so nothing is lost if a later version adds them.
 
+Ending the app never asks on Windows: closing the window only detaches it, and
+the resident runtime keeps every agent and terminal. `src/windows/main.ts` calls
+`useQuitGuard(false)` before the shared interface loads, and the runtime does not
+implement `running_terminals`
+([ADR 0097](../decisions/0097-ask-before-ending-the-app.md)).
+
 ## Deferred application effects
 
 `application.operations.v1` adds private `application_operation_start

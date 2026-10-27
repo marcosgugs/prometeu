@@ -155,10 +155,14 @@ interruption settles everything at once, since it ends the children too. See
 [ADR 0056](../decisions/0056-background-tasks-hold-completion.md).
 
 Quitting or restarting for an update does not stop a turn in an orderly way:
-the app ends and the agent with it. On the next start `Board::revive` marks the
-tabs that were working or waiting as `interrupted`. A conversation without a
-process is presented with a snapshot that ends in `session.state: stopped`, and
-the timeline keeps an unfinished turn cut off instead of settling it: the
+the app ends and the agent with it. While a local conversation is working or
+waiting, ⌘Q, closing the main window and **Restart to update** ask first; the
+Dock's Quit, logout and shutdown cannot be held
+([ADR 0097](../decisions/0097-ask-before-ending-the-app.md)). On the next start
+`Board::revive` marks the tabs that were working or waiting as `interrupted`. A
+conversation without a process is presented with a snapshot that ends in
+`session.state: stopped`, and the timeline keeps an unfinished turn cut off
+instead of settling it: the
 partial reply has no completion footer, open requests read as closed without an
 answer, and an `interrupted` notice marks the place. The composer of an
 interrupted tab offers **Continue**, an ordinary message; any accepted message

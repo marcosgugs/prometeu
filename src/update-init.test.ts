@@ -37,7 +37,7 @@ it.each([
   if (bundle === "error") vi.mocked(getBundleType).mockRejectedValueOnce(new Error("Unavailable"));
   else vi.mocked(getBundleType).mockResolvedValueOnce(bundle as Awaited<ReturnType<typeof getBundleType>>);
 
-  await init(vi.fn());
+  await init(vi.fn(), async () => true);
   await vi.advanceTimersByTimeAsync(0);
   expect(check).toHaveBeenCalledTimes(enabled ? 1 : 0);
   expect(getBundleType).toHaveBeenCalledTimes(linux ? 1 : 0);
@@ -52,7 +52,7 @@ it("records restart intent before the process replacement can settle", async () 
   host.linux = false;
   vi.mocked(check).mockResolvedValue({ version: "0.34.0", downloadAndInstall: async () => {} } as Awaited<ReturnType<typeof check>>);
   vi.mocked(relaunch).mockImplementation(() => new Promise(() => {}));
-  await init(vi.fn());
+  await init(vi.fn(), async () => true);
   await vi.advanceTimersByTimeAsync(0);
   expect(button.dataset).toEqual({ track: "update.install" });
   const click = button.addEventListener.mock.calls.find(([event]) => event === "click")![1] as () => void;
@@ -61,6 +61,8 @@ it("records restart intent before the process replacement can settle", async () 
   expect(host.track).toHaveBeenCalledWith({ name: "update_action_used", action: "install" });
   expect(button.dataset).toEqual({ track: "update.restart" });
   click();
+  // Restarting waits for the answer to whether local work may be cut off.
+  await vi.advanceTimersByTimeAsync(0);
   expect(relaunch).toHaveBeenCalledOnce();
   expect(host.track).toHaveBeenLastCalledWith({ name: "update_action_used", action: "restart" });
 });

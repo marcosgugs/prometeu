@@ -452,6 +452,18 @@ same rules in memory; the Windows runtime rejects the commands and its entry
 point hides every way to reach them. Tests: `src-tauri/src/terminal_sessions.rs`,
 `src/terminals.test.ts` and `fixtures/backend-contract.json`.
 
+## Ending the app
+
+`running_terminals` takes no arguments and returns how many terminals quitting
+or restarting would cut off: Setup and Run while their script runs, and a shell
+or terminal session while it runs a command, as a foreground job or in place of
+the shell through `exec`. A shell waiting at its prompt does not count. The interface adds the board's working and waiting
+conversations and the workspaces being prepared before asking
+([ADR 0097](../decisions/0097-ask-before-ending-the-app.md)). The browser mock
+counts live Setup and Run docks; the Windows runtime does not implement the
+command, and its entry point never asks. Tests: `src-tauri/src/dock.rs`,
+`crates/process/src/terminal/tests.rs` and `src/quit.test.ts`.
+
 ## Tool selection
 
 The global, project and workspace layers of MCP, plugin and skill selection

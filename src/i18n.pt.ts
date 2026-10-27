@@ -1695,6 +1695,23 @@ export const PT = {
     "o app não reiniciou sozinho — feche e abra o Prometeu, a {version} já está instalada",
   "update.notes": "Ver o que vem",
 
+  /* Asking before quitting. */
+
+  "quit.title": "Sair do Prometeu?",
+  "quit.message": "Sair agora interrompe {work}.",
+  "quit.accept": "Sair",
+  "quit.restart.title": "Reiniciar para atualizar?",
+  "quit.restart.message":
+    "Reiniciar agora interrompe {work}. A {version} já está instalada e também entra na próxima vez que o Prometeu abrir.",
+  "quit.restart.accept": "Reiniciar agora",
+  "quit.conversations.one": "{n} conversa em andamento",
+  "quit.conversations.other": "{n} conversas em andamento",
+  "quit.preparing.one": "{n} workspace em preparação",
+  "quit.preparing.other": "{n} workspaces em preparação",
+  "quit.terminals.one": "{n} terminal rodando um comando",
+  "quit.terminals.other": "{n} terminais rodando comandos",
+  "quit.list": "{first} e {last}",
+
   /* Release notes. */
 
   "news.title": "Novidades",

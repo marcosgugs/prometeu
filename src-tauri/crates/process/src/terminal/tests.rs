@@ -118,6 +118,38 @@ fn abandoning_the_terminal_waiter_kills_and_reaps() {
     assert!(!terminal.control.running());
     assert!(!running(pid));
 }
+fn eventually(condition: impl Fn() -> bool) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !condition() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    condition()
+}
+#[test]
+fn a_running_command_is_told_apart_from_a_shell_waiting_for_input() {
+    // With job control, as in an interactive shell, a command gets its own group and the
+    // terminal; `true` keeps the shell from replacing itself with the command.
+    let job = open("set -m; sleep 30; true");
+    let job_output = drain(job.output);
+    // `exec` replaces the shell with the command, which keeps the shell's process and group.
+    let replaced = open("exec sleep 30");
+    let replaced_output = drain(replaced.output);
+    // The shell itself waiting for input cuts nothing off.
+    let waiting = open("read value");
+    let waiting_output = drain(waiting.output);
+    assert!(eventually(|| job.control.running_command()));
+    assert!(eventually(|| replaced.control.running_command()));
+    assert!(!waiting.control.running_command());
+    for (control, mut waiter, output) in [
+        (job.control, job.waiter, job_output),
+        (replaced.control, replaced.waiter, replaced_output),
+        (waiting.control, waiting.waiter, waiting_output),
+    ] {
+        control.close();
+        output.recv_timeout(Duration::from_secs(5)).unwrap();
+        waiter.wait().unwrap();
+    }
+}
 
 #[test]
 fn dock_terminals_drop_the_launching_terminal_and_agent_and_present_prometeu() {

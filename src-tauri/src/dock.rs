@@ -467,6 +467,25 @@ pub fn dock_state(state: State<AppState>, id: String) -> Vec<DockView> {
         .collect()
 }
 
+/// Whether quitting would cut off a terminal's work (ADR 0097): Setup and Run are their scripts,
+/// while a shell waiting at its prompt loses only its scrollback.
+fn cuts_off(kind: &str, alive: bool, running_command: impl FnOnce() -> bool) -> bool {
+    alive && (!is_terminal(kind) || running_command())
+}
+
+/// Count the terminals that quitting or restarting would cut off, for the question asked first.
+#[tauri::command]
+pub fn running_terminals(state: State<AppState>) -> usize {
+    lock(&state.ptys)
+        .iter()
+        .filter(|(key, pty)| {
+            // Owners may contain ':' but kinds never do.
+            let kind = key.rsplit_once(':').map_or(key.as_str(), |(_, kind)| kind);
+            cuts_off(kind, pty.alive(), || pty.running_command())
+        })
+        .count()
+}
+
 #[tauri::command]
 pub fn workspace_scripts(app: AppHandle, state: State<AppState>, id: String) -> ScriptsView {
     let port = ensure_port(&app, &state, &id);
@@ -537,6 +556,21 @@ mod tests {
             }))
             .unwrap(),
         )
+    }
+
+    #[test]
+    fn quitting_cuts_off_live_scripts_and_shells_running_a_command() {
+        for (kind, alive, command, expected) in [
+            ("setup", true, false, true),
+            ("run", true, false, true),
+            ("run", false, false, false),
+            ("terminal", true, false, false),
+            ("terminal", true, true, true),
+            ("terminal-2", true, true, true),
+            ("terminal-2", false, true, false),
+        ] {
+            assert_eq!(cuts_off(kind, alive, || command), expected, "{kind}");
+        }
     }
 
     #[test]
