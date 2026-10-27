@@ -813,15 +813,98 @@ fn application_terminal_docks_keep_one_shell_per_kind() {
             serde_json::json!({"id":"primary","kind":"terminal"}),
         )
         .unwrap();
+    // A closed shell is gone, as on the desktop, so the next refresh cannot bring its tab back.
     let docks = client
         .application("dock_state".into(), serde_json::json!({"id":"primary"}))
         .unwrap();
-    assert_eq!(docks.as_array().unwrap().len(), 2);
-    assert!(docks
-        .as_array()
+    assert_eq!(
+        docks,
+        serde_json::json!([{"kind":"terminal-2","alive":true}])
+    );
+    assert!(client
+        .application(
+            "pty_buffer".into(),
+            serde_json::json!({"session":first_shell})
+        )
+        .is_err());
+    client.shutdown().unwrap();
+    cleanup.armed = false;
+    std::fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn removing_a_project_stops_its_shells() {
+    let base = fixture_root("pr");
+    let project = base.join("project");
+    let added = base.join("added");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&added).unwrap();
+    let target = application_target(&base, &project);
+    let mut cleanup = Cleanup {
+        armed: true,
+        target: target.clone(),
+        launcher: Arc::new(Local),
+    };
+    let mut client = StdioConnector {
+        launcher: Arc::new(Local),
+    }
+    .connect(&target, events().0)
+    .unwrap();
+    let path = added.to_str().unwrap();
+    let saved = client
+        .application("add_project".into(), serde_json::json!({"path":path}))
+        .unwrap();
+    let id = saved["id"].as_str().unwrap();
+    let shell = client
+        .application(
+            "open_dock".into(),
+            serde_json::json!({"id":id,"kind":"terminal","cols":80,"rows":24}),
+        )
+        .unwrap();
+    client
+        .application(
+            "pty_write".into(),
+            serde_json::json!({"session":shell,"data":"printf 'SHELL_PID=%s\\n' $$\n"}),
+        )
+        .unwrap();
+    // The echoed command line also holds the marker, but only the output has digits after it.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let pid = loop {
+        let buffer = client
+            .application("pty_buffer".into(), serde_json::json!({"session":shell}))
+            .unwrap();
+        let bytes: Vec<u8> = serde_json::from_value(buffer).unwrap();
+        let output = String::from_utf8_lossy(&bytes).into_owned();
+        let pid = output.split("SHELL_PID=").skip(1).find_map(|rest| {
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            (!digits.is_empty()).then_some(digits)
+        });
+        if let Some(pid) = pid {
+            break pid;
+        }
+        assert!(Instant::now() < deadline, "{output}");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    client
+        .application("remove_project".into(), serde_json::json!({"id":id}))
+        .unwrap();
+    // Removal waits for the shell's cleanup, so its process is already gone.
+    let exists = Command::new("kill")
+        .args(["-0", pid.as_str()])
+        .stderr(Stdio::null())
+        .status()
         .unwrap()
-        .iter()
-        .any(|dock| dock["kind"] == "terminal" && dock["alive"] == false));
+        .success();
+    assert!(!exists, "shell {pid} outlived its project");
+    // Adding the same folder again gets the same id, without the old shell.
+    let again = client
+        .application("add_project".into(), serde_json::json!({"path":path}))
+        .unwrap();
+    assert_eq!(again, saved);
+    let docks = client
+        .application("dock_state".into(), serde_json::json!({"id":id}))
+        .unwrap();
+    assert_eq!(docks, serde_json::json!([]));
     client.shutdown().unwrap();
     cleanup.armed = false;
     std::fs::remove_dir_all(base).unwrap();

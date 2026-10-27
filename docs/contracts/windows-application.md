@@ -111,9 +111,13 @@ cancellation.
 Dock keys keep the desktop `<workspace>:terminal[-N]` format, up to 32 shells per
 workspace. Shells survive window closure and stop on explicit runtime shutdown.
 The transport orders `pty_write` per terminal; a failed write rejects its queued
-suffix without replay. A stopped dock keeps its output until rerun; reopening a
-running Run reuses it and a conflicting name rejects. Setup and Run use the shared
-hydration, port reservation and script environment through `/bin/sh -lc`.
+suffix without replay. As on the desktop, `close_dock` drops a shell once it has
+stopped, and `remove_project` stops and drops the project's shells, which could
+no longer be listed or closed without the registration
+(`crates/runtime/tests/resident.rs`). A stopped Setup or Run keeps its output
+until rerun; reopening a running Run reuses it and a conflicting name rejects.
+Setup and Run use the shared hydration, port reservation and script environment
+through `/bin/sh -lc`.
 
 ## Deferred application effects
 

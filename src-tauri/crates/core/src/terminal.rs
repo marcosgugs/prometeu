@@ -6,6 +6,14 @@ use std::sync::{Arc, Mutex};
 
 pub const SCROLLBACK: usize = 512 * 1024;
 
+/// Dock keys are `<owner>:<kind>`. A project owner is its folder path, which may itself contain
+/// ':', while kinds never do: `/repo` must not claim the shells of `/repo:v2`.
+pub fn dock_kind<'a>(key: &'a str, owner: &str) -> Option<&'a str> {
+    key.strip_prefix(owner)?
+        .strip_prefix(':')
+        .filter(|kind| !kind.contains(':'))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TerminalSize {
     pub cols: u16,

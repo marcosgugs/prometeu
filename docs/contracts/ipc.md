@@ -328,8 +328,9 @@ suppresses late output and close events before a replacement uses its key.
 working directory: a dedicated worktree, the clone itself, or the common parent
 of multiple worktrees. A project resolves in the registered clone's folder, which is what
 supports reading and editing a repository with no workspace on it at all. The
-two id spaces do not collide, and `session.rs::cwd_of` is the only function that
-performs that resolution — `dock.rs` imports it instead of repeating the rule. A
+two id spaces do not collide, and `session.rs::cwd_in`, behind `cwd_of`, is the
+only function that performs that resolution — `dock.rs` imports it instead of
+repeating the rule. A
 path outside the root is still refused.
 
 `find_paths` returns at most 40 ranked entries, files and directories alike.
@@ -406,6 +407,22 @@ folder, and without a workspace there is no script variable to pass. Setup and
 Run still require a workspace and answer `err.session.noWorkspace`.
 `workspace_scripts` and `dock_state` already tolerated an id without a workspace
 — they return an empty catalog and no port.
+
+`remove_project` stops the project's shells, as archiving, cleaning up or
+removing a workspace stops its docks, so adding the same folder again starts with
+none. `open_dock` resolves a shell's folder and inserts the new shell under the
+PTY lock that the removal takes to stop docks, so a shell starting during the
+removal is stopped too, and one asked for afterwards finds no folder. Dock keys
+are `<owner>:<kind>`, and a project owner is a folder path that may contain `:`;
+`prometeu_core::terminal::dock_kind` gives an owner only the keys whose remaining
+kind has no `:`. A shell that exits while its owner is off screen
+can still be reported by `dock_state` with `alive: false`, but it gets no tab;
+exited Setup and Run keep their output. Tests:
+`dock_keys_belong_only_to_their_exact_owner` in
+`crates/core/src/terminal/tests.rs`,
+`removing_a_project_stops_its_shells_and_keeps_other_docks` and
+`removing_a_project_while_its_shell_starts_stops_that_shell` in
+`src-tauri/src/session.rs`, and `src/dockbar.test.ts`.
 
 ## Tool selection
 

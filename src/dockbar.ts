@@ -51,10 +51,12 @@ const declares = (kind: DockKind) =>
     : info.scripts.runs.length > 0;
 
 /// Restore backend-reported shell tabs in order. Unlike fixed script tabs, shells are explicitly created and removed.
-function terminals(): DockKind[] {
-  const live = info.docks.map((d) => d.kind).filter(isTerm);
-  // Keep pending shell tabs visible until dock_state confirms them.
-  return [...new Set([...live, ...asked])].sort((a, b) => termNumber(a) - termNumber(b));
+const terminals = (): DockKind[] => shellTabs(info.docks, asked);
+
+/// Shell tabs in number order, pending ones included until dock_state confirms them. A shell that exited while its owner was off screen can still be reported with `alive: false`, but gets no tab: selecting it would quietly start a new shell under its key.
+export function shellTabs(docks: DockState[], pending: Iterable<DockKind>): DockKind[] {
+  const live = docks.filter((d) => d.alive && isTerm(d.kind)).map((d) => d.kind);
+  return [...new Set([...live, ...pending])].sort((a, b) => termNumber(a) - termNumber(b));
 }
 
 /// Only repository scripts appear in the side-panel tab strip.

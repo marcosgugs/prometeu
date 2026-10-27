@@ -3,10 +3,12 @@
 
 use crate::analytics::{self, Event, ProjectAction, ScriptKind};
 use crate::lock::lock;
-use crate::session::cwd_of;
+use crate::session::cwd_in;
 use crate::state::{Board, Workspace};
 use crate::{chat, i18n, pty, scripts, AppState};
 use portable_pty::CommandBuilder;
+use prometeu_core::terminal::dock_kind;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
@@ -45,12 +47,14 @@ pub fn open_dock(
     // workspace can still open a shell using only its directory, without workspace script
     // variables.
     if is_terminal(&kind) {
-        let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
-        let cmd = shell_command(&crate::platform::shell(), &root, found.as_ref());
-        let handle = pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())?;
-        lock(&state.ptys).insert(key.clone(), handle);
-        crate::machine::publish_counts(&app);
-        analytics::track(Event::TerminalOpened);
+        let started = start_shell(&state.ptys, &state.board, &id, &key, |root| {
+            let cmd = shell_command(&crate::platform::shell(), root, found.as_ref());
+            pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())
+        })?;
+        if started {
+            crate::machine::publish_counts(&app);
+            analytics::track(Event::TerminalOpened);
+        }
         return Ok(key);
     }
 
@@ -86,6 +90,26 @@ pub fn open_dock(
     };
     start_script(&app, &state, &ws, script, cols, rows)?;
     Ok(key)
+}
+
+/// Resolve the shell's folder and insert the new shell under one PTY lock. Removing its owner stops
+/// docks through the same lock, so it either finds the shell or leaves no folder to start in; a
+/// shell spawned between the two would outlive its project. Returns whether a shell started.
+pub(crate) fn start_shell(
+    ptys: &Mutex<HashMap<String, pty::Pty>>,
+    board: &Mutex<Board>,
+    id: &str,
+    key: &str,
+    spawn: impl FnOnce(&Path) -> Result<pty::Pty, String>,
+) -> Result<bool, String> {
+    let mut ptys = lock(ptys);
+    if ptys.get(key).is_some_and(|p| p.alive()) {
+        return Ok(false);
+    }
+    let root = cwd_in(&lock(board), id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
+    let handle = spawn(&root)?;
+    ptys.insert(key.to_string(), handle);
+    Ok(true)
 }
 
 /// Show copied files before the repository setup command. Either operation can create a Setup tab;
@@ -406,11 +430,10 @@ pub fn close_dock(state: State<AppState>, id: String, kind: String) {
     }
 }
 
-/// Stop every workspace dock when archiving or removing the workspace so hidden servers cannot
-/// remain active.
-pub(crate) fn kill_docks(state: &State<AppState>, id: &str) {
-    let prefix = format!("{id}:");
-    lock(&state.ptys).retain(|key, _| !key.starts_with(&prefix));
+/// Stop every dock of a workspace being archived, cleaned up or removed, or of a project being
+/// removed, so hidden shells and servers cannot remain active.
+pub(crate) fn kill_docks(ptys: &Mutex<HashMap<String, pty::Pty>>, id: &str) {
+    lock(ptys).retain(|key, _| dock_kind(key, id).is_none());
 }
 
 /// Expose repository script declarations and the workspace port so the frontend can render
@@ -434,12 +457,11 @@ pub struct DockView {
 /// opens a log tab.
 #[tauri::command]
 pub fn dock_state(state: State<AppState>, id: String) -> Vec<DockView> {
-    let prefix = format!("{id}:");
     lock(&state.ptys)
         .iter()
         .filter_map(|(key, pty)| {
             Some(DockView {
-                kind: key.strip_prefix(&prefix)?.to_string(),
+                kind: dock_kind(key, &id)?.to_string(),
                 alive: pty.alive(),
             })
         })
