@@ -507,6 +507,21 @@ keeps only this choice: waiting messages live in the frontend's memory and are
 never persisted. Tests: `share_tests` and `fixtures/backend-contract.json`,
 which carries a workspace saved with the option off and one from before it.
 
+## Terminal sessions
+
+`Board.terminals` lists the terminal sessions in sidebar order
+([ADR 0096](../decisions/0096-terminal-sessions.md)) as `{ id, folder, name? }`:
+`id` is `terminal-<uuid>`, `folder` is the absolute folder the shell starts in and
+`name` is the name the person set. The field is written only when a session
+exists, and `name` only when set, so a board from v0.29.0 or earlier loads and
+saves back unchanged; an older version ignores the field and drops it on its next
+save. Only the record persists: scrollback stays in memory and no process
+survives the app, so after a restart a session is listed stopped, and opening it
+starts a new shell in the same folder. The WSL runtime carries the field through
+its catalog unchanged. Test: `boards_from_v0_29_0_load_unchanged` in
+`crates/core/src/terminal_sessions/tests.rs`, against the board v0.29.0 wrote in
+its contract fixture.
+
 ## Delegations
 
 `Board.delegations` defaults to `[]` for older boards. It persists owner client ID,

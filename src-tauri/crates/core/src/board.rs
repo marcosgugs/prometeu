@@ -163,6 +163,21 @@ pub struct Project {
     pub group: Option<String>,
 }
 
+/// A local shell owned by the app rather than by a workspace or project (ADR 0096). Only this
+/// record persists: after a restart the session is listed as stopped, and opening it starts a new
+/// shell in the same folder. It never reaches the relay, the delegation MCP or telemetry.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TerminalSession {
+    /// `terminal-<uuid>`. Dock keys are `<owner>:<kind>`, so it has no `:`, and its prefix keeps
+    /// it apart from workspace UUIDs and project paths.
+    pub id: String,
+    /// The absolute folder the shell starts in.
+    pub folder: String,
+    /// A name the person set; without one the folder's name is shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
 /// A repository's source clone and working copy. Multi-repository workspaces keep one adjacent
 /// worktree per repository on the same branch.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
@@ -430,6 +445,10 @@ pub struct Board {
     pub stages: Vec<String>,
     #[serde(default)]
     pub projects: Vec<Project>,
+    /// Terminal sessions in sidebar order (ADR 0096). Written only when there is one, so older
+    /// boards load unchanged and older versions ignore the field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub terminals: Vec<TerminalSession>,
     /// `cards` is the legacy name from when a workspace contained one session.
     #[serde(alias = "cards")]
     pub workspaces: Vec<Workspace>,
@@ -502,6 +521,7 @@ impl Default for Board {
                 .map(String::from)
                 .to_vec(),
             projects: Vec::new(),
+            terminals: Vec::new(),
             workspaces: Vec::new(),
         }
     }

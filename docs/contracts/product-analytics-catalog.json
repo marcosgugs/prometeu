@@ -1613,6 +1613,12 @@
       ]
     },
     {
+      "target": "menu.file.newTerminal",
+      "sources": [
+        "src/appmenu.ts"
+      ]
+    },
+    {
       "target": "menu.file.newWorkspace",
       "sources": [
         "src/appmenu.ts"
@@ -2281,6 +2287,24 @@
       ]
     },
     {
+      "target": "rail.terminal",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.terminal.add",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "rail.terminal.close",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
       "target": "rail.workspace",
       "sources": [
         "src/sidebar.ts"
@@ -2798,9 +2822,45 @@
       ]
     },
     {
+      "target": "terminal.close",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "terminal.folderName",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
       "target": "terminal.input",
       "sources": [
         "src/term.ts"
+      ]
+    },
+    {
+      "target": "terminal.menu",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "terminal.new",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "terminal.newIn",
+      "sources": [
+        "src/sidebar.ts"
+      ]
+    },
+    {
+      "target": "terminal.rename",
+      "sources": [
+        "src/sidebar.ts"
       ]
     },
     {

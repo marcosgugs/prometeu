@@ -306,6 +306,7 @@ The detailed rules and the current state of each one are in
 | bounded command execution | `src-tauri/crates/core/src/command.rs` (ports), `src-tauri/crates/process/src/command.rs` and `query.rs` (Unix implementations) |
 | terminal execution | `src-tauri/crates/core/src/terminal.rs` (ports and output), `src-tauri/crates/process/src/terminal.rs` (Unix PTYs), `src-tauri/src/pty.rs` (desktop composition) |
 | terminal and preview | `src/dock*.ts`, `src/term.ts`, `src/browser.ts`, `src-tauri/src/dock.rs`, `src-tauri/src/pty.rs` |
+| terminal sessions | `src-tauri/crates/core/src/terminal_sessions.rs` (board records), `src-tauri/src/terminal_sessions.rs` (commands and shell folders), `src/terminals.ts` (live state and lifetime), the sidebar group in `src/sidebar.ts` and the view in `src/workspace.ts`; see [ADR 0096](docs/decisions/0096-terminal-sessions.md) |
 
 The preview shares the center with the conversation. Inspection and capture
 stay at the edge of the native webview, with validated return values and an

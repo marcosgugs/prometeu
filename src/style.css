@@ -102,6 +102,11 @@ body.norail .top .nav { margin-left: 0; }
 }
 .sect > span { flex: 1; }
 .railhint { font-size: 12px; color: var(--fg-3); padding: 4px 5px 8px; }
+/* A terminal session's close action shows on hover or for the session on screen, like a tab's. */
+.railterminal .wave, .railterminal .tabx { flex: none; }
+.railterminal .tabx { opacity: 0; margin-right: -2px; }
+.railterminal:hover .tabx, .railterminal.on .tabx { opacity: 1; }
+.railterminal .tabx:hover { color: var(--err); }
 
 .railworkspace {
   flex: none; margin: 1px 0; padding: 2px; border: 1px solid transparent;

@@ -47,6 +47,9 @@ export type Choice = { agent: ProviderId; model: string; effort: string };
 /// `group` is the sidebar folder the person chose; absent means the project is not in a folder.
 export type Project = { id: string; name: string; path: string; group?: string };
 
+/// A local shell owned by the app, not by a workspace or project (ADR 0096). `name` is the one the person set; without it the folder's name shows.
+export type TerminalSession = { id: string; folder: string; name?: string };
+
 /// A repository's source clone, workspace path, base branch, and PR. Each repository retains independent Git history.
 export type Repo = { path: string; name: string; worktree: string; base: string; pr: Pr | null };
 
@@ -358,7 +361,7 @@ export type DelegationExecution = { id: string; state: string; source: string; a
 // Owner identifies an MCP client; legacy conversation IDs remain valid.
 export type Delegation = { id: string; owner: string; workspace: string; task: string; request_key: string; request_hash: string; repository_heads: Record<string, string>; permission?: "ask" | "auto" | null; executions: DelegationExecution[]; background: import("./conversation").BackgroundTask[] | null; requests: import("./conversation").ConversationEventV1[] };
 
-export type Board = { telemetry_ids?: Record<string, string>; delegations?: Delegation[]; actions?: import("./actions").Catalog; tools?: Tools; tool_trust?: ToolTrust[]; stages: string[]; projects: Project[]; workspaces: Workspace[] };
+export type Board = { telemetry_ids?: Record<string, string>; delegations?: Delegation[]; actions?: import("./actions").Catalog; tools?: Tools; tool_trust?: ToolTrust[]; stages: string[]; projects: Project[]; terminals?: TerminalSession[]; workspaces: Workspace[] };
 
 /// The authenticated Linear user and organization.
 export type LinearWho = { id: string; name: string; email: string; org: string; org_key: string };

@@ -119,6 +119,14 @@ until rerun; reopening a running Run reuses it and a conflicting name rejects.
 Setup and Run use the shared hydration, port reservation and script environment
 through `/bin/sh -lc`.
 
+Terminal sessions ([ADR 0096](../decisions/0096-terminal-sessions.md)) are not
+available on Windows yet. `src/windows/main.ts` calls `useTerminalSessions(false)`
+before the shared interface loads, which hides the sidebar group, the File menu
+item and Ctrl+Shift+T; the runtime rejects `terminal_create`, `terminal_rename`
+and `terminal_close` as unimplemented, and `open_dock` refuses a session id
+through `file_root`. `Board.terminals` still round-trips through the runtime
+catalog, so nothing is lost if a later version adds them.
+
 ## Deferred application effects
 
 `application.operations.v1` adds private `application_operation_start

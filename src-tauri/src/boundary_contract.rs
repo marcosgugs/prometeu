@@ -29,6 +29,11 @@ fn board() -> state::Board {
     // Defaults include translated action profiles; this fixture exercises the board wire shape
     // independently of locale and the person's action registry.
     board.actions = serde_json::from_value(json!({"profiles":[],"commands":[]})).unwrap();
+    board.terminals = serde_json::from_value(json!([
+        {"id":"terminal-contract","folder":"/contract/home","name":"Server"},
+        {"id":"terminal-unnamed","folder":"/contract/repo"}
+    ]))
+    .unwrap();
     board
 }
 

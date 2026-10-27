@@ -2,11 +2,13 @@
 import { Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/menu";
 import { t, type Key } from "./i18n";
 import { track } from "./analytics";
+import * as terminals from "./terminals";
 
 /// Shared action names for native-menu and document-keyboard dispatch.
 export type Action =
   | "novoWorkspace"
   | "novaConversa"
+  | "novoTerminal"
   | "fechar"
   | "arquivar"
   | "concluir"
@@ -54,6 +56,7 @@ export async function install(run: (a: Action) => void) {
       bar(t("menu.file"), [
         our("novoWorkspace", "menu.file.newWorkspace", "CmdOrCtrl+N"),
         our("novaConversa", "menu.file.newChat", "CmdOrCtrl+T"),
+        ...(terminals.available() ? [our("novoTerminal", "menu.file.newTerminal", "CmdOrCtrl+Shift+T")] : []),
         our("quickOpen", "menu.file.quickOpen", "CmdOrCtrl+P"),
         os("Separator"),
         // Command-W closes the current tab; Shift-Command-W closes the window.

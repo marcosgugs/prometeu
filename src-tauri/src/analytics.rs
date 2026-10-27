@@ -479,6 +479,7 @@ pub enum Screen {
     Archived,
     Workspace,
     Project,
+    Terminal,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]

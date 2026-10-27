@@ -30,6 +30,7 @@ const PATHS = {
   square: '<rect width="14" height="14" x="5" y="5" rx="2"/>',
   mic: '<path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/>',
   terminal: '<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',
+  "square-terminal": '<path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2"/>',
   coffee:
     '<path d="M10 2v2"/><path d="M14 2v2"/><path d="M6 2v2"/>' +
     '<path d="M4 8h14a1 1 0 0 1 1 1v2a4 4 0 0 1-4 4h-1a5 5 0 0 1-10 0V9a1 1 0 0 1 1-1Z"/>' +

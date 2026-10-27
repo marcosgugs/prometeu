@@ -11,6 +11,7 @@ import * as sidebar from "./sidebar";
 import * as browser from "./browser";
 import { openCleanup } from "./cleanup";
 import * as diff from "./diff";
+import * as dock from "./dock";
 import * as dockbar from "./dockbar";
 import type * as fileMenu from "./file-menu";
 import { avatar, icon, stageIcon, wave } from "./icons";
@@ -23,6 +24,7 @@ import * as notes from "./notes";
 import * as rename from "./rename";
 import * as session from "./session";
 import * as team from "./team";
+import * as terminals from "./terminals";
 import * as tree from "./tree";
 import { relocate, relocateTabs } from "./tree-moves";
 import {
@@ -38,6 +40,7 @@ import {
   type Choice,
   type Project,
   type Tab,
+  type TerminalSession,
   type Workspace,
 } from "./types";
 import { $, debounce, h, template } from "./util";
@@ -173,6 +176,8 @@ export function init(context: Ctx) {
 
 export async function open(ws: Workspace, tab?: string) {
   proj = null;
+  // A terminal session left this way keeps running, but it is no longer on screen.
+  shellSession = null;
   if (tab && openWs === ws.id) return selectTab(ws.id, tab);
   const epoch = ++navigation;
   // Direct workspace switching bypasses leave; hide the previous native webview here.
@@ -251,6 +256,7 @@ export function leave() {
   gitRefresh.clear();
   turns.clear();
   proj = null;
+  shellSession = null;
   browser.hide();
   restoreBrowserSide();
   session.detach();
@@ -1451,6 +1457,40 @@ function drawProjectTabs() {
       ]);
     },
   });
+}
+
+/* Terminal session view. */
+
+/// The terminal session on screen. It is no file root: the tree, quick open and the dock keep following workspaces and projects.
+let shellSession: string | null = null;
+export const terminalSession = () => shellSession;
+
+/// Show a session's shell alone in the center, starting it in the session's folder or reattaching to the one still running with its output.
+export function openTerminal(session: TerminalSession) {
+  leave();
+  shellSession = session.id;
+  // A dock shell selected in the previous workspace must not answer Command-W here.
+  dockbar.reset(false);
+  $("wsView").hidden = false;
+  const crumb = $("crumb");
+  crumb.dataset.workspace = "";
+  crumb.innerHTML = `${icon("square-terminal", 14)}<span class="who"></span>`;
+  crumb.querySelector<HTMLElement>(".who")!.textContent = terminals.title(session);
+  layout({});
+  $("tab-comments").hidden = true;
+  center("termview");
+  const epoch = navigation;
+  dock.open(session.id, "terminal")
+    .then(() => {
+      if (navigation === epoch) dock.focus("shell");
+    }, (error) => ctx.say(fromBack(error), true))
+    .finally(() => void terminals.check(session.id));
+}
+
+/// Keep the breadcrumb in step with a rename of the session on screen.
+export function drawTerminal(sessions: TerminalSession[]) {
+  const session = sessions.find((item) => item.id === shellSession);
+  if (session) $("crumb").querySelector<HTMLElement>(".who")!.textContent = terminals.title(session);
 }
 
 /// Keep the center empty until a file is selected, reusing the full-size empty panel without explanatory text.

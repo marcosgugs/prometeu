@@ -39,12 +39,14 @@ import * as session from "./session";
 import * as settings from "./settings";
 import * as statusbar from "./statusbar";
 import * as team from "./team";
+import * as terminals from "./terminals";
 import * as trust from "./trust";
 import "./style.css";
-import type { Board, Issue, Project, Tab, Workspace } from "./types";
+import type { Board, Issue, Project, Tab, TerminalSession, Workspace } from "./types";
 import * as update from "./update";
 import { $ } from "./util";
 import { mac } from "./platform";
+import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import * as viewer from "./viewer";
 import * as ws from "./workspace";
 import { announceWorkspaceUsage } from "./workspace-usage";
@@ -129,6 +131,18 @@ const hooks: sidebar.Hooks = {
     if (project) showProject(project);
   },
   newWorkspace: (projectId) => launch(projectId),
+  terminals: {
+    available: terminals.available,
+    live: terminals.isLive,
+    open: (id) => {
+      const session = state.terminals?.find((item) => item.id === id);
+      if (session) showTerminal(session);
+    },
+    create: () => void terminals.create(),
+    createIn: () => void terminals.createIn(),
+    rename: (id, name) => void terminals.rename(id, name),
+    close: (id) => void terminals.close(id),
+  },
 };
 
 /// Remember board redraws deferred by an open menu so its latest selection appears even if no later backend event arrives.
@@ -146,6 +160,7 @@ function draw() {
   archived.draw();
   desk.draw();
   if (ws.id()) ws.draw();
+  ws.drawTerminal(state.terminals ?? []);
   alert.looked();
 }
 
@@ -189,8 +204,10 @@ function travel(dir: -1 | 1) {
   } else {
     const target = view().workspaces.find((w) => w.id === hist[at]);
     const project = state.projects.find((p) => p.id === hist[at]);
+    const session = state.terminals?.find((s) => s.id === hist[at]);
     if (target) openWorkspace(target, false);
     else if (project) showProject(project, false);
+    else if (session) showTerminal(session, false);
     else showDesk(false);
   }
   drawNav();
@@ -246,6 +263,15 @@ function showProject(project: Project, push = true) {
   showOnly(null, "project");
   ws.openProject(project);
   sidebar.setOpen(project.id);
+  draw();
+}
+
+/// A terminal session's shell fills the center with no workspace parts (ADR 0096).
+function showTerminal(session: TerminalSession, push = true) {
+  if (push) visit(session.id);
+  showOnly(null, "terminal");
+  ws.openTerminal(session);
+  sidebar.setOpen(session.id);
   draw();
 }
 
@@ -315,8 +341,12 @@ listen<Board>("board", ({ payload }) => {
 
 /// Reconcile local or remote workspace changes, remove vanished history entries, and redraw.
 function refresh() {
-  // Remove vanished workspaces/projects from history and merge adjacent duplicates. Projects also own file-view state.
-  const alive = new Set([...view().workspaces.map((w) => w.id), ...state.projects.map((p) => p.id)]);
+  // Remove vanished workspaces, projects and terminal sessions from history and merge adjacent duplicates. Projects also own file-view state.
+  const alive = new Set([
+    ...view().workspaces.map((w) => w.id),
+    ...state.projects.map((p) => p.id),
+    ...(state.terminals ?? []).map((s) => s.id),
+  ]);
   for (let i = hist.length - 1; i >= 0; i--) {
     const id = hist[i];
     if ((!pages.has(id) && !alive.has(id)) || (i > 0 && id === hist[i - 1])) {
@@ -351,8 +381,11 @@ listen<[string, string, number]>("chat", ({ payload: [tab, line] }) => {
   island.chatChanged(tab, line);
 });
 
-/// React to script exits instead of polling to restore the start action.
-listen<[string, number | null]>("pty-closed", ({ payload: [key] }) => dockbar.closed(key));
+/// React to script exits instead of polling to restore the start action. A terminal session ends with its shell.
+listen<[string, number | null]>("pty-closed", ({ payload: [key] }) => {
+  dockbar.closed(key);
+  terminals.closed(key);
+});
 
 /// The local MCP authorizes the exact delegated conversation before requesting desktop navigation.
 listen<{ workspace_id: string; conversation_id: string }>("workspace-preview", async ({ payload }) => {
@@ -580,6 +613,11 @@ function act(a: appmenu.Action): boolean {
       if (!own) return false;
       ws.newTab();
       return true;
+    // Shift-Command-T opens a terminal session in the home folder, with no workspace or project.
+    case "novoTerminal":
+      if (!terminals.available()) return false;
+      void terminals.create();
+      return true;
     case "arquivar":
       if (!own) return false;
       hooks.archive(own, true);
@@ -610,7 +648,8 @@ function act(a: appmenu.Action): boolean {
       return true;
     // Command-W closes the focused dock terminal first. When a native browser view owns focus, ignore stale dock focus and close the active center tab.
     case "fechar":
-      return (document.hasFocus() && dockbar.closeFocused()) || ws.closeActive();
+      return (document.hasFocus() && (dockbar.closeFocused() || terminals.closeFocused($("termview").contains(document.activeElement))))
+        || ws.closeActive();
     case "voltar":
       travel(-1);
       return true;
@@ -627,6 +666,7 @@ function shortcut(e: KeyboardEvent): appmenu.Action | null {
     if (k === "a") return "arquivar";
     if (k === "d") return "concluir";
     if (k === "m") return "nota";
+    if (k === "t") return "novoTerminal";
     return null;
   }
   if (k === "n") return "novoWorkspace";
@@ -828,7 +868,24 @@ desk.init({
 });
 viewer.init((m) => say(m, true), ws.fileSaved);
 dock.init($("dockterm"), $("shellterm"));
+terminals.init({
+  sessions: () => state.terminals ?? [],
+  current: ws.terminalSession,
+  show: (session) => showTerminal(session),
+  // The shell is about to stop; detach its view before going to the desk.
+  left: () => {
+    dock.detach();
+    showDesk();
+  },
+  changed: () => draw(),
+  say,
+  pick: async () => {
+    const folder = await pickFolder({ directory: true, title: t("terminal.pick") });
+    return typeof folder === "string" ? folder : null;
+  },
+});
 state = await invoke("load_board");
+void terminals.sync();
 actions.update(state);
 team.boardChanged(state);
 alert.boardChanged(state);
