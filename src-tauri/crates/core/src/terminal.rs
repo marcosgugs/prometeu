@@ -23,9 +23,9 @@ pub struct TerminalSize {
 pub trait TerminalControl: Send + Sync {
     fn resize(&self, size: TerminalSize) -> Result<(), String>;
     fn running(&self) -> bool;
-    /// Whether a job other than the terminal's own process holds its foreground, as a command an
-    /// interactive shell starts does. A script without job control never reports one.
-    fn foreground_job(&self) -> bool {
+    /// Whether the terminal runs a command rather than its shell waiting for input: a job holding
+    /// the foreground, or a program the shell replaced itself with.
+    fn running_command(&self) -> bool {
         false
     }
     fn system_id(&self) -> u32;
@@ -163,8 +163,8 @@ impl Terminal {
         self.control.running()
     }
     /// A shell running a command, rather than waiting at its prompt.
-    pub fn foreground_job(&self) -> bool {
-        self.control.foreground_job()
+    pub fn running_command(&self) -> bool {
+        self.control.running_command()
     }
     pub fn pid(&self) -> u32 {
         self.control.system_id()

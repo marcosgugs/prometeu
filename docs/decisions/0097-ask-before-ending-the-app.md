@@ -57,9 +57,12 @@ Option 3. Option 4 stays open as a later addition to the same question.
     shares run on their owners' computers;
   - workspaces whose preparation is still running, which would fail;
   - terminals counted by `running_terminals`: Setup and Run while their script
-    lives, and a shell or terminal session while a command holds its
-    foreground, that is, while the PTY's foreground process group is not the
-    shell's own. A shell waiting at its prompt loses only its scrollback.
+    lives, and a shell or terminal session while it runs a command. A command
+    runs while the PTY's foreground process group is not the shell's own, or
+    while the shell's own process stopped being a shell: `exec` keeps the
+    process and its group. A process counts as a shell when /etc/shells lists
+    its name or the terminal started it. A shell waiting at its prompt loses
+    only its scrollback.
 - **When.** ⌘Q and the menu's Quit on macOS; closing the main window, with its
   button or ⇧⌘W, on macOS and Linux; **Restart to update** wherever the updater
   runs. With nothing to cut off, the app ends at once, as before.
@@ -83,7 +86,9 @@ Option 3. Option 4 stays open as a later addition to the same question.
   question that fails lets the app end; a webview that hangs leaves the Dock's
   Quit and Force Quit.
 - A job sent to the background with `&` does not count; a full-screen program
-  such as an editor, `ssh` or an agent CLI does.
+  such as an editor, `ssh` or an agent CLI does, and so does a command started
+  with `exec`. `exec` into another shell, such as `exec zsh`, still waits at a
+  prompt; an interactive shell started as a job counts as a command.
 - The main window's capability gains `core:window:allow-destroy`, which the
   close listener uses once the close is allowed, `allow-unminimize`,
   `allow-set-focus` and `process:allow-exit`.
@@ -95,8 +100,9 @@ Option 3. Option 4 stays open as a later addition to the same question.
 - `src/update.test.ts` and `src/update-init.test.ts`: restarting waits for the
   answer and a refusal keeps the update ready.
 - `src/appmenu.test.ts`: the Mac quits through the app's own item.
-- `crates/process/src/terminal/tests.rs`: a command holding the foreground is
-  told apart from the shell itself.
+- `crates/process/src/terminal/tests.rs`: a command running as a job or in
+  place of the shell is told apart from a shell waiting for input, on macOS and
+  on Linux, where `/bin/sh` is dash.
 - `src-tauri/src/dock.rs`: which terminals quitting cuts off.
 - Native menu events, `CloseRequested` and relaunch cannot be built in a unit
   test; they need a macOS app run.

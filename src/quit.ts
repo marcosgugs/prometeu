@@ -10,7 +10,7 @@ import { confirmDialog } from "./ui";
 /// Work that ending the app would cut off.
 export type Pending = { conversations: number; preparing: number; terminals: number };
 
-/// Count the tabs `Board::revive` marks interrupted after a restart and the workspaces whose preparation would fail. Shares of other people run on their owners' computers. Terminals come from the backend, which sees their foreground jobs.
+/// Count the tabs `Board::revive` marks interrupted after a restart and the workspaces whose preparation would fail. Shares of other people run on their owners' computers. Terminals come from the backend, which sees the commands they run.
 export function pending(board: Board, terminals: number): Pending {
   const local = board.workspaces.filter((ws) => !ws.remote);
   return {

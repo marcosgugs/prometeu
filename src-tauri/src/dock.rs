@@ -469,8 +469,8 @@ pub fn dock_state(state: State<AppState>, id: String) -> Vec<DockView> {
 
 /// Whether quitting would cut off a terminal's work (ADR 0097): Setup and Run are their scripts,
 /// while a shell waiting at its prompt loses only its scrollback.
-fn cuts_off(kind: &str, alive: bool, foreground_job: impl FnOnce() -> bool) -> bool {
-    alive && (!is_terminal(kind) || foreground_job())
+fn cuts_off(kind: &str, alive: bool, running_command: impl FnOnce() -> bool) -> bool {
+    alive && (!is_terminal(kind) || running_command())
 }
 
 /// Count the terminals that quitting or restarting would cut off, for the question asked first.
@@ -481,7 +481,7 @@ pub fn running_terminals(state: State<AppState>) -> usize {
         .filter(|(key, pty)| {
             // Owners may contain ':' but kinds never do.
             let kind = key.rsplit_once(':').map_or(key.as_str(), |(_, kind)| kind);
-            cuts_off(kind, pty.alive(), || pty.foreground_job())
+            cuts_off(kind, pty.alive(), || pty.running_command())
         })
         .count()
 }
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn quitting_cuts_off_live_scripts_and_shells_running_a_command() {
-        for (kind, alive, job, expected) in [
+        for (kind, alive, command, expected) in [
             ("setup", true, false, true),
             ("run", true, false, true),
             ("run", false, false, false),
@@ -569,7 +569,7 @@ mod tests {
             ("terminal-2", true, true, true),
             ("terminal-2", false, true, false),
         ] {
-            assert_eq!(cuts_off(kind, alive, || job), expected, "{kind}");
+            assert_eq!(cuts_off(kind, alive, || command), expected, "{kind}");
         }
     }
 
