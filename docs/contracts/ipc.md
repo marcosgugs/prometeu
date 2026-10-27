@@ -411,11 +411,13 @@ Run still require a workspace and answer `err.session.noWorkspace`.
 removing a workspace stops its docks, so adding the same folder again starts with
 none. Dock keys are `<owner>:<kind>`, and a project owner is a folder path that
 may contain `:`; `prometeu_core::terminal::dock_kind` gives an owner only the keys
-whose remaining kind has no `:`. Tests:
+whose remaining kind has no `:`. A shell that exits while its owner is off screen
+can still be reported by `dock_state` with `alive: false`, but it gets no tab;
+exited Setup and Run keep their output. Tests:
 `dock_keys_belong_only_to_their_exact_owner` in
-`crates/core/src/terminal/tests.rs` and
+`crates/core/src/terminal/tests.rs`,
 `removing_a_project_stops_its_shells_and_keeps_other_docks` in
-`src-tauri/src/session.rs`.
+`src-tauri/src/session.rs` and `src/dockbar.test.ts`.
 
 ## Tool selection
 
