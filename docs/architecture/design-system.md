@@ -49,6 +49,8 @@ consumer depends on native submission. The `native` field takes part in
 send their own commands still validate the domain rules before saving.
 Opening a dropdown focuses its menu options. Arrow keys move actual focus,
 not only the visual selection, and closing restores focus to the trigger.
+Submenus open beside their row, and on its left when the right edge of the
+window has no room, so they never cover the menu that opened them.
 
 `formDialog` uses `dialog.showModal()`: content behind it becomes inert, focus
 returns on close and Tab/Shift+Tab cycle within the form. The body scrolls and
@@ -70,6 +72,19 @@ gallery's confirmation demonstrates this initial state; tests cover it in
 An opener replaced during a background refresh keeps focus restoration through
 its stable `id` or `data-focus` key.
 
+## Interaction metadata
+
+Desktop consumers supply stable control identities through `data-track` or the
+optional `track` arguments/options on existing controls. `identifyControl` and
+`identifyArea` only set metadata. Menus, dialogs and searchable pickers preserve
+the opener's explicit area, including when rendered in a portal. Each action in
+a menu has its own `track`; changing visible text never determines identity.
+
+The shared package has no analytics transport or app dependency. Desktop capture
+and coverage checks live outside it; see the
+[product analytics contract](../contracts/product-analytics.md). Existing callers
+without tracking options retain their behavior.
+
 ## Adoption
 
 The command and agent editors in Actions use the shared fields, selectors,
@@ -81,9 +96,7 @@ Model search, favorites and native effort selection use the existing pickers. Th
 button and opens the launcher's searchable picker.
 Account identities wrap instead of truncating; account popovers share one row
 for adding and managing accounts, and the account dialog keeps its footer
-visible while its cards scroll. The optional missing-context review adds a ghost action to the launcher footer
-and a panel under the prompt built from shared buttons and notices; its
-Settings row uses the shared password field and switch. Launcher layout and account-dialog focus are covered in
+visible while its cards scroll. Launcher layout and account-dialog focus are covered in
 [`e2e/launcher-layout.spec.ts`](../../e2e/launcher-layout.spec.ts), including
 the English UI at representative viewport sizes, with selected WebKit checks. Text
 fields in the MCP and plugin hubs use `input` and `field`, including the plugin
@@ -131,9 +144,9 @@ two independent diff readers for visual inspection.
 ## Reusable Desktop compositions
 
 `src/components/compositions.ts` provides typed section headers, toolbars, item rows,
-overflow actions and list states above the package primitives. Resources and
-Actions both use them. `src/components/compositions.css` owns common layout; screen
-styles retain only their variants. These Desktop components have no feature
+overflow actions and list states above the package primitives. Resources, Actions
+and the Tasks inbox use them. `src/components/compositions.css` owns common
+layout; screen styles retain only their variants. These Desktop components have no feature
 imports or application effects and do not change the distributed Cloud API.
 The [composition recipe](desktop-composition.md) lists each API and real use.
 `/design-system.html#components-preview` demonstrates an independent screen

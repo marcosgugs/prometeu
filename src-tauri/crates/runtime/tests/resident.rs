@@ -152,7 +152,8 @@ fn roundtrip(launcher: Arc<dyn RuntimeLauncher>, distribution: String) {
     );
     std::fs::write(workdir.join("release"), "release").unwrap();
     // No client supplies terminal credits while the detached output exceeds the credit window.
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // Deadlines only bound a failure; hosted macOS runners can take well over ten seconds here.
+    let deadline = Instant::now() + Duration::from_secs(60);
     while !std::fs::read_to_string(base.join("root/transcript.jsonl"))
         .unwrap()
         .contains("turn.completed")
@@ -177,7 +178,8 @@ fn roundtrip(launcher: Arc<dyn RuntimeLauncher>, distribution: String) {
         std::fs::read_to_string(workdir.join("launches")).unwrap(),
         "launch\n"
     );
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut seen = 0;
     loop {
         let current = attached.terminal_current().unwrap().unwrap();
         assert_eq!(current.id, terminal.id);
@@ -188,8 +190,12 @@ fn roundtrip(launcher: Arc<dyn RuntimeLauncher>, distribution: String) {
             assert!(current.seq > 64);
             break;
         }
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(20));
+        assert!(Instant::now() < deadline, "stalled at seq {}", current.seq);
+        // Drain more than 64 credit windows back to back; wait only while no new output arrived.
+        if current.seq == seen {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        seen = current.seq;
     }
     attached
         .terminal_write(
@@ -807,15 +813,98 @@ fn application_terminal_docks_keep_one_shell_per_kind() {
             serde_json::json!({"id":"primary","kind":"terminal"}),
         )
         .unwrap();
+    // A closed shell is gone, as on the desktop, so the next refresh cannot bring its tab back.
     let docks = client
         .application("dock_state".into(), serde_json::json!({"id":"primary"}))
         .unwrap();
-    assert_eq!(docks.as_array().unwrap().len(), 2);
-    assert!(docks
-        .as_array()
+    assert_eq!(
+        docks,
+        serde_json::json!([{"kind":"terminal-2","alive":true}])
+    );
+    assert!(client
+        .application(
+            "pty_buffer".into(),
+            serde_json::json!({"session":first_shell})
+        )
+        .is_err());
+    client.shutdown().unwrap();
+    cleanup.armed = false;
+    std::fs::remove_dir_all(base).unwrap();
+}
+
+#[test]
+fn removing_a_project_stops_its_shells() {
+    let base = fixture_root("pr");
+    let project = base.join("project");
+    let added = base.join("added");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&added).unwrap();
+    let target = application_target(&base, &project);
+    let mut cleanup = Cleanup {
+        armed: true,
+        target: target.clone(),
+        launcher: Arc::new(Local),
+    };
+    let mut client = StdioConnector {
+        launcher: Arc::new(Local),
+    }
+    .connect(&target, events().0)
+    .unwrap();
+    let path = added.to_str().unwrap();
+    let saved = client
+        .application("add_project".into(), serde_json::json!({"path":path}))
+        .unwrap();
+    let id = saved["id"].as_str().unwrap();
+    let shell = client
+        .application(
+            "open_dock".into(),
+            serde_json::json!({"id":id,"kind":"terminal","cols":80,"rows":24}),
+        )
+        .unwrap();
+    client
+        .application(
+            "pty_write".into(),
+            serde_json::json!({"session":shell,"data":"printf 'SHELL_PID=%s\\n' $$\n"}),
+        )
+        .unwrap();
+    // The echoed command line also holds the marker, but only the output has digits after it.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let pid = loop {
+        let buffer = client
+            .application("pty_buffer".into(), serde_json::json!({"session":shell}))
+            .unwrap();
+        let bytes: Vec<u8> = serde_json::from_value(buffer).unwrap();
+        let output = String::from_utf8_lossy(&bytes).into_owned();
+        let pid = output.split("SHELL_PID=").skip(1).find_map(|rest| {
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            (!digits.is_empty()).then_some(digits)
+        });
+        if let Some(pid) = pid {
+            break pid;
+        }
+        assert!(Instant::now() < deadline, "{output}");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    client
+        .application("remove_project".into(), serde_json::json!({"id":id}))
+        .unwrap();
+    // Removal waits for the shell's cleanup, so its process is already gone.
+    let exists = Command::new("kill")
+        .args(["-0", pid.as_str()])
+        .stderr(Stdio::null())
+        .status()
         .unwrap()
-        .iter()
-        .any(|dock| dock["kind"] == "terminal" && dock["alive"] == false));
+        .success();
+    assert!(!exists, "shell {pid} outlived its project");
+    // Adding the same folder again gets the same id, without the old shell.
+    let again = client
+        .application("add_project".into(), serde_json::json!({"path":path}))
+        .unwrap();
+    assert_eq!(again, saved);
+    let docks = client
+        .application("dock_state".into(), serde_json::json!({"id":id}))
+        .unwrap();
+    assert_eq!(docks, serde_json::json!([]));
     client.shutdown().unwrap();
     cleanup.armed = false;
     std::fs::remove_dir_all(base).unwrap();
@@ -1230,6 +1319,45 @@ fn registered_project_files_and_shell_work_without_a_conversation() {
         .unwrap();
     assert_eq!(board["projects"].as_array().unwrap().len(), 1);
     assert_eq!(board["workspaces"].as_array().unwrap().len(), 1);
+    let created = client
+        .application(
+            "create_project".into(),
+            serde_json::json!({"directory":base,"name":"New project"}),
+        )
+        .unwrap();
+    let created_path = base.join("New project");
+    assert_eq!(created["path"], created_path.to_str().unwrap());
+    assert!(created_path.join(".git").is_dir());
+    assert_eq!(std::fs::read_dir(&created_path).unwrap().count(), 1);
+    let references = client
+        .application(
+            "list_branches".into(),
+            serde_json::json!({"project":created["id"]}),
+        )
+        .unwrap();
+    assert_eq!(
+        references,
+        serde_json::json!({"all":[],"local":[],"default":"","git":true})
+    );
+    let board = client
+        .application("load_board".into(), Value::Null)
+        .unwrap();
+    assert_eq!(board["projects"].as_array().unwrap().len(), 2);
+    assert_eq!(board["workspaces"].as_array().unwrap().len(), 1);
+    assert!(board["projects"].as_array().unwrap().contains(&created));
+    assert!(client
+        .application(
+            "create_project".into(),
+            serde_json::json!({"directory":base,"name":"New project"}),
+        )
+        .unwrap_err()
+        .contains("err.project.pathExists"));
+    assert_eq!(
+        client
+            .application("load_board".into(), Value::Null)
+            .unwrap(),
+        board
+    );
     client.shutdown().unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     while base.join("root/resident.sock").exists() {
@@ -1371,6 +1499,16 @@ fn application_resident_starts_empty_and_restores_projects_without_a_primary_wor
     client
         .application("reorder_projects".into(), json!({"ids":reordered}))
         .unwrap();
+    client
+        .application(
+            "group_projects".into(),
+            json!({"ids":reordered,"group":"Work"}),
+        )
+        .unwrap();
+    let board = client
+        .application("load_board".into(), Value::Null)
+        .unwrap();
+    assert_eq!(board["projects"][0]["group"], "Work");
     let skill = serde_json::json!({"id":"review","description":"Before a review","content":"Read the diff."});
     assert_eq!(
         client.application("skill_hub".into(), Value::Null).unwrap(),

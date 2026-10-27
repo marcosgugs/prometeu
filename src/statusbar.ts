@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as accountUI from "./accounts";
 import { accounts } from "./accounts";
 export type { Account, Accounts } from "./accounts";
@@ -8,9 +9,9 @@ import { brand, icon } from "./icons";
 import { fromBack, t } from "./i18n";
 import * as menu from "./menu";
 import { invoke } from "./ipc";
-import type { Board, ProviderId } from "./types";
+import { dockLabel, type Board, type DockKind, type ProviderId } from "./types";
 import { mac } from "./platform";
-import { $ } from "./util";
+import { $, span } from "./util";
 
 /// App-wide provider usage and machine resources. Values cover all workspaces; clicking a chip opens its detail panel.
 
@@ -156,13 +157,26 @@ function shortKind(what: string): string {
   return duration ? span(Number(duration[1])) : (SHORT[what] ?? what);
 }
 
+/// Only the globally selected account counts; before accounts load, fall back to the CLI account.
+function selectedWindows(provider: ProviderId): Window[] {
+  const account = accounts?.accounts.find((account) => account.id === accounts?.active[provider]);
+  return (account ? usage[account.id] : accounts ? undefined : usage[provider])?.windows ?? [];
+}
+
+/// Installed providers with their selected account's quota windows, for the notch island.
+export function selectedUsage() {
+  return agents.map(agent => ({
+    agent: agent.id,
+    windows: selectedWindows(agent.id).map(w => ({ label: shortKind(w.kind), pct: w.pct, resets: w.resets })),
+  }));
+}
+
 function draw() {
   const bar = $("status");
   bar.innerHTML = "";
   // Keep installed providers visible before their first quota reading; a dash indicates pending data.
   for (const agent of agents) {
-    const account = accounts?.accounts.find((account) => account.id === accounts?.active[agent.id]);
-    const windows = (account ? usage[account.id] : accounts ? undefined : usage[agent.id])?.windows ?? [];
+    const windows = selectedWindows(agent.id);
     bar.append(
       chip(
         "usage",
@@ -205,6 +219,7 @@ function chip(which: Which, html: string, title: string, provider?: ProviderId):
   const button = document.createElement("button");
   button.className = "uchip";
   button.dataset.chip = which;
+  button.dataset.track = `status.${which}`;
   button.title = title;
   button.innerHTML = html;
   if (provider) button.dataset.provider = provider;
@@ -275,9 +290,9 @@ function toggle(which: Which, at: HTMLElement, e: MouseEvent, provider?: Provide
   if (which === "awake") {
     const box = at.getBoundingClientRect();
     return menu.openAt(
-      { x: box.left, y: box.top - 6, above: true },
+      { area: "statusbar", x: box.left, y: box.top - 6, above: true },
       AWAKE.map((mode) => ({
-        label: t(`status.awake.${mode}`),
+        label: t(`status.awake.${mode}`), track: `status.awake.${mode}`,
         hint: t(`status.awake.${mode}.note`),
         checked: awake === mode,
         run: () => pick(mode),
@@ -286,10 +301,12 @@ function toggle(which: Which, at: HTMLElement, e: MouseEvent, provider?: Provide
     );
   }
   open = which;
+  track({ name: which === "usage" ? "quota_viewed" : "machine_panel_opened" });
   if (which === "res") void invoke("set_resource_detail", { open: true }).catch(() => {});
   if (which === "usage") void invoke("usage_refresh", { provider }).catch(() => {});
   panel = document.createElement("div");
   panel.className = `upop ${which}`;
+  panel.dataset.trackArea = "statusbar";
   panel.setAttribute("role", "dialog");
   panel.tabIndex = -1;
   panel.setAttribute("aria-label", t(which === "usage" ? "status.usage" : which === "res" ? "status.res" : "status.ports"));
@@ -333,12 +350,15 @@ function fill() {
   }
   panel.scrollTop = scroll;
   if (open === "res") {
-    panel.querySelector("#u-clean")?.addEventListener("click", () => {
+    const clean = panel.querySelector<HTMLElement>("#u-clean");
+    if (clean) clean.dataset.track = "status.cleanup";
+    clean?.addEventListener("click", () => {
       close();
       openCleanup(say);
     });
   }
   for (const row of panel.querySelectorAll<HTMLElement>("[data-port]")) {
+    row.dataset.track = "status.port.open";
     row.addEventListener("click", () => {
       invoke("open_external", { url: `http://localhost:${row.dataset.port}` }).catch((err) =>
         say(fromBack(err), true),
@@ -405,7 +425,7 @@ function resPanel(): string {
     .map(
       (p) =>
         `<div class="prow"><span class="pname">${esc(p.name)}` +
-        (p.detail ? `<em>${esc(p.kind === "term" ? dock(p.detail) : p.detail)}</em>` : "") +
+        (p.detail ? `<em>${esc(p.kind === "term" ? dockLabel(p.detail as DockKind) : p.detail)}</em>` : "") +
         `</span>${spark(p.hist)}<span class="pcpu">${p.cpu.toFixed(1)}%</span>` +
         `<span class="prss">${bytes(p.rss)}</span></div>`,
     )
@@ -415,14 +435,6 @@ function resPanel(): string {
     (rows || `<div class="uempty">${t("status.res.none")}</div>`) +
     `<button class="urow act" id="u-clean">${t("status.res.clean")}${icon("chevron-right", 14)}</button>`
   );
-}
-
-/// Use the dock's own tab labels.
-function dock(what: string): string {
-  if (what === "setup") return t("dock.setup");
-  if (what === "run") return t("dock.run");
-  const n = /^term(\d+)$/.exec(what)?.[1];
-  return n ? t("dock.terminalN", { n }) : t("dock.terminal");
 }
 
 function portPanel(): string {
@@ -462,16 +474,7 @@ function esc(text: string): string {
 
 /* ---------- time ---------- */
 
-/// Show at most two duration units, such as 3h 15m or 3d 4h.
-export function span(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (d) return h ? `${d}d ${h}h` : `${d}d`;
-  if (h) return m ? `${h}h ${m}m` : `${h}h`;
-  return `${m}m`;
-}
+export { span };
 
 /// Expired reset times display now until the next provider reading arrives.
 export function until(unix: number, from = Date.now() / 1000): string {

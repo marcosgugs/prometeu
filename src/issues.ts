@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { invoke } from "./ipc";
 import { listen } from "@tauri-apps/api/event";
 import { icon } from "./icons";
@@ -5,7 +6,9 @@ import { fromBack, t } from "./i18n";
 import type { Board, Issue, Issues, LinearStatus, Workspace } from "./types";
 import { $, empty, h, template } from "./util";
 import { button } from "./ui";
-import { issueTab, issueSearch, issueRefresh, issueFilter } from "./issues-controls";
+import { issueTab, issueSearch, issueRefresh, issueFilter, issueColumns } from "./issues-controls";
+import { sectionHeader, toolbar } from "./components/compositions";
+import { filterLinearIssues } from "./issues-filter";
 import { githubIssues } from "./github-issues";
 import type { GitHubItem, GitHubPrepared } from "./types";
 
@@ -23,6 +26,7 @@ type Ctx = {
   create: (issue: Issue) => void;
   createGitHub: (item: GitHubItem, project: string, git?: GitHubPrepared) => void;
   toSettings: () => void;
+  github: () => import("./types").GitHubStatus;
 };
 
 /// Match the backend cache lifetime before requesting another list on opening.
@@ -36,7 +40,7 @@ const KINDS: [string, string][] = [
   ["backlog", t("issues.kind.backlog")],
 ];
 
-/// Persist collapsed groups; searching expands matching results regardless of saved collapse state.
+/// Persist collapsed groups; searching or filtering expands matching results regardless of saved collapse state.
 const FOLD = "prometeu:issues:grupo:";
 const folded = (kind: string) => localStorage.getItem(FOLD + kind) === "1";
 
@@ -51,16 +55,22 @@ let error = "";
 let query = "";
 let team = localStorage.getItem(TEAM) ?? "";
 let scope: "mine" | "available" = "mine";
+let state = "";
+let teamFilter: ReturnType<typeof issueFilter>;
+let stateFilter: ReturnType<typeof issueFilter>;
+let clearFilters: HTMLButtonElement;
 let claiming = false;
 let visible = false;
 let accountId = "";
 let find: HTMLInputElement;
 let meta: HTMLElement;
+let columns: HTMLElement;
 let provider: "linear" | "github" = localStorage.getItem("prometeu:issues:provider") === "github" ? "github" : "linear";
 let github: ReturnType<typeof githubIssues>;
 
 export function init(context: Ctx) {
   ctx = context;
+  $("tasks-heading").append(sectionHeader({ title: t("rail.issues"), description: t("issues.intro") }));
   github = githubIssues($("github-issues-pane"), { ...ctx, create: ctx.createGitHub });
   const providers = $("iproviders");
   providers.setAttribute("aria-label", t("issues.providers"));
@@ -68,6 +78,7 @@ export function init(context: Ctx) {
     const control = issueTab(label, () => {
       provider = id; localStorage.setItem("prometeu:issues:provider", id); showProvider();
     });
+    control.dataset.track = `issues.provider.${id}`;
     control.id = `issues-provider-${id}`;
     control.setAttribute("aria-controls", `${id}-issues-pane`);
     $(`${id}-issues-pane`).setAttribute("aria-labelledby", control.id);
@@ -171,7 +182,16 @@ function buildBar() {
     if (ctx.connected() && !loading) void refresh(true);
   });
   refreshButton.id = "irefresh";
-  bar.replaceChildren(search.root, h("span", "spacer"), meta, refreshButton);
+  teamFilter = issueFilter(t("issues.team"), value => { pickTeam(value); drawList(); });
+  stateFilter = issueFilter(t("issues.column.status"), value => { state = value; drawList(); });
+  clearFilters = button(t("issues.clearFilters"), () => {
+    pickTeam(""); state = query = find.value = ""; drawList(); find.focus();
+  }, "ghost", "issues.filter.clear");
+  const filters = toolbar([teamFilter.control, stateFilter.control, search.root], [clearFilters, refreshButton]);
+  bar.replaceChildren(filters);
+  $("itabs").append(meta);
+  columns = issueColumns();
+  $("ilist").before(columns);
   find.addEventListener("input", () => {
     query = find.value.trim().toLowerCase();
     drawList();
@@ -216,7 +236,7 @@ function buildTabs() {
   for (const key of ["mine", "available"] as const) {
     const tab = issueTab(t(key === "mine" ? "issues.mine" : "issues.available"), () => {
       scope = key;
-      pickTeam("");
+      pickTeam(""); state = "";
       draw();
     });
     tab.id = `issues-${key}`;
@@ -241,7 +261,7 @@ function drawTabs() {
     tab.setAttribute("aria-selected", String(selected));
     tab.tabIndex = selected ? 0 : -1;
     tab.children[0].textContent = t(index === 0 ? "issues.mine" : "issues.available");
-    (tab.children[1] as HTMLElement).hidden = false;
+    (tab.children[1] as HTMLElement).hidden = !got;
     tab.children[1].textContent = String(index === 0 ? got?.issues.length ?? 0 : got?.available.length ?? 0);
     if (selected) $("ilist").setAttribute("aria-labelledby", tab.id);
   });
@@ -250,39 +270,45 @@ function drawTabs() {
 function drawList() {
   const list = $("ilist");
   list.replaceChildren();
-  // Hide team filters until a list exists; drawTeams restores them afterward.
-  const teams = $("iteams");
-  teams.replaceChildren();
-  teams.hidden = true;
+  const connected = ctx.connected();
+  $("linear-issues-pane").classList.toggle("task-disconnected", !connected);
+  $("itabs").hidden = $("ibar").hidden = !connected;
+  columns.hidden = true;
+  teamFilter.control.disabled = stateFilter.control.disabled = !ctx.connected() || !got;
+  clearFilters.hidden = !query && !team && !state;
+  if (!got || !ctx.connected()) {
+    teamFilter.setOptions([["", t("issues.team.all")]], "");
+    stateFilter.setOptions([["", t("issues.status.all")]], "");
+  }
 
   if (!ctx.connected()) {
-    list.append(
-      empty(t("issues.off.title"), t("issues.off.body"), [t("issues.off.action"), ctx.toSettings]),
-    );
+    list.setAttribute("aria-labelledby", "issues-provider-linear");
+    const connect = empty(t("issues.off.title"), t("issues.off.body"));
+    connect.append(button(t("issues.off.action"), ctx.toSettings, "outline", "issues.connect"));
+    list.append(connect);
     return;
   }
   if (!got) {
     if (!loading && error) {
-      list.append(empty(t("issues.failed.title"), error, [t("issues.failed.action"), () => refresh(true)]));
+      list.append(empty(t("issues.failed.title"), error, [t("issues.failed.action"), () => refresh(true), "issues.refresh"]));
     }
     return;
   }
   if (scope === "available" && got.available_error && !got.available.length) {
-    list.append(empty(t("issues.failed.title"), got.available_error, [t("issues.failed.action"), () => refresh(true)]));
+    list.append(empty(t("issues.failed.title"), got.available_error, [t("issues.failed.action"), () => refresh(true), "issues.refresh"]));
     return;
   }
 
   const source = scope === "mine" ? got.issues : got.available;
-  const found = source.filter(matches);
-  drawTeams(found, source);
-  const hits = team ? found.filter((i) => i.team === team) : found;
+  drawFilters(source);
+  const hits = filterLinearIssues(source, query, team, state);
   if (!hits.length) {
-    if (!query && !team && scope === "mine" && got.available.length) {
+    if (!query && !team && !state && scope === "mine" && got.available.length) {
       drawSuggestions(list, got.available);
       return;
     }
     list.append(
-      query || team
+      query || team || state
         ? empty(t("issues.noMatch.title"), t("issues.noMatch.body"))
         : empty(t(scope === "mine" ? "issues.empty.title" : "issues.available.empty.title"),
           t(scope === "mine" ? "issues.empty.body" : "issues.available.empty.body")),
@@ -291,19 +317,20 @@ function drawList() {
   }
 
   const kinds = [...KINDS, ...unknownKinds(hits)];
+  columns.hidden = false;
   for (const [kind, label] of kinds) {
     const grouped = hits.filter((i) => i.state.kind === kind).sort(byUrgency);
     if (!grouped.length) continue;
-    const shut = !query && folded(kind);
-    const head = template(
-      "button",
-      "igroup" + (shut ? " shut" : ""),
-      `<span class="gc"></span><span class="t"></span><span class="c"></span>`,
-    );
+    const shut = !query && !team && !state && folded(kind);
+    const head = button("", undefined, "ghost", "issues.group.toggle");
+    head.classList.add("igroup"); head.classList.toggle("shut", shut);
+    head.innerHTML = `<span class="gc"></span><span class="t"></span><span class="c"></span>`;
+    head.setAttribute("aria-expanded", String(!shut));
     head.children[0].innerHTML = icon(shut ? "chevron-right" : "chevron-down", 14);
     head.children[1].textContent = label;
     head.children[2].textContent = String(grouped.length);
     head.title = t(shut ? "issues.group.show" : "issues.group.fold", { group: label });
+    head.dataset.track = "issues.group.toggle";
     head.addEventListener("click", () => {
       localStorage.setItem(FOLD + kind, shut ? "0" : "1");
       drawList();
@@ -312,10 +339,11 @@ function drawList() {
     if (shut) continue;
     for (const issue of grouped) list.append(row(issue, scope === "available"));
   }
-  if (scope === "mine" && !query && got.available.length) {
+  if (scope === "mine" && !query && !team && !state && got.available.length) {
     const callout = template("div", "iavailable-callout", `<span></span><button class="ghost sm"></button>`);
     callout.children[0].textContent = t("issues.available.count", { n: got.available.length });
     callout.children[1].textContent = t("issues.viewAvailable");
+    (callout.children[1] as HTMLElement).dataset.track = "issues.available";
     callout.children[1].addEventListener("click", showAvailable);
     list.append(callout);
   }
@@ -323,7 +351,7 @@ function drawList() {
 
 function showAvailable() {
   scope = "available";
-  pickTeam("");
+  pickTeam(""); state = "";
   draw();
   $("itabs").querySelectorAll<HTMLButtonElement>(".itab")[1].focus();
 }
@@ -336,36 +364,21 @@ function drawSuggestions(list: HTMLElement, available: Issue[]) {
   box.querySelector("strong")!.textContent = t("issues.suggestions");
   const view = box.querySelector("button")!;
   view.textContent = t("issues.viewAll", { n: available.length });
+  view.dataset.track = "issues.available";
   view.addEventListener("click", showAvailable);
   for (const issue of [...available].sort(byUrgency).slice(0, 3)) box.append(row(issue, true));
   list.append(box);
 }
 
-/// Show team filters only for multiple teams. Derive pills from the full list and counts from search matches so typing does not reshape the toolbar.
-function drawTeams(found: Issue[], source: Issue[]) {
-  const box = $("iteams");
-  box.replaceChildren();
-  const keys = [...new Set(source.map((i) => i.team).filter(Boolean))].sort();
-  // Clear a selected team that disappeared from the list instead of hiding all results.
-  if (team && !keys.includes(team)) pickTeam("");
-  box.hidden = keys.length < 2;
-  if (box.hidden) return;
-
-  const label = template("span", "tlabel", `${icon("filter", 13)}<span></span>`);
-  label.children[1].textContent = t("issues.team");
-  box.append(label);
-
-  const pills = h("div", "tpills");
-  for (const key of ["", ...keys]) {
-    const mine = key ? found.filter((i) => i.team === key) : found;
-    const pill = issueFilter(key || t("issues.team.all"), mine.length, key === team, () => {
-      pickTeam(key);
-      drawList();
-      [...box.querySelectorAll<HTMLButtonElement>(".tpill")].find(control => control.getAttribute("aria-pressed") === "true")?.focus();
-    });
-    pills.append(pill);
-  }
-  box.append(pills);
+// Keep controls mounted so menu selection and refresh preserve keyboard focus.
+function drawFilters(source: Issue[]) {
+  const teams = [...new Set(source.map(item => item.team).filter(Boolean))].sort();
+  const states = [...new Set(source.map(item => item.state.name))].sort();
+  if (team && !teams.includes(team)) pickTeam("");
+  if (state && !states.includes(state)) state = "";
+  teamFilter.setOptions([["", t("issues.team.all")], ...teams.map(key => [key, key] as [string, string])], team);
+  stateFilter.setOptions([["", t("issues.status.all")], ...states.map(key => [key, key] as [string, string])], state);
+  clearFilters.hidden = !query && !team && !state;
 }
 
 function pickTeam(key: string) {
@@ -387,14 +400,6 @@ function byUrgency(a: Issue, b: Issue) {
   return rank(a.priority) - rank(b.priority) || b.updated_at.localeCompare(a.updated_at);
 }
 
-function matches(i: Issue) {
-  if (!query) return true;
-  const hay = [i.identifier, i.title, i.project ?? "", i.team, i.state.name, i.description ?? ""]
-    .join(" ")
-    .toLowerCase();
-  return query.split(/\s+/).every((word) => hay.includes(word));
-}
-
 function row(issue: Issue, available = false): HTMLElement {
   const el = template(
     "div",
@@ -403,27 +408,31 @@ function row(issue: Issue, available = false): HTMLElement {
       `<span class="iid"></span>` +
       `<span class="ititle"><b></b><span class="iproj"></span></span>` +
       `<span class="istate"><i class="dot"></i><span></span></span>` +
-      `<span class="iact"></span>` +
-      `<span class="iago"></span>`,
+      `<span class="iago"></span>` +
+      `<span class="iact"></span>`,
   );
-  el.tabIndex = 0;
+  el.tabIndex = 0; el.setAttribute("role", "link"); el.setAttribute("aria-label", issue.title);
   el.title = issue.description ? issue.description.slice(0, 400) : issue.title;
   (el.querySelector(".prio") as HTMLElement).title = issue.priority_label;
   el.querySelector(".iid")!.textContent = issue.identifier;
   el.querySelector(".ititle b")!.textContent = issue.title;
-  el.querySelector(".iproj")!.textContent = issue.project ?? "";
+  const context = el.querySelector(".iproj")!;
+  context.append(h("span", "", [issue.team, issue.project].filter(Boolean).join(" · ")));
+  for (const label of issue.labels) context.append(h("span", "task-label", label.name));
   (el.querySelector(".istate .dot") as HTMLElement).style.background = issue.state.color;
   el.querySelector(".istate span")!.textContent = issue.state.name;
   el.querySelector(".iago")!.textContent = ago(Date.parse(issue.updated_at));
 
   // Row clicks open Linear; buttons own other actions.
-  const openLinear = () => invoke("linear_open", { url: issue.url }).catch((e) => ctx.say(fromBack(e), true));
+  const openLinear = () => invoke("linear_open", { url: issue.url }).then(() => track({ name: "issue_action_used", integration: "linear", action: "open_source" })).catch((e) => ctx.say(fromBack(e), true));
+  el.dataset.track = "issues.linear.open_source";
   el.addEventListener("click", openLinear);
   el.addEventListener("keydown", (e) => e.key === "Enter" && e.target === el && openLinear());
 
   const act = el.querySelector(".iact")!;
   const owner = ctx.board().workspaces.find((w) => w.issue?.id === issue.id && !w.archived);
-  const btn = button(available ? t(ctx.canAssign() ? "issues.claim" : "issues.allowClaim") : t("issues.open"), undefined, "ghost");
+  const btn = button(available ? t(ctx.canAssign() ? "issues.claim" : "issues.allowClaim") : t(owner ? "issues.open" : "issues.start"), undefined, "outline");
+  btn.dataset.track = available ? "issues.linear.claim" : "issues.linear.open_workspace";
   btn.classList.add("sm");
   if (available) {
     if (claiming) btn.setAttribute("aria-disabled", "true");
@@ -441,6 +450,7 @@ function row(issue: Issue, available = false): HTMLElement {
       $("ilist").querySelectorAll(".irow.available .iact button").forEach((action) => action.setAttribute("aria-disabled", "true"));
       try {
         const claimed = await invoke("linear_claim", { id: issue.id });
+        track({ name: "issue_action_used", integration: "linear", action: "claim" });
         succeeded = true;
         if (got) {
           got = {
@@ -476,6 +486,7 @@ function row(issue: Issue, available = false): HTMLElement {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     owner ? ctx.open(owner) : ctx.create(issue);
+    track({ name: "issue_action_used", integration: "linear", action: owner ? "open_workspace" : "prepare_workspace" });
   });
   act.append(btn);
   return el;

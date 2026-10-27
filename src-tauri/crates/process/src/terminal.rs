@@ -5,10 +5,54 @@ use prometeu_core::process::{ProcessControl, ShutdownPolicy};
 use prometeu_core::terminal::{
     StartedTerminal, TerminalControl, TerminalError, TerminalFactory, TerminalSize, TerminalWait,
 };
+use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::os::unix::ffi::OsStringExt;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// Handles of the terminal or multiplexer that launched Prometeu, and markers of an agent session
+/// it may run under. They describe where Prometeu came from, never one of its own terminals.
+const LAUNCHER_ENV: &[&str] = &[
+    "ITERM_SESSION_ID",
+    "LC_TERMINAL",
+    "LC_TERMINAL_VERSION",
+    "KITTY_WINDOW_ID",
+    "WEZTERM_PANE",
+    "WT_SESSION",
+    "TERM_SESSION_ID",
+    "TMUX",
+    "TMUX_PANE",
+    "STY",
+    "ZELLIJ",
+    "ZELLIJ_SESSION_NAME",
+    "ZELLIJ_PANE_ID",
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_SSE_PORT",
+    "CODEX_THREAD_ID",
+];
+
+/// A dock shell or script runs in Prometeu's own terminal: it presents itself as Prometeu and
+/// carries neither the launching terminal's identity nor a parent agent's session. `version` is
+/// the app's, when the host knows it. Apply before the workspace variables, which it leaves alone.
+pub fn own_terminal(command: &mut CommandBuilder, version: Option<&str>) {
+    for key in LAUNCHER_ENV {
+        command.env_remove(key);
+    }
+    command.env("TERM", "xterm-256color");
+    command.env("TERM_PROGRAM", "Prometeu");
+    match version {
+        Some(version) => command.env("TERM_PROGRAM_VERSION", version),
+        None => command.env_remove("TERM_PROGRAM_VERSION"),
+    }
+}
 
 pub struct UnixTerminalFactory;
 impl TerminalFactory<CommandBuilder> for UnixTerminalFactory {
@@ -41,6 +85,11 @@ fn open_with_streams(
     let pair = native_pty_system()
         .openpty(native_size(size))
         .map_err(|e| TerminalError::Open(e.to_string()))?;
+    let program = command
+        .get_argv()
+        .first()
+        .and_then(|program| Path::new(program).file_name())
+        .map(OsStr::to_os_string);
     let child = pair
         .slave
         .spawn_command(command)
@@ -64,6 +113,7 @@ fn open_with_streams(
             master: Mutex::new(pair.master),
             group,
             closing,
+            program,
         }),
         waiter: Box::new(waiter),
     })
@@ -145,6 +195,47 @@ impl Write for ResponsiveWriter {
     fn flush(&mut self) -> io::Result<()> {
         self.writer.flush()
     }
+}
+
+/// The name the system shows for a process, as `ps -o comm=` does; Linux truncates it to 15 bytes.
+#[cfg(target_os = "macos")]
+fn process_name(pid: u32) -> Option<OsString> {
+    let mut name = [0u8; 64];
+    // SAFETY: proc_name writes at most the given length into the buffer and returns how much.
+    let written = unsafe {
+        libc::proc_name(
+            libc::c_int::try_from(pid).ok()?,
+            name.as_mut_ptr().cast(),
+            name.len() as u32,
+        )
+    };
+    let written = usize::try_from(written)
+        .ok()
+        .filter(|&written| written > 0)?;
+    Some(OsString::from_vec(name[..written].to_vec()))
+}
+#[cfg(target_os = "linux")]
+fn process_name(pid: u32) -> Option<OsString> {
+    let name = std::fs::read(format!("/proc/{pid}/comm")).ok()?;
+    Some(OsString::from_vec(
+        name.strip_suffix(b"\n").unwrap_or(&name).to_vec(),
+    ))
+}
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn process_name(_: u32) -> Option<OsString> {
+    None
+}
+
+/// A login shell listed in /etc/shells, or the program the terminal started even when unlisted.
+fn is_shell(name: &OsStr, program: Option<&OsStr>) -> bool {
+    program == Some(name)
+        || std::fs::read_to_string("/etc/shells").is_ok_and(|shells| {
+            shells
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.starts_with('#'))
+                .any(|path| Path::new(path).file_name() == Some(name))
+        })
 }
 
 fn native_size(size: TerminalSize) -> PtySize {
@@ -235,6 +326,8 @@ struct Control {
     master: Mutex<Box<dyn MasterPty + Send>>,
     group: Arc<Group>,
     closing: Arc<AtomicBool>,
+    /// The file name of the program the terminal started, normally the person's shell.
+    program: Option<OsString>,
 }
 impl TerminalControl for Control {
     fn resize(&self, size: TerminalSize) -> Result<(), String> {
@@ -244,6 +337,20 @@ impl TerminalControl for Control {
     }
     fn running(&self) -> bool {
         self.group.running()
+    }
+    /// An interactive shell moves each job into its own process group and hands it the terminal,
+    /// so a foreground group other than the shell's own is a command still running. `exec` keeps
+    /// the shell's process and group, so in its own group the shell waits for input only while its
+    /// process is still a shell, as after `exec zsh`.
+    fn running_command(&self) -> bool {
+        let leader = lock(&self.master).process_group_leader();
+        match leader.and_then(|leader| u32::try_from(leader).ok()) {
+            Some(leader) if leader == self.group.pid => {
+                process_name(leader).is_some_and(|name| !is_shell(&name, self.program.as_deref()))
+            }
+            Some(_) => true,
+            None => false,
+        }
     }
     fn system_id(&self) -> u32 {
         self.group.pid

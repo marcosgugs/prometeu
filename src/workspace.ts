@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { attachReview } from "./chat";
 import type { ReviewDraft } from "./review-comments";
 import { reviewError } from "./components/git/review-note";
@@ -10,6 +11,7 @@ import * as sidebar from "./sidebar";
 import * as browser from "./browser";
 import { openCleanup } from "./cleanup";
 import * as diff from "./diff";
+import * as dock from "./dock";
 import * as dockbar from "./dockbar";
 import type * as fileMenu from "./file-menu";
 import { avatar, icon, stageIcon, wave } from "./icons";
@@ -22,9 +24,11 @@ import * as notes from "./notes";
 import * as rename from "./rename";
 import * as session from "./session";
 import * as team from "./team";
+import * as terminals from "./terminals";
 import * as tree from "./tree";
 import { relocate, relocateTabs } from "./tree-moves";
 import {
+  ci,
   fmtTokens,
   label,
   merged,
@@ -36,6 +40,7 @@ import {
   type Choice,
   type Project,
   type Tab,
+  type TerminalSession,
   type Workspace,
 } from "./types";
 import { $, debounce, h, template } from "./util";
@@ -171,6 +176,8 @@ export function init(context: Ctx) {
 
 export async function open(ws: Workspace, tab?: string) {
   proj = null;
+  // A terminal session left this way keeps running, but it is no longer on screen.
+  shellSession = null;
   if (tab && openWs === ws.id) return selectTab(ws.id, tab);
   const epoch = ++navigation;
   // Direct workspace switching bypasses leave; hide the previous native webview here.
@@ -249,6 +256,7 @@ export function leave() {
   gitRefresh.clear();
   turns.clear();
   proj = null;
+  shellSession = null;
   browser.hide();
   restoreBrowserSide();
   session.detach();
@@ -282,7 +290,7 @@ export function draw() {
   if (crumb.dataset.workspace !== crumbKey || !crumb.querySelector(".nm")) {
     crumb.dataset.workspace = crumbKey;
     crumb.innerHTML =
-      `${avatar(owner ?? ws.repo_name)}<span class="who"></span><button class="repos" hidden></button>` +
+      `${avatar(owner ?? ws.repo_name)}<span class="who"></span><button data-track="workspace.repositories" class="repos" hidden></button>` +
       `<span class="sep">${icon("chevron-right", 12)}</span><span class="nm"></span>` +
       `<button class="branch" hidden>${icon("git-branch", 12)}<span></span></button>`;
   }
@@ -299,7 +307,7 @@ export function draw() {
     repos.title = ws.repos.map((r) => r.name).join(" · ");
     repos.onclick = () => {
       const at = repos.getBoundingClientRect();
-      menu.openAt({ x: at.left, y: at.bottom + 4 }, repoItems(ws));
+      menu.openAt({ area: "workspace", x: at.left, y: at.bottom + 4 }, repoItems(ws));
     };
   }
   const name = crumb.querySelector<HTMLElement>(".nm")!;
@@ -307,10 +315,12 @@ export function draw() {
   if (!remote) {
     // The breadcrumb title supports unobstructed double-click renaming.
     name.title = t("ws.rename");
+    name.dataset.trackDoubleClick = "ws.rename";
     name.ondblclick = () => rename.start(name, ws.title, (title) => renameWorkspace(ws.id, title), "crumb");
   } else {
     name.title = "";
     name.ondblclick = null;
+    delete name.dataset.trackDoubleClick;
   }
   // Render the persisted branch immediately, then refresh it from Git.
   paintBranchName(branchOf.get(ws.id) ?? ws.branch);
@@ -403,11 +413,28 @@ function layout(parts: Parts) {
   $("dock").hidden = !parts.dock;
 }
 
+/// People who may act beyond viewing and commenting, local or announced by a remote owner (ADR 0090).
+function drawActors(ws: Workspace) {
+  const chip = $("actors");
+  const rights = team.status().config && !ws.cleaned ? team.actorsOf(ws) : null;
+  const people = rights ? [...new Set([...rights.send, ...rights.control])] : [];
+  chip.hidden = !people.length;
+  if (!rights || !people.length) return;
+  const names = (list: string[]) => list.map(team.nameOf).join(", ");
+  chip.innerHTML = `${icon("terminal", 12)}<span></span>`;
+  chip.querySelector("span")!.textContent = people.length > 2 ? `${names(people.slice(0, 2))} +${people.length - 2}` : names(people);
+  chip.title = [
+    rights.send.length ? t("share.actors.send", { names: names(rights.send) }) : "",
+    rights.control.length ? t("share.actors.control", { names: names(rights.control) }) : "",
+  ].filter(Boolean).join("\n");
+}
+
 /// Local shared workspaces offer audience selection and viewer avatars. The relay enforces visibility; remote workspaces belong to their owners.
 function drawShare(ws: Workspace, tab?: Tab) {
   const btn = $("share") as HTMLButtonElement;
   const chips = $("watchers");
   chips.replaceChildren();
+  drawActors(ws);
   // Keep inactive sharing in the menu; active sharing uses its icon and avatars without a long status label.
   if (ws.remote || ws.cleaned || !team.status().config || !team.sharedWithTeam(ws)) {
     btn.hidden = true;
@@ -416,10 +443,11 @@ function drawShare(ws: Workspace, tab?: Tab) {
   btn.hidden = false;
   btn.className = "ico on";
   btn.innerHTML = icon("share-2", 14);
+  btn.dataset.track = "workspace.share";
   btn.title = `${shareLabel(ws)} — ${t("share.off.title")}`;
   btn.onclick = () => {
     const at = btn.getBoundingClientRect();
-    menu.openAt({ x: at.left, y: at.bottom + 4 }, shareItems(ws));
+    menu.openAt({ area: "workspace", x: at.left, y: at.bottom + 4 }, shareItems(ws));
   };
   if (!tab) return;
   const watching = team.watchersOf(tab.id);
@@ -447,11 +475,11 @@ function drawMore(ws: Workspace) {
   const at = stages.indexOf(ws.stage);
   const items: menu.Item[] = [
     {
-      label: t("ws.menu.stage"),
+      label: t("ws.menu.stage"), track: "ws.menu.stage",
       glyph: stageIcon(at, stages.length),
       hint: stageName(ws.stage),
       sub: stages.map((name, i) => ({
-        label: stageName(name),
+        label: stageName(name), track: "workspace.stage.select",
         glyph: stageIcon(i, stages.length),
         checked: name === ws.stage,
         run: () => setStage(ws.id, name),
@@ -459,11 +487,11 @@ function drawMore(ws: Workspace) {
     },
   ];
   if (team.status().config && !team.sharedWithTeam(ws)) {
-    items.unshift({ label: t("share.on"), glyph: icon("share-2", 14), sub: shareItems(ws) });
+    items.unshift({ label: t("share.on"), track: "share.on", glyph: icon("share-2", 14), sub: shareItems(ws) });
   }
   btn.onclick = () => {
     const box = btn.getBoundingClientRect();
-    menu.openAt({ x: box.left, y: box.bottom + 4 }, items);
+    menu.openAt({ area: "workspace", x: box.left, y: box.bottom + 4 }, items);
   };
 }
 
@@ -473,20 +501,27 @@ function shareLabel(ws: Workspace): string {
   return tn(ws.audience.length, "share.some");
 }
 
-/// Toggle individual viewers or the whole team; removing the final viewer stops sharing.
+/// Toggle individual viewers or the whole team, then choose among the viewers who may send messages or control
+/// (ADR 0090). Removing the final viewer stops sharing.
 function shareItems(ws: Workspace): menu.Item[] {
   const me = team.status();
   const others = team.people().filter((m) => m.id !== team.personOf(me.you));
-  const set = (audience: string[] | null | false) => team.share(ws.id, audience).catch((e) => ctx.say(fromBack(e), true));
+  const fail = (e: unknown) => ctx.say(fromBack(e), true);
+  const set = (audience: string[] | null | false) => team.share(ws.id, audience).catch(fail);
   const all = team.sharedWithTeam(ws) && !ws.audience;
   const some = team.sharedWithTeam(ws) && ws.audience ? ws.audience : [];
+  const left = team.sharedWithTeam(ws) ? team.leftOf(ws.id) : [];
   const items: menu.Item[] = [
-    { label: t("share.all"), glyph: icon("users", 14), checked: all, run: () => set(all ? false : null) },
+    { label: t("share.all"), track: "share.all", glyph: icon("users", 14), checked: all, run: () => set(all ? false : null) },
     "sep",
     ...others.map((m): menu.Item => {
+      // Someone who left stays out until the owner picks them again, which readmits them.
+      if (left.includes(m.id)) {
+        return { label: m.name, track: "share.readmit", glyph: avatar(m.name), hint: t("share.left"), run: () => void team.readmit(ws.id, m.id).catch(fail) };
+      }
       const on = some.includes(m.id);
       return {
-        label: m.name,
+        label: m.name, track: "share.viewer.toggle",
         glyph: avatar(m.name),
         hint: m.online ? undefined : t("team.offline"),
         checked: on,
@@ -495,7 +530,34 @@ function shareItems(ws: Workspace): menu.Item[] {
     }),
   ];
   if (!others.length) items.push({ label: t("share.alone"), disabled: true });
-  if (team.sharedWithTeam(ws)) items.push("sep", { label: t("share.stop"), glyph: icon("x", 14), danger: true, run: () => set(false) });
+  if (team.sharedWithTeam(ws)) {
+    // Rights go to people who view, one by one; granting approves the devices they have now and says how many.
+    const viewers = (all ? others : others.filter((m) => some.includes(m.id))).filter((m) => !left.includes(m.id));
+    const rights = ws.rights ?? { send: [], control: [] };
+    const grant = (right: "send" | "control"): menu.Item[] => [
+      { label: t(`share.${right}.about`), disabled: true },
+      "sep",
+      ...(viewers.length ? viewers.map((m): menu.Item => {
+        const on = rights[right].includes(m.id);
+        return {
+          label: m.name, track: right === "send" ? "share.send.toggle" : "share.control.toggle",
+          glyph: avatar(m.name),
+          checked: on,
+          run: () => void team.grant(ws.id, m.id, right, !on)
+            .then((count) => { if (count) ctx.say(tn(count, "team.input.approved", { name: m.name })); })
+            .catch(fail),
+        };
+      }) : [{ label: t("share.rights.nobody"), disabled: true }]),
+      // Messages from the people above wait for the owner unless this is off (ADR 0090).
+      ...(right === "send" ? ["sep", { label: t("share.confirm"), track: "share.confirm", checked: ws.confirm_messages !== false,
+        run: () => void invoke("set_confirm_messages", { id: ws.id, confirm: ws.confirm_messages === false }).catch(fail) }] satisfies menu.Item[] : []),
+    ];
+    const granted = (right: "send" | "control") => viewers.filter((m) => rights[right].includes(m.id)).length;
+    items.push("sep",
+      { label: t("share.send"), track: "share.send", glyph: icon("message-square", 14), hint: String(granted("send")), sub: grant("send") },
+      { label: t("share.control"), track: "share.control", glyph: icon("check", 14), hint: String(granted("control")), sub: grant("control") },
+      "sep", { label: t("share.stop"), track: "share.stop", glyph: icon("x", 14), danger: true, run: () => set(false) });
+  }
   return items;
 }
 
@@ -505,7 +567,7 @@ function repoItems(ws: Workspace): menu.Item[] {
   return ws.repos.map((repo, index): menu.Item => {
     const status = all.find(item => item.repo === index);
     const count = status ? new Set([...status.staged, ...status.changes, ...status.conflicts].map(file => file.path)).size : 0;
-    return { label: repo.name, glyph: avatar(repo.name), hint: count ? tn(count, "diff.files") : t("git.clean"), run: () => changesUi.selectRepo(index) };
+    return { label: repo.name, track: "workspace.repository.select", glyph: avatar(repo.name), hint: count ? tn(count, "diff.files") : t("git.clean"), run: () => changesUi.selectRepo(index) };
   });
 }
 
@@ -560,6 +622,7 @@ function paintBranchName(name: string | undefined) {
   chip.hidden = false;
   chip.children[1].textContent = name;
   chip.title = t("git.branches");
+  chip.dataset.track = "git.branches";
   chip.onclick = () => { if (current() && diffable(current()!)) changesUi.show("branches"); };
 }
 
@@ -602,8 +665,16 @@ function paintPr(ws: Workspace) {
         ? t("ws.pr.update")
         : t("ws.pr");
   ask.title = done ? t("top.finish") : quiet ? t("top.pr.go") : all.length ? t("top.pr.update") : t("top.pr");
+  ask.dataset.track = done ? "workspace.finish" : quiet ? "workspace.pr.open" : all.length ? "workspace.pr.update" : "workspace.pr.create";
   ask.classList.toggle("done", done);
   ask.firstElementChild!.outerHTML = icon(done ? "check" : "git-pull-request", 14);
+  // Tint the icon with the most urgent CI state among the open PRs.
+  const runs = all.map(({ pr }) => ci(pr));
+  const worst = done ? null : (["failed", "running", "passed"] as const).find((state) => runs.includes(state));
+  if (worst) {
+    ask.dataset.ci = worst;
+    ask.title += ` · ${t(`pr.ci.${worst}`)}`;
+  } else delete ask.dataset.ci;
   ask.onclick = () => {
     if (done) return finish(ws.id);
     if (quiet) return all.length === 1 ? openIn(ws, all[0].repo) : prMenu(ws, ask);
@@ -622,14 +693,20 @@ function prMenu(ws: Workspace, at: HTMLElement) {
   const many = ws.repos.length > 1;
   const box = at.getBoundingClientRect();
   menu.openAt(
-    { x: box.left, y: box.bottom + 4 },
-    prs(ws).map(({ repo, pr }) => ({
-      label: many ? `${repo} · #${pr.number}` : `#${pr.number} ${pr.title}`,
-      glyph: icon(pr.state === "MERGED" ? "check" : "git-pull-request", 14),
-      hint: t(pr.state === "MERGED" ? "pr.merged" : pr.isDraft ? "pr.draft" : "pr.open"),
-      run: () => openIn(ws, repo),
-    })),
+    { area: "workspace", x: box.left, y: box.bottom + 4 },
+    prs(ws).map(({ repo, pr }) => {
+      const state = t(pr.state === "MERGED" ? "pr.merged" : pr.isDraft ? "pr.draft" : "pr.open");
+      const checks = ci(pr);
+      return {
+        label: many ? `${repo} · #${pr.number}` : `#${pr.number} ${pr.title}`, track: "workspace.pr.open",
+        glyph: `<span class="pr-ci" data-ci="${checks ?? ""}">${icon(pr.state === "MERGED" ? "check" : "git-pull-request", 14)}</span>`,
+        hint: checks ? `${state} · ${t(`pr.ci.${checks}`)}` : state,
+        run: () => openIn(ws, repo),
+      };
+    }),
   );
+  // The menu shows the last known CI state; this refresh repaints the button when it changes.
+  askPr(ws);
 }
 
 const openIn = (ws: Workspace, repo: string) =>
@@ -699,6 +776,8 @@ function drawTabs(ws: Workspace) {
     b.innerHTML = `<i class="dot"></i><span></span><span class="n tokens"></span>`;
     (b.children[0] as HTMLElement).style.background = `var(--dot-${tab.status})`;
     b.dataset.tab = tab.id;
+    b.dataset.track = "tab.conversation";
+    if (!remote) { b.dataset.trackDoubleClick = "tab.rename"; b.dataset.trackContextMenu = "tab.menu"; }
     b.children[1].textContent = tabLabel(ws, tab);
     b.children[2].textContent = tab.tokens ? `~${fmtTokens(tab.tokens)}` : "";
     b.title =
@@ -711,7 +790,7 @@ function drawTabs(ws: Workspace) {
     if (!remote) {
       b.addEventListener("contextmenu", (e) => {
         e.preventDefault();
-        menu.openAt({ x: e.clientX, y: e.clientY }, tabMenu(ws, tab));
+        menu.openAt({ area: "workspace", x: e.clientX, y: e.clientY }, tabMenu(ws, tab));
       });
     }
 
@@ -720,6 +799,7 @@ function drawTabs(ws: Workspace) {
       x.className = "tabx ico sm";
       x.innerHTML = icon("x", 12);
       x.title = t("tab.close");
+      x.dataset.track = "tab.close";
       x.addEventListener("click", (e) => {
         e.stopPropagation();
         invoke("close_tab", { workspace: ws.id, tab: tab.id });
@@ -739,11 +819,13 @@ function drawTabs(ws: Workspace) {
     b.children[2].textContent = String(changes);
     b.children[2].classList.remove("fresh");
     b.title = t("tab.changes.title");
+    b.dataset.track = "tab.changes.title";
     b.addEventListener("click", () => showChanges());
     const x = document.createElement("span");
     x.className = "tabx ico sm";
     x.innerHTML = icon("x", 12);
     x.title = t(fs.diff ? "tab.changes.closeKey" : "tab.changes.close");
+    x.dataset.track = "tab.changes.close";
     x.addEventListener("click", (e) => {
       e.stopPropagation();
       closeChanges();
@@ -760,11 +842,13 @@ function drawTabs(ws: Workspace) {
     b.children[1].textContent = t("tab.browser");
     b.children[2].textContent = fs.port ? `:${fs.port}` : "";
     b.title = t("tab.browser.title", { port: fs.port });
+    b.dataset.track = "tab.browser";
     b.addEventListener("click", () => void showWeb());
     const x = document.createElement("span");
     x.className = "tabx ico sm";
     x.innerHTML = icon("x", 12);
     x.title = t(fs.web ? "tab.browser.closeKey" : "tab.browser.close");
+    x.dataset.track = "tab.browser.close";
     x.addEventListener("click", (e) => {
       e.stopPropagation();
       void closeWeb();
@@ -799,11 +883,13 @@ function appendTabAdd(
   plus.className = "ico";
   plus.innerHTML = icon("plus");
   plus.title = opts.title;
+  plus.dataset.track = "tab.new";
   plus.addEventListener("click", opts.add);
   const pick = document.createElement("button");
   pick.className = "ico caret";
   pick.innerHTML = icon("chevron-down", 12);
   pick.title = opts.pickTitle;
+  pick.dataset.track = "tab.new.options";
   pick.addEventListener("click", () => opts.pick(pick));
   box.append(plus, pick);
   bar.append(box);
@@ -817,11 +903,13 @@ function appendTermTabs(bar: HTMLElement) {
     b.innerHTML = `${icon("terminal", 14)}<span></span>`;
     b.children[1].textContent = d.label;
     b.title = d.label;
+    b.dataset.track = "tab.terminal";
     b.addEventListener("click", () => dockbar.select(d.kind));
     const x = document.createElement("span");
     x.className = "tabx ico sm";
     x.innerHTML = icon("x", 12);
     x.title = t("dock.closeTerm");
+    x.dataset.track = "dock.closeTerm";
     x.addEventListener("click", (e) => {
       e.stopPropagation();
       dockbar.closeTab(d.kind);
@@ -839,8 +927,11 @@ function appendFileTabs(bar: HTMLElement, fs: Files) {
     b.innerHTML = `${icon("file", 14)}<span></span><span class="tabx ico sm">${icon("x", 12)}</span>`;
     b.children[1].textContent = path.slice(path.lastIndexOf("/") + 1);
     b.title = path;
+    b.dataset.track = "tab.file";
     b.addEventListener("click", () => openFile(path));
-    b.querySelector(".tabx")!.addEventListener("click", (e) => {
+    const x = b.querySelector<HTMLElement>(".tabx")!;
+    x.dataset.track = "tab.file.close";
+    x.addEventListener("click", (e) => {
       e.stopPropagation();
       closeFile(path);
     });
@@ -885,12 +976,12 @@ function editTab(tabId: string) {
 /// Group conversation actions in the context menu rather than adding a button for every action.
 function tabMenu(ws: Workspace, tab: Tab): menu.Item[] {
   const items: menu.Item[] = [
-    { label: t("ws.menu.rename"), glyph: icon("pencil"), run: () => editTab(tab.id) },
+    { label: t("ws.menu.rename"), track: "ws.menu.rename", glyph: icon("pencil"), run: () => editTab(tab.id) },
   ];
   // Keep at least one conversation in each workspace.
   if (ws.tabs.length > 1) {
     items.push("sep", {
-      label: t("tab.close"),
+      label: t("tab.close"), track: "tab.close",
       glyph: icon("x"),
       danger: true,
       run: () => invoke("close_tab", { workspace: ws.id, tab: tab.id }),
@@ -911,6 +1002,7 @@ async function selectTab(workspace: string, tab: string) {
   if (!fs.web) showTerm();
   const epoch = navigation;
   if (!(await session.attach(tab, remote ? workspace : undefined))) return;
+  track({ name: "conversation_opened", surface: "workspace" });
   if (!stillHere(epoch, workspace)) return;
   ctx.redraw();
 }
@@ -931,10 +1023,10 @@ function sendReview(at: HTMLElement, draft: ReviewDraft, close: () => void) {
   };
   const rect = at.getBoundingClientRect();
   const tabs = [...ws.tabs].sort((a, b) => (tabVisits.get(b.id) ?? Number(b.id === ws.active)) - (tabVisits.get(a.id) ?? Number(a.id === ws.active)));
-  menu.openAt({ x: rect.left, y: rect.bottom + 4 }, tabs.length ? tabs.map(tab => ({
-    label: tabLabel(ws, tab), hint: `${descriptor(tab.choice?.agent ?? ws.agent).label} · ${label(tab.status)}`,
+  menu.openAt({ area: "workspace", x: rect.left, y: rect.bottom + 4 }, tabs.length ? tabs.map(tab => ({
+    label: tabLabel(ws, tab), track: "review.conversation.select", hint: `${descriptor(tab.choice?.agent ?? ws.agent).label} · ${label(tab.status)}`,
     run: () => void put(tab.id),
-  })) : [{ label: t("review.newConversation"), run: () => void put() }]);
+  })) : [{ label: t("review.newConversation"), track: "review.newConversation", run: () => void put() }]);
 }
 
 /// Explicit choice comes from the plus menu; other new-tab paths inherit workspace defaults.
@@ -1029,9 +1121,10 @@ export async function openFile(path: string) {
   const ws = current();
   if (!ws) return;
   const fs = files(ws.id);
+  const opened = fs.active !== path || $("viewer").hidden;
   if (!fs.open.includes(path)) fs.open.push(path);
   fs.active = path;
-  await showFile();
+  await showFile(opened);
   drawTabs(ws);
 }
 
@@ -1044,14 +1137,14 @@ export function quickOpen() {
   openQuickOpen($("tabbar"), id, [...files(id).open].reverse(), (path) => void openFile(path));
 }
 
-async function showFile() {
+async function showFile(opened = false) {
   const ws = current();
   const path = ws && files(ws.id).active;
   if (!ws || !path) return showTerm();
   files(ws.id).diff = false;
   leaveWeb(files(ws.id));
   center("viewer");
-  await viewer.show(ws.id, path);
+  await viewer.show(ws.id, path, opened);
 }
 
 function showTerm() {
@@ -1107,6 +1200,7 @@ export async function showWeb() {
   const epoch = navigation;
   const request = ++webRequest;
   const fs = files(ws.id);
+  const opened = !fs.web;
   if (sideBeforeBrowser === null) {
     sideBeforeBrowser = document.body.classList.contains("noside");
     document.body.classList.add("noside");
@@ -1122,6 +1216,7 @@ export async function showWeb() {
     const [port] = await Promise.all([browser.show(ws.id), attached]);
     if (!stillHere(epoch, ws.id) || request !== webRequest || !fs.web) return;
     fs.port = port;
+    if (opened) track({ name: "preview_opened" });
   } catch (err) {
     if (!stillHere(epoch, ws.id) || request !== webRequest || !fs.web) return;
     ctx.say(fromBack(err), true);
@@ -1356,12 +1451,46 @@ function drawProjectTabs() {
     pickTitle: t("project.new"),
     pick: (at) => {
       const box = at.getBoundingClientRect();
-      menu.openAt({ x: box.left - 40, y: box.bottom + 4 }, [
-        { label: t("dock.new"), glyph: icon("terminal", 14), run: () => dockbar.newTerm() },
-        { label: t("project.newWorkspace"), glyph: icon("plus", 14), run: () => ctx.newWorkspace(proj!.id) },
+      menu.openAt({ area: "workspace", x: box.left - 40, y: box.bottom + 4 }, [
+        { label: t("dock.new"), track: "dock.new", glyph: icon("terminal", 14), run: () => dockbar.newTerm() },
+        { label: t("project.newWorkspace"), track: "project.newWorkspace", glyph: icon("plus", 14), run: () => ctx.newWorkspace(proj!.id) },
       ]);
     },
   });
+}
+
+/* Terminal session view. */
+
+/// The terminal session on screen. It is no file root: the tree, quick open and the dock keep following workspaces and projects.
+let shellSession: string | null = null;
+export const terminalSession = () => shellSession;
+
+/// Show a session's shell alone in the center, starting it in the session's folder or reattaching to the one still running with its output.
+export function openTerminal(session: TerminalSession) {
+  leave();
+  shellSession = session.id;
+  // A dock shell selected in the previous workspace must not answer Command-W here.
+  dockbar.reset(false);
+  $("wsView").hidden = false;
+  const crumb = $("crumb");
+  crumb.dataset.workspace = "";
+  crumb.innerHTML = `${icon("square-terminal", 14)}<span class="who"></span>`;
+  crumb.querySelector<HTMLElement>(".who")!.textContent = terminals.title(session);
+  layout({});
+  $("tab-comments").hidden = true;
+  center("termview");
+  const epoch = navigation;
+  dock.open(session.id, "terminal")
+    .then(() => {
+      if (navigation === epoch) dock.focus("shell");
+    }, (error) => ctx.say(fromBack(error), true))
+    .finally(() => void terminals.check(session.id));
+}
+
+/// Keep the breadcrumb in step with a rename of the session on screen.
+export function drawTerminal(sessions: TerminalSession[]) {
+  const session = sessions.find((item) => item.id === shellSession);
+  if (session) $("crumb").querySelector<HTMLElement>(".who")!.textContent = terminals.title(session);
 }
 
 /// Keep the center empty until a file is selected, reusing the full-size empty panel without explanatory text.
@@ -1378,18 +1507,19 @@ function showProjectEmpty() {
 async function openProjectFile(path: string) {
   if (!proj) return;
   const fs = files(proj.id);
+  const opened = fs.active !== path || $("viewer").hidden;
   if (!fs.open.includes(path)) fs.open.push(path);
   fs.active = path;
-  await showProjectFile();
+  await showProjectFile(opened);
   drawProjectTabs();
 }
 
-async function showProjectFile() {
+async function showProjectFile(opened = false) {
   const path = proj && files(proj.id).active;
   if (!proj || !path) return showProjectEmpty();
   $("offline").hidden = true;
   center("viewer");
-  await viewer.show(proj.id, path);
+  await viewer.show(proj.id, path, opened);
 }
 
 /// Closing the last project tab restores empty center content because no conversation exists.

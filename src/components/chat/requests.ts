@@ -11,12 +11,19 @@ export type RequestActions = {
   allowAlways?: () => void;
   feedbackOpen: boolean;
   feedbackChanged: (open: boolean) => void;
+  /// The viewer cannot answer, so the request shows as waiting, without actions.
+  observer?: boolean;
 };
 
 export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
-  if (ask.answered) {
-    const el = template("div", "sys done", `${icon("check", 12)}<span></span>`);
-    el.querySelector("span")!.textContent = t("chat.answered", { what: toolLabel(ask.tool) });
+  if (ask.closed) {
+    const el = template("div", "sys closed", `${icon("x", 12)}<span></span>`);
+    el.querySelector("span")!.textContent = t("chat.unanswered", { what: toolLabel(ask.tool) });
+    return el;
+  }
+  if (ask.answered || options.observer) {
+    const el = template("div", `sys ${ask.answered ? "done" : "waiting"}`, `${icon(ask.answered ? "check" : "eye", 12)}<span></span>`);
+    el.querySelector("span")!.textContent = t(ask.answered ? "chat.answered" : "chat.awaitingAnswer", { what: toolLabel(ask.tool) });
     return el;
   }
   const el = h("div", "ask");
@@ -28,20 +35,20 @@ export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
     el.classList.add("plan");
     el.append(h("h4", "", t("chat.plan.title")));
     const row = h("div", "row");
-    const go = button(t("chat.plan.go"), undefined, "pri");
+    const go = button(t("chat.plan.go"), undefined, "pri", "chat.plan.go");
     go.title = t("chat.plan.go.title");
     go.addEventListener("click", () => {
       // Approving a plan also enables bypass before resuming so its first tool does not immediately ask again.
       options.allowAlways?.();
     });
-    const asking = button(t("chat.plan.ask"));
+    const asking = button(t("chat.plan.ask"), undefined, "outline", "chat.plan.ask");
     asking.title = t("chat.plan.ask.title");
     asking.addEventListener("click", () => options.respond({ outcome: "allow" }));
-    const no = button(t("chat.plan.no"), undefined, "ghost");
+    const no = button(t("chat.plan.no"), undefined, "ghost", "chat.plan.no");
     row.append(...(options.allowAlways ? [go] : []), asking, no);
     el.append(row);
     // Send requested plan changes as denial feedback to the agent.
-    const fb = template("div", "fb", `<textarea rows="3"></textarea><div class="row"><span class="spacer"></span><button class="pri md"></button></div>`);
+    const fb = template("div", "fb", `<textarea data-track="chat.plan.feedback" rows="3"></textarea><div class="row"><span class="spacer"></span><button data-track="chat.plan.feedback.send" class="pri md"></button></div>`);
     const area = fb.querySelector("textarea")!;
     area.placeholder = t("chat.plan.feedback");
     fb.querySelector("button")!.textContent = t("chat.plan.send");
@@ -86,7 +93,7 @@ export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
     const tabs = h("div", "qtabs");
     const body = h("div", "qbody");
     const row = h("div", "row");
-    const go = button(t("chat.ask.go"), undefined, "pri") as HTMLButtonElement;
+    const go = button(t("chat.ask.go"), undefined, "pri", "chat.ask.go") as HTMLButtonElement;
     go.addEventListener("click", () => {
       const out: Record<string, string> = {};
       for (const q of questions) {
@@ -102,6 +109,7 @@ export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
       tabs.replaceChildren(
         ...questions.map((q, i) => {
           const b = template("button", "qtab" + (i === active ? " on" : "") + (has(q) ? " done" : ""), `<span></span>${icon("check", 11)}`);
+          b.dataset.track = "chat.question.select";
           b.querySelector("span")!.textContent = q.header || t("chat.ask.n", { n: i + 1 });
           b.addEventListener("click", () => {
             active = i;
@@ -119,6 +127,7 @@ export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
       for (const o of q.options ?? []) {
         const on = (answers[q.question] ?? []).includes(o.label);
         const b = template("button", "opt" + (on ? " on" : ""), `<b></b><span></span>`);
+        b.dataset.track = "chat.question.answer";
         b.querySelector("b")!.textContent = o.label;
         b.querySelector("span")!.textContent = o.description ?? "";
         b.addEventListener("click", () => {
@@ -135,7 +144,7 @@ export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
       }
       body.append(opts);
       const free = document.createElement("input");
-      free.className = "field";
+      free.className = "field"; free.dataset.track = "chat.question.freeform";
       free.placeholder = t("chat.ask.other");
       free.value = other[q.question] ?? "";
       free.addEventListener("input", () => {
@@ -169,13 +178,13 @@ export function requestCard(ask: Ask, options: RequestActions): HTMLElement {
     el.append(h("h4", "", t("chat.perm.title", { tool: toolLabel(ask.tool) })));
     el.append(inputView(ask.tool, ask.input));
     const row = h("div", "row");
-    const yes = button(t("chat.perm.yes"), undefined, "pri");
+    const yes = button(t("chat.perm.yes"), undefined, "pri", "chat.perm.yes");
     yes.addEventListener("click", () => options.respond({ outcome: "allow" }));
-    const always = button(t("chat.perm.always"));
+    const always = button(t("chat.perm.always"), undefined, "outline", "chat.perm.always");
     always.addEventListener("click", () => {
       options.allowAlways?.();
     });
-    const no = button(t("chat.perm.no"), undefined, "ghost");
+    const no = button(t("chat.perm.no"), undefined, "ghost", "chat.perm.no");
     no.addEventListener("click", () => options.respond({ outcome: "deny", message: t("chat.perm.denied") }));
     row.append(yes, ...(options.allowAlways ? [always] : []), no);
     el.append(row);

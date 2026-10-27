@@ -198,7 +198,10 @@ can mean a wrong address or missing access; the UI preserves that distinction.
 Other failures retain their diagnostic without claiming an access problem. URL
 credentials, query strings and authorization headers are removed from details;
 diagnostics remain local and are never sent to Cloud. Retrying does not repeat successful rows.
-Local folder registration remains available without an account.
+Local folder registration and **Create new project** remain available without an
+account. Creation initializes a new empty Git repository and uses the existing
+registration path; it does not publish a catalog definition. See the
+[`create_project` contract](ipc.md#executable-serialization-examples).
 
 Project IDs match `[A-Za-z0-9][A-Za-z0-9_.-]{0,127}` and become clone directory
 names. Sources accept HTTPS without user information, SSH with the `git` user,

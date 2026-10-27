@@ -94,6 +94,15 @@ opposite direction, it receives `ConversationCommandV1` and builds the matching
 JSON-RPC request without going through Claude's stream-json format. Prometeu
 writes the V1 events in its own transcript.
 
+### Cursor
+
+`cursor.rs` prepares `cursor-agent acp`; `prometeu-protocols::cursor` converts
+JSON-RPC updates and client requests directly to V1. Startup uses the selected
+external account, exact ACP model ID and workspace directory. Native replay is
+suppressed during load because presentation replays the application V1 log.
+Approvals, questions and plan decisions use existing request cards. See the
+[Cursor contract](../contracts/cursor.md).
+
 ### Common path
 
 `Pump.feed` delegates JSON parsing and observation ordering to the core's
@@ -144,6 +153,35 @@ only when the turn has ended *and* `background.changed` reports no task.
 the delegation execution holds `running` with its outcome already recorded. An
 interruption settles everything at once, since it ends the children too. See
 [ADR 0056](../decisions/0056-background-tasks-hold-completion.md).
+
+Quitting or restarting for an update does not stop a turn in an orderly way:
+the app ends and the agent with it. While a local conversation is working or
+waiting, ⌘Q, closing the main window and **Restart to update** ask first; the
+Dock's Quit, logout and shutdown cannot be held
+([ADR 0097](../decisions/0097-ask-before-ending-the-app.md)). On the next start
+`Board::revive` marks the tabs that were working or waiting as `interrupted`. A
+conversation without a process is presented with a snapshot that ends in
+`session.state: stopped`, and the timeline keeps an unfinished turn cut off
+instead of settling it: the
+partial reply has no completion footer, open requests read as closed without an
+answer, and an `interrupted` notice marks the place. The composer of an
+interrupted tab offers **Continue**, an ordinary message; any accepted message
+clears the marker through the core reactions. The transcript itself has no
+record of the cut, and Claude's native history cannot take one, so the place is
+kept in the board: when the conversation starts again, `chat.rs` records its
+history's line count in `Tab.cuts`, and every later snapshot replays `stopped`
+there. The WSL runtime keeps its
+conversations across interface restarts, so only its snapshot changes.
+
+A question or approval holds the tab in `Querendo` from `request.opened` until
+the person answers. Answering produces `request.closed`, which moves the tab
+back to `Rodando` at once, unless another request of the same conversation is
+still open; output streamed meanwhile does not hide the wait. `Work` keeps the
+open requests and drops them when the conversation settles, since an ended turn
+can no longer receive the answer, so a late answer does not start a settled tab
+again. The desktop's `SessionReactions` and the WSL runtime derive status from
+the same `next_status` rule in `prometeu-core`, so the sidebar, desk, island and
+the delegation MCP's `conversation_status` agree on every host.
 
 `alert.ts` tracks executions per tab from the live local `chat` events,
 separate from the unread state. `chat.rs` publishes `session.state` `starting`

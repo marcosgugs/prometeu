@@ -8,9 +8,9 @@ export function commitForm(options: {
   busy: boolean; disabled: boolean; changed: (message: string) => void; commit: () => void;
 }) {
   const root = h("div", "git-composer");
-  const area = input(options.message, true); area.id = "git-message";
+  const area = input(options.message, true, "git.commit.message"); area.id = "git-message";
   area.placeholder = options.placeholder; area.disabled = options.busy; area.rows = 3;
-  const commit = button(options.submit, () => { if (!commit.disabled) options.commit(); }, "pri"); commit.id = "git-commit";
+  const commit = button(options.submit, () => { if (!commit.disabled) options.commit(); }, "pri", "git.commit.submit"); commit.id = "git-commit";
   commit.prepend(template("span", "", icon("check", 14))); commit.title = options.title;
   const paint = () => { commit.disabled = options.busy || options.disabled || !area.value.trim(); };
   area.oninput = () => { options.changed(area.value); paint(); };

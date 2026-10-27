@@ -1,7 +1,8 @@
-//! Settlement of a turn and the background tasks it still owns.
+//! Settlement of a turn, the background tasks it still owns and the requests it waits on.
 
 use crate::conversation;
 use serde_json::Value;
+use std::collections::HashSet;
 
 /// Background tasks observed for one conversation, and the completion they hold back. A provider's
 /// native subagents outlive the turn that started them, so a conversation only settles when the
@@ -11,6 +12,9 @@ pub struct Work {
     running: usize,
     /// A turn ended while tasks were still running.
     held: bool,
+    /// Questions and approvals not answered yet. A settled conversation can no longer receive an
+    /// answer, so settling drops them.
+    requests: HashSet<String>,
 }
 
 impl Work {
@@ -23,6 +27,7 @@ impl Work {
             self.held = false;
             return false;
         }
+        let request = || event["requestId"].as_str().unwrap_or_default().to_string();
         match event["type"].as_str() {
             // An interruption ends the turn and the children it started, whether or not the
             // provider reports the drain. Nothing may hold the conversation open afterwards.
@@ -34,6 +39,14 @@ impl Work {
             Some("background.changed") => {
                 self.reported(event["tasks"].as_array().map_or(0, Vec::len))
             }
+            Some("request.opened") => {
+                self.requests.insert(request());
+                false
+            }
+            Some("request.closed") => {
+                self.requests.remove(&request());
+                false
+            }
             _ => false,
         }
     }
@@ -41,7 +54,7 @@ impl Work {
     /// The turn ended. `true` when the conversation settles now.
     fn ended(&mut self) -> bool {
         self.held = self.running > 0;
-        !self.held
+        self.settle(!self.held)
     }
 
     /// An adapter reported the current tasks. `true` when a held completion settles now.
@@ -49,6 +62,13 @@ impl Work {
         self.running = running;
         let settled = running == 0 && self.held;
         self.held = self.held && !settled;
+        self.settle(settled)
+    }
+
+    fn settle(&mut self, settled: bool) -> bool {
+        if settled {
+            self.requests.clear();
+        }
         settled
     }
 }
@@ -57,6 +77,11 @@ impl Work {
     /// Background tasks this conversation still owes, independently of its main turn.
     pub fn busy(&self) -> bool {
         self.running > 0
+    }
+
+    /// A question or approval is still waiting for the person.
+    pub fn waiting(&self) -> bool {
+        !self.requests.is_empty()
     }
 }
 
@@ -141,5 +166,27 @@ mod work_tests {
         assert!(!work.reported(1));
         assert!(!work.reported(0));
         assert!(work.ended());
+    }
+
+    #[test]
+    fn requests_wait_until_answered_or_until_the_conversation_settles() {
+        let mut work = Work::default();
+        work.observe(&json!({"type":"request.opened","requestId":"a"}));
+        work.observe(&json!({"type":"request.opened","requestId":"b"}));
+        work.observe(&json!({"type":"request.closed","requestId":"a"}));
+        assert!(work.waiting());
+        work.observe(&json!({"type":"request.closed","requestId":"b"}));
+        assert!(!work.waiting());
+        // A turn that ends with a request open can no longer receive its answer.
+        work.observe(&json!({"type":"request.opened","requestId":"c"}));
+        assert!(work.observe(&json!({"type":"turn.completed","outcome":"interrupted"})));
+        assert!(!work.waiting());
+        // A request opened while background tasks hold the completion waits for their drain.
+        work.observe(&json!({"type":"background.changed","tasks":[{"id":"child"}]}));
+        work.observe(&json!({"type":"request.opened","requestId":"d"}));
+        assert!(!work.observe(&json!({"type":"turn.completed","outcome":"ok"})));
+        assert!(work.waiting());
+        assert!(work.observe(&json!({"type":"background.changed","tasks":[]})));
+        assert!(!work.waiting());
     }
 }

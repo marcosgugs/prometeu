@@ -4,11 +4,13 @@ use prometeu_core::{
     board::{Board, Choice, Status},
     conversation::work::Work,
     lock::lock,
+    session::reactions::next_status,
+    terminal::dock_kind,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -20,7 +22,6 @@ struct Observation {
     ready: bool,
     generation: String,
     work: Work,
-    requests: HashSet<String>,
 }
 impl Default for Observation {
     fn default() -> Self {
@@ -29,7 +30,6 @@ impl Default for Observation {
             ready: false,
             generation: String::new(),
             work: Work::default(),
-            requests: HashSet::new(),
         }
     }
 }
@@ -113,34 +113,13 @@ impl ApplicationEvents {
                 ..Default::default()
             };
         }
+        let waited = observed.work.waiting();
         let settled = observed.work.observe(event);
-        match event["type"].as_str() {
-            Some("session.identity") if !observed.ready => {
-                observed.ready = true;
-                observed.status = Status::Pronta;
-            }
-            Some("user.message" | "assistant.started" | "assistant.block") => {
-                observed.status = Status::Rodando
-            }
-            Some("request.opened") => {
-                observed
-                    .requests
-                    .insert(event["requestId"].as_str().unwrap_or_default().into());
-                observed.status = Status::Querendo;
-            }
-            Some("request.closed") => {
-                observed
-                    .requests
-                    .remove(event["requestId"].as_str().unwrap_or_default());
-                observed.status = Status::Rodando;
-            }
-            Some("turn.completed" | "background.changed") if settled => {
-                observed.status = Status::Pronta
-            }
-            _ => {}
-        }
-        if !observed.requests.is_empty() {
-            observed.status = Status::Querendo;
+        if event["type"] == "session.identity" && !observed.ready {
+            observed.ready = true;
+            observed.status = Status::Pronta;
+        } else if let Some(status) = next_status(event, settled, waited, &observed.work) {
+            observed.status = status;
         }
         if self.enabled.load(Ordering::Acquire) {
             self.emit("chat", json!([session, format!("{event}\n"), frame["seq"]]))?;
@@ -315,6 +294,10 @@ pub(crate) enum Request {
     AddProject {
         path: String,
     },
+    CreateProject {
+        directory: String,
+        name: String,
+    },
     RemoveProject {
         id: String,
     },
@@ -363,6 +346,10 @@ pub(crate) enum Request {
     },
     ReorderProjects {
         ids: Vec<String>,
+    },
+    GroupProjects {
+        ids: Vec<String>,
+        group: Option<String>,
     },
     TreeGitStatus {
         id: String,
@@ -688,12 +675,31 @@ impl Host {
                     .publish_board(self.catalog.snapshot().board)?;
                 serde_json::to_value(project).map_err(|e| e.to_string())
             }
+            Request::CreateProject { directory, name } => {
+                let path =
+                    prometeu_git::create_repository(std::path::Path::new(&directory), &name)?;
+                let project = self.catalog.add_project(&path.to_string_lossy())?;
+                self.application_events
+                    .publish_board(self.catalog.snapshot().board)?;
+                serde_json::to_value(project).map_err(|e| e.to_string())
+            }
             Request::ReorderProjects { ids } => {
                 let catalog = self.catalog.reorder_projects(&ids)?;
                 self.application_events.publish_board(catalog.board)?;
                 Ok(Value::Null)
             }
+            Request::GroupProjects { ids, group } => {
+                let catalog = self.catalog.group_projects(&ids, group.as_deref())?;
+                self.application_events.publish_board(catalog.board)?;
+                Ok(Value::Null)
+            }
             Request::RemoveProject { id } => {
+                // Once the registration is gone, `file_root` no longer resolves the id, so its
+                // shells could be neither listed nor closed; stop them first, as the desktop does.
+                let board = self.catalog.snapshot().board;
+                if board.projects.iter().any(|project| project.id == id) {
+                    self.drop_docks(&id)?;
+                }
                 let catalog = self.catalog.remove_project(&id)?;
                 self.application_events.publish_board(catalog.board)?;
                 Ok(Value::Null)
@@ -889,14 +895,18 @@ impl Host {
                         terminal.stop(id)?;
                     }
                 }
+                // A closed shell leaves with its tab, as on the desktop; a stopped Setup or Run
+                // keeps its output until rerun.
+                if !matches!(kind.as_str(), "setup" | "run") {
+                    self.docks.remove(&key);
+                }
                 Ok(Value::Null)
             }
             Request::DockState { id } => {
                 self.file_root(&id)?;
-                let prefix = format!("{id}:");
                 let mut docks = Vec::new();
                 for (key, terminal) in &self.docks {
-                    if let Some(kind) = key.strip_prefix(&prefix) {
+                    if let Some(kind) = dock_kind(key, &id) {
                         let current = terminal.current()?;
                         docks.push(json!({"kind":kind,"alive":current["running"] == true}));
                     }
@@ -1091,6 +1101,40 @@ mod tests {
             lock(&self.0).push(frame);
             Ok(())
         }
+    }
+    /// The same sequence as the desktop reactions in `prometeu-core` (`session/tests.rs`).
+    #[test]
+    fn answering_a_request_runs_the_session_again_unless_another_still_waits() {
+        let events = ApplicationEvents::new(Arc::new(Events(Mutex::new(Vec::new()))));
+        events.enable();
+        let event = |value| {
+            events
+                .observe("session", &json!({"event":value,"generation":"g","seq":1}))
+                .unwrap()
+        };
+        let status = || lock(&events.observations)["session"].status;
+        let tool = || json!({"type":"assistant.block","block":{"kind":"tool","name":"Bash"}});
+        event(tool());
+        event(json!({"type":"request.opened","requestId":"a"}));
+        event(json!({"type":"request.opened","requestId":"b"}));
+        event(json!({"type":"request.closed","requestId":"a"}));
+        assert!(status() == Status::Querendo);
+        event(json!({"type":"assistant.block","block":{"kind":"text"}}));
+        assert!(status() == Status::Querendo);
+        event(json!({"type":"request.closed","requestId":"b"}));
+        assert!(status() == Status::Rodando);
+        event(tool());
+        event(json!({"type":"turn.completed","outcome":"ok"}));
+        assert!(status() == Status::Pronta);
+        event(json!({"type":"request.opened","requestId":"c"}));
+        event(json!({"type":"turn.completed","outcome":"interrupted"}));
+        assert!(status() == Status::Pronta);
+        event(json!({"type":"request.closed","requestId":"c"}));
+        assert!(status() == Status::Pronta);
+        event(tool());
+        event(json!({"type":"request.opened","requestId":"d"}));
+        event(json!({"type":"request.closed","requestId":"d"}));
+        assert!(status() == Status::Rodando);
     }
     #[test]
     fn requests_background_settlement_and_retired_exits_preserve_observed_status() {

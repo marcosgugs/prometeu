@@ -6,6 +6,14 @@ use std::sync::{Arc, Mutex};
 
 pub const SCROLLBACK: usize = 512 * 1024;
 
+/// Dock keys are `<owner>:<kind>`. A project owner is its folder path, which may itself contain
+/// ':', while kinds never do: `/repo` must not claim the shells of `/repo:v2`.
+pub fn dock_kind<'a>(key: &'a str, owner: &str) -> Option<&'a str> {
+    key.strip_prefix(owner)?
+        .strip_prefix(':')
+        .filter(|kind| !kind.contains(':'))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TerminalSize {
     pub cols: u16,
@@ -15,6 +23,11 @@ pub struct TerminalSize {
 pub trait TerminalControl: Send + Sync {
     fn resize(&self, size: TerminalSize) -> Result<(), String>;
     fn running(&self) -> bool;
+    /// Whether the terminal runs a command rather than its shell waiting for input: a job holding
+    /// the foreground, or a program the shell replaced itself with.
+    fn running_command(&self) -> bool {
+        false
+    }
     fn system_id(&self) -> u32;
     /// Request asynchronous hangup and escalation. Implementations serialize signals with reaping.
     fn close(&self);
@@ -148,6 +161,10 @@ impl Terminal {
     }
     pub fn alive(&self) -> bool {
         self.control.running()
+    }
+    /// A shell running a command, rather than waiting at its prompt.
+    pub fn running_command(&self) -> bool {
+        self.control.running_command()
     }
     pub fn pid(&self) -> u32 {
         self.control.system_id()

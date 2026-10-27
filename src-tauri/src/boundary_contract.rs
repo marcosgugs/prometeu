@@ -12,6 +12,7 @@ fn board() -> state::Board {
             "branch":"task","worktree":"/contract/worktree","stage":"Working",
             "repos":[{"path":"/contract/repo","name":"Project","worktree":"/contract/worktree","base":"main","pr":{"number":7,"title":"Review","state":"OPEN","isDraft":true}}],
             "port":1420,"audience":["member"],"shared":true,"share_team":"team",
+            "rights":{"send":["member"],"control":[]},"confirm_messages":false,
             "mcp":{"base":"none","add":[],"remove":[]},
             "plugins":{"base":"inherit","add":["plugin"],"remove":["disabled"]},
             "tabs":[
@@ -28,6 +29,11 @@ fn board() -> state::Board {
     // Defaults include translated action profiles; this fixture exercises the board wire shape
     // independently of locale and the person's action registry.
     board.actions = serde_json::from_value(json!({"profiles":[],"commands":[]})).unwrap();
+    board.terminals = serde_json::from_value(json!([
+        {"id":"terminal-contract","folder":"/contract/home","name":"Server"},
+        {"id":"terminal-unnamed","folder":"/contract/repo"}
+    ]))
+    .unwrap();
     board
 }
 
@@ -44,6 +50,7 @@ fn serialized_boundary_fixture_is_current() {
         state::ProviderId::Claude,
         state::ProviderId::Codex,
         state::ProviderId::Antigravity,
+        state::ProviderId::Cursor,
         state::ProviderId::RetiredGemini,
     ];
     let capabilities: serde_json::Map<String, Value> = providers

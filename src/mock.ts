@@ -1,12 +1,13 @@
 import { t } from "./i18n";
 import * as telemetry from "./mock-telemetry";
-import * as reviewCalibration from "./mock-review-calibration";
 import type { Notice } from "./notifications";
 import { notificationView } from "./notification-view";
+import type { IslandSnapshot } from "./island";
+import { islandView, redraw, requestPanels } from "./island-view";
 import type { IpcCommand, IpcHandlers } from "./ipc";
 import { emptyCatalog, initializeDefaults, type Catalog, type Profile } from "./actions";
 /// Browser backend for sample data. Loaded only when window.__TAURI_INTERNALS__ is absent; never loaded in Tauri.
-import { simulatedSocket } from "./team-mock";
+import { simulatedSocket, type SimulatedSocket } from "./team-mock";
 import * as browser from "./mock-browser";
 import type { Share } from "../relay/src/protocol";
 import { parseConversationEvent } from "./conversation";
@@ -16,7 +17,7 @@ import type { Accounts } from "./statusbar";
 import type { CloudStatus } from "./cloud";
 import type { CatalogState, Kind } from "./catalog";
 import type { Skill } from "./skills";
-import { hasWorktree, type Board, type Change, type Choice, type DockKind, type EffectiveItem, type GitBranch, type GitCommit, type GitConflict, type GitFile, type GitStatus, type Issue, type LinearStatus, type McpServer, type Plugin, type ProjectTools, type Pr, type Provenance, type ProviderId, type Scripts, type Selection, type Tab, type Tools, type Workspace } from "./types";
+import { hasWorktree, isTerm, type Board, type Change, type Choice, type DockKind, type EffectiveItem, type GitBranch, type GitCommit, type GitConflict, type GitFile, type GitStatus, type Issue, type LinearStatus, type McpServer, type Plugin, type ProjectTools, type Pr, type Provenance, type ProviderId, type Scripts, type Selection, type ShareRights, type Tab, type Tools, type Workspace } from "./types";
 
 type Handler = (e: { event: string; id: number; payload: unknown }) => void;
 const handlers = new Map<string, Handler[]>();
@@ -134,6 +135,8 @@ const ws = (
   shared: false,
   audience: null,
   remote_control: false,
+  rights: null,
+  confirm_messages: true,
   preparing: false,
   failed: null,
   remote: null,
@@ -141,6 +144,7 @@ const ws = (
   active: tabs[0]?.id ?? null,
 });
 
+const emptyProjects = new Set<string>();
 const board: Board = {
   actions: initializeDefaults(JSON.parse(localStorage.getItem("mock:actions") ?? "null") ?? emptyCatalog()),
   stages: ["Preparando", "Fazendo", "Code review", "Travado", "Feito"],
@@ -154,7 +158,7 @@ const board: Board = {
       // This tab overrides the workspace model so its footer differs from sibling tabs.
       { id: "t2", title: "", status: "pronta", note: null, tokens: 112_400, pending_prompt: "What is interesting about this project?", choice: { agent: "claude", model: "sonnet", effort: "medium" } },
     ]),
-    ws("ui-2231", "p2", "prometeu", "Match the Conductor screen", "Fazendo", [
+    ws("ui-2231", "p2", "prometeu", "Polish the chat screen", "Fazendo", [
       { id: "t3", title: "", status: "rodando", note: "Edit src/style.css", tokens: 23_800 },
     ]),
     // Two repositories on one branch exercise separate change sections.
@@ -171,7 +175,7 @@ const board: Board = {
             name: "prometeu",
             worktree: "~/prometeu/worktrees/prometeu+njord/prometeu-portal-1217/prometeu",
             base: "origin/main",
-            pr: { number: 51, title: "feat(portal): hire through the portal", isDraft: false, state: "OPEN" },
+            pr: { number: 51, title: "feat(portal): hire through the portal", isDraft: false, state: "OPEN", checks: "PENDING" },
           },
           {
             path: "/Users/gustavo/dev/njord",
@@ -188,7 +192,7 @@ const board: Board = {
       ws("icone-2140", "p2", "prometeu", "App icon", "Code review", [
         { id: "t4", title: "", status: "querendo", note: "What icon size do you want to generate?", tokens: 8_100 },
       ]),
-      { unread: true, pr: { number: 42, title: "feat(board): app icon", isDraft: false, state: "OPEN" } },
+      { unread: true, pr: { number: 42, title: "feat(board): app icon", isDraft: false, state: "OPEN", checks: "FAILURE" } },
     ),
     // A merged PR exposes the card badge and completion action.
     Object.assign(
@@ -535,7 +539,7 @@ const SAMPLE =
 /// One workspace has setup and two run scripts; another has none to exercise the add-script prompt.
 const scripts: Record<string, Scripts> = {
   "sessao-0929": {
-    file: ".conductor/settings.toml",
+    file: ".prometeu/settings.toml",
     inherited: false,
     setup: "bin/setup",
     runs: [
@@ -745,6 +749,25 @@ const scrollOf = (tab: string) => {
   }
   return s;
 };
+const mockTab = (id: string) => board.workspaces.flatMap(workspace => workspace.tabs).find(tab => tab.id === id);
+
+/// Simulate a restart after the app ended mid-turn: `localStorage["mock:interrupted"]` names a tab whose last turn
+/// keeps a partial reply and an unanswered question, marked as the desktop marks it on revival.
+function seedInterrupted() {
+  const tab = mockTab(localStorage.getItem("mock:interrupted") ?? "");
+  if (!tab) return;
+  tab.interrupted = true;
+  const at = Date.now() - 60_000;
+  for (const event of [
+    { type: "user.message", content: [{ kind: "text", text: "Run the migrations and tell me what changed." }] },
+    { type: "assistant.started", messageId: "cut" },
+    { type: "assistant.block", messageId: "cut", index: 0, block: { kind: "text", text: "Running the migrations. The first two finished; the third" } },
+    { type: "request.opened", requestId: "cut-question", kind: "question", toolId: null, tool: "AskUserQuestion",
+      input: { questions: [{ question: "Should I also seed the database?", header: "Seed", options: [
+        { label: "Yes", description: "Run the seeds after migrating" }, { label: "No", description: "Only migrate" }] }] } },
+  ]) pushLine(tab.id, { v: 1, at, ...event });
+}
+
 function pushLine(tab: string, o: unknown, keep = true) {
   const s = scrollOf(tab);
   let adapter = conversationAdapters.get(tab);
@@ -835,7 +858,7 @@ function mockKickoff(id: string | undefined, agent: ProviderId) {
   if (!id) return;
   const known = [...skillHub.map(s => `skill-${s.id}/${s.id}`), ...pluginSkillsOfHub().map(s => `${s.plugin}/${s.name}`)];
   if (!known.includes(id)) throw `i18n:${JSON.stringify({ code: "err.kickoff.missing", args: { skill: id } })}`;
-  if (agent === "antigravity" || agent === "gemini") throw 'i18n:{"code":"err.kickoff.unsupported"}';
+  if (agent === "antigravity" || agent === "cursor" || agent === "gemini") throw 'i18n:{"code":"err.kickoff.unsupported"}';
 }
 
 /// Plugin creation progress uses timers instead of an agent.
@@ -941,14 +964,22 @@ function controlInto(tab: string, frame: Record<string, any>) {
 
 /// Persist shared workspaces and their access choices across browser reloads, mirroring board.json.
 const SHARED = "mock:shared";
-for (const [id, audience, shareTeam, remoteControl] of JSON.parse(localStorage.getItem(SHARED) ?? "[]") as [string, string[] | null, string?, boolean?][]) {
+for (const [id, audience, shareTeam, remoteControl, rights] of JSON.parse(localStorage.getItem(SHARED) ?? "[]") as [string, string[] | null, string?, boolean?, ShareRights?][]) {
   const ws = board.workspaces.find((x) => x.id === id);
   if (ws) {
     ws.shared = true;
     ws.audience = audience;
     ws.share_team = shareTeam;
     ws.remote_control = remoteControl ?? false;
+    // Records saved before rights existed mirror old boards: viewing and commenting only.
+    ws.rights = rights ?? null;
   }
+}
+/// Workspaces where the owner turned confirmation off; every other one holds teammates' messages.
+const UNCONFIRMED = "mock:unconfirmed";
+for (const id of JSON.parse(localStorage.getItem(UNCONFIRMED) ?? "[]") as string[]) {
+  const ws = board.workspaces.find((x) => x.id === id);
+  if (ws) ws.confirm_messages = false;
 }
 
 function emit(event: string, payload: unknown) {
@@ -962,6 +993,30 @@ const dismissNotice = () => {
   currentNotice = null;
   document.querySelector(".notification-mock")?.remove();
 };
+
+/// The browser shows the island at the top center; DOM hover stands in for native pointer sampling.
+let islandSnapshot: IslandSnapshot | null = null;
+let islandOn = false;
+let islandHover = false;
+const openIsland = (tab: string) => { islandHover = false; emit("notification-open", tab); drawIsland(); };
+const islandPanels = requestPanels((session, frame) => Promise.resolve(controlInto(session, frame as Record<string, any>)), openIsland);
+function drawIsland() {
+  let host = document.querySelector<HTMLElement>(".island-mock");
+  if (!islandOn || !islandSnapshot) return host?.remove();
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "island-mock";
+    host.addEventListener("mouseenter", () => { islandHover = true; drawIsland(); });
+    host.addEventListener("mouseleave", () => { islandHover = false; drawIsland(); });
+    document.body.append(host);
+  }
+  islandPanels.prune(islandSnapshot);
+  redraw(host, () => islandView(islandSnapshot!, { expanded: islandHover, top: 32 }, null, {
+    open: openIsland,
+    panel: islandPanels.panel,
+    noticeOpen: () => {},
+  }));
+}
 
 /// The mock never receives or stores a key: it records only that one was configured, and answers
 /// with a deterministic local fake instead of calling TypeSafe. `mock:typesafeFail` simulates a
@@ -1002,7 +1057,7 @@ function fakeEvaluation(request: import("./evaluation").EvaluationRequest): impo
 const githubItems: (import("./types").GitHubItem & { scope: import("./types").GitHubScope })[] = [
   { number: 428, title: "Restore terminal state", repository: "prometeucorp/prometeu", scope: "mine", kind: "issue" },
   { number: 93, title: "Keep focus inside dialogs", repository: "acme/design-system", scope: "mine", kind: "issue" },
-  { number: 433, title: "Add repository shortcuts", repository: "prometeucorp/prometeu", scope: "repositories", kind: "issue" },
+  { number: 433, title: "Add repository shortcuts", repository: "prometeucorp/prometeu", scope: "available", kind: "issue" },
   { number: 436, title: "Preserve workspace drafts", repository: "prometeucorp/prometeu", scope: "authored", kind: "pr" },
   { number: 432, title: "Add quick filters", repository: "prometeucorp/prometeu", scope: "authored", kind: "pr" },
   { number: 438, title: "Keep review comments across renames", repository: "prometeucorp/prometeu", scope: "reviews", kind: "pr" },
@@ -1014,26 +1069,60 @@ const githubItems: (import("./types").GitHubItem & { scope: import("./types").Gi
   draft: item.number === 432, updated_at: "2026-10-03T00:00:00Z", labels: ["enhancement"],
 }));
 
+function mockGitHubStatus(): import("./types").GitHubStatus {
+  const connected = localStorage.getItem("mock:githubOff") !== "1";
+  return { connected, login: connected ? localStorage.getItem("mock:githubLogin") ?? "mock-user" : null, busy: false, code: null, url: null, install_url: "https://github.com/apps/prometeu-app/installations/new" };
+}
+
+const mockGitHubFeed: import("./types").GitHubNotification[] = [
+  { id: "1", kind: "review_requested", repository: "prometeucorp/prometeu", number: 438, subject: "pr", actor: "reviewer", target: null, target_id: null, url: "https://github.com/prometeucorp/prometeu/pull/438", created_at: "2026-10-04T15:00:00Z" },
+  { id: "2", kind: "review_approved", repository: "prometeucorp/prometeu", number: 436, subject: "pr", actor: "reviewer", target: "review", target_id: "77", url: "https://github.com/prometeucorp/prometeu/pull/436#pullrequestreview-77", created_at: "2026-10-05T09:30:00Z" },
+  { id: "3", kind: "commented", repository: "prometeucorp/prometeu", number: 436, subject: "pr", actor: "review-bot[bot]", target: "issue_comment", target_id: "78", url: "https://github.com/prometeucorp/prometeu/pull/436#issuecomment-78", created_at: "2026-10-05T10:10:00Z" },
+  { id: "4", kind: "ci_failed", repository: "prometeucorp/prometeu", number: 436, subject: "pr", actor: "mock-user", target: "workflow_run", target_id: "79", url: "https://github.com/prometeucorp/prometeu/actions/runs/79", created_at: "2026-10-05T10:20:00Z" },
+];
+
 const mockCommands: IpcHandlers = {
-  github_identity() {
-    if (localStorage.getItem("mock:githubOff") === "1") throw 'i18n:{"code":"err.github.auth"}';
-    return localStorage.getItem("mock:githubLogin") ?? "mock-user";
+  github_status() { return mockGitHubStatus(); },
+  github_connect() {
+    localStorage.removeItem("mock:githubOff");
+    const status = mockGitHubStatus();
+    emit("github", status);
+    return status;
+  },
+  github_disconnect() {
+    localStorage.setItem("mock:githubOff", "1");
+    const status = mockGitHubStatus();
+    emit("github", status);
+    return status;
   },
   github_issues({ scope }) {
-    if (localStorage.getItem("mock:githubOff") === "1") throw 'i18n:{"code":"err.github.auth"}';
+    if (localStorage.getItem("mock:githubOff") === "1") throw 'i18n:{"code":"err.github.off"}';
     if (localStorage.getItem("mock:githubFailure") === scope) throw 'i18n:{"code":"err.github.response"}';
     const login = localStorage.getItem("mock:githubLogin") ?? "mock-user";
-    const repositories: string[] = JSON.parse(localStorage.getItem(`mock:githubRepositories:${login}`) ?? "[]");
-    return { login, repositories, items: githubItems.filter(item => scope === "repositories" ? item.kind === "issue" && repositories.includes(item.repository) : item.scope === scope), fetched_at: Date.now() / 1000, truncated: false };
+    const claimed: string[] = JSON.parse(localStorage.getItem("mock:githubClaimed") ?? "[]");
+    const items = githubItems.filter(item => scope === "mine" ? item.scope === "mine" || claimed.includes(item.id)
+      : scope === "available" ? item.scope === "available" && !claimed.includes(item.id) : item.scope === scope);
+    return { login, repositories: ["acme/design-system", "prometeucorp/prometeu"], items, fetched_at: Date.now() / 1000, truncated: false };
   },
-  github_repositories({ selected, login }) {
-    if ((localStorage.getItem("mock:githubLogin") ?? "mock-user") !== login) throw 'i18n:{"code":"err.github.accountChanged"}';
-    if (localStorage.getItem("mock:githubOff") === "1") throw 'i18n:{"code":"err.github.auth"}';
-    const repositories = [...new Set(selected.map(value => value.trim().toLowerCase()))].sort();
-    if (selected.length > 20 || repositories.some(value => !/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/i.test(value) || [".", ".."].includes(value.split("/")[1]))) throw 'i18n:{"code":"err.github.repositories"}';
-    localStorage.setItem(`mock:githubRepositories:${localStorage.getItem("mock:githubLogin") ?? "mock-user"}`, JSON.stringify(repositories));
-    return repositories;
+  github_claim({ url }) {
+    const item = githubItems.find(candidate => candidate.url === url && candidate.scope === "available");
+    if (!item) throw 'i18n:{"code":"err.github.notAvailable"}';
+    const claimed: string[] = JSON.parse(localStorage.getItem("mock:githubClaimed") ?? "[]");
+    localStorage.setItem("mock:githubClaimed", JSON.stringify([...claimed, item.id]));
+    return { ...item, scope: undefined } as unknown as import("./types").GitHubItem;
   },
+  github_feed({ after }) {
+    if (localStorage.getItem("mock:githubFeed") === "none") return null;
+    const rows = mockGitHubFeed.filter(row => !after || Number(row.id) > Number(after));
+    return { account: "https://app.prometeu.co#1", github: { login: "mock-user" }, notifications: rows, more: false };
+  },
+  github_subjects({ keys }) {
+    return keys.flatMap(key => {
+      const item = githubItems.find(candidate => candidate.repository === key.repository && candidate.number === key.number);
+      return item ? [{ repository: key.repository, number: key.number, title: item.title, state: "OPEN" }] : [];
+    });
+  },
+  github_detail({ target }) { return target === "workflow_run" ? "CI" : "Looks good to me, just rename the helper."; },
   github_issue_open({ url }) { console.log("open in GitHub:", url); },
   github_projects() { return board.projects.filter(project => project.name === "prometeu").map(project => ({ project: project.id, repository: "prometeucorp/prometeu" })); },
   github_prepare({ url }) {
@@ -1074,6 +1163,11 @@ const mockCommands: IpcHandlers = {
     dismissNotice();
   },
   notification_sound() { return; },
+  island_enable({ enabled }) { islandOn = enabled; drawIsland(); },
+  island_update({ snapshot }) { islandSnapshot = snapshot; drawIsland(); },
+  island_current() { return { snapshot: islandSnapshot, layout: { expanded: islandHover, top: 32 }, notice: currentNotice }; },
+  island_resize() { return; },
+  island_open({ tab }) { openIsland(tab); },
   accounts() {
     return structuredClone(mockAccounts);
   },
@@ -1098,12 +1192,13 @@ const mockCommands: IpcHandlers = {
   set_resource_detail() { return; },
   account_login(args) {
     if (mockAccounts.login) throw 'i18n:{"code":"err.account.busy"}';
-    if (!["claude", "codex", "antigravity"].includes(args.provider)) throw 'i18n:{"code":"err.account.provider"}';
-    if (args.provider === "antigravity") {
-      if ((args.method && args.method !== "external") || (args.id && args.id !== "antigravity")) throw 'i18n:{"code":"err.account.external"}';
-      if (localStorage.getItem("mock:antigravityMissing") === "1") throw 'i18n:{"code":"err.antigravity.version"}';
-      if (!mockAccounts.accounts.some(a => a.id === "antigravity")) mockAccounts.accounts.push({
-        id: "antigravity", provider: "antigravity", email: null, plan: null, connected: false, revision: 0, authMethod: "external",
+    if (!["claude", "codex", "antigravity", "cursor"].includes(args.provider)) throw 'i18n:{"code":"err.account.provider"}';
+    if (args.provider === "antigravity" || args.provider === "cursor") {
+      if ((args.method && args.method !== "external") || (args.id && args.id !== args.provider)) throw 'i18n:{"code":"err.account.external"}';
+      if (args.provider === "antigravity" && localStorage.getItem("mock:antigravityMissing") === "1") throw 'i18n:{"code":"err.antigravity.version"}';
+      if (args.provider === "cursor" && localStorage.getItem("mock:cursorMissing") === "1") throw 'i18n:{"code":"err.cursor.install"}';
+      if (!mockAccounts.accounts.some(a => a.id === args.provider)) mockAccounts.accounts.push({
+        id: args.provider, provider: args.provider, email: null, plan: null, connected: false, revision: 0, authMethod: "external",
       });
       const snapshot = accountSnapshot();
       emit("usage", call("usage"));
@@ -1185,6 +1280,10 @@ const mockCommands: IpcHandlers = {
   load_board() {
     return board;
   },
+  board_recovery() {
+    return JSON.parse(localStorage.getItem("mock:boardRecovery") ?? "null");
+  },
+  board_recovery_open() {},
   cloud_status(args) {
     if (args.refresh && localStorage.getItem("mock:cloudExpired")) localStorage.removeItem("mock:cloud");
     return { ...mockCloud(), offline: !!localStorage.getItem("mock:cloudOffline") };
@@ -1402,8 +1501,39 @@ const mockCommands: IpcHandlers = {
     emit("board", board);
     return;
   },
+  group_projects(args) {
+    const group = args.group?.trim() || undefined;
+    board.projects = board.projects.map((p) => (args.ids.includes(p.id) ? { ...p, group } : p));
+    emit("board", board);
+    return;
+  },
   remove_project(args) {
     board.projects = board.projects.filter((project) => project.id !== args.id);
+    // As in the backend, the project's shells stop with its registration. A folder path may contain ':', but a dock kind
+    // never does, so `/repo` leaves the shells of `/repo:v2` alone.
+    const owned = (key: string) => key.startsWith(`${args.id}:`) && !key.slice(args.id.length + 1).includes(":");
+    for (const key of [...docks.keys()]) if (owned(key)) docks.delete(key);
+    emit("board", board);
+    return;
+  },
+  // Terminal sessions keep the backend's rules: home by default, an absolute folder otherwise, and a blank name falls back to the folder's.
+  terminal_create(args) {
+    const folder = args.folder ?? "/Users/gustavo";
+    if (!folder.startsWith("/")) throw `i18n:${JSON.stringify({ code: "err.dock.noFolder", args: { path: folder } })}`;
+    const session = { id: `terminal-${crypto.randomUUID()}`, folder };
+    board.terminals = [...(board.terminals ?? []), session];
+    emit("board", board);
+    return session;
+  },
+  terminal_rename(args) {
+    const name = args.name?.trim() || undefined;
+    board.terminals = (board.terminals ?? []).map((session) => (session.id === args.id ? { ...session, name } : session));
+    emit("board", board);
+    return;
+  },
+  terminal_close(args) {
+    board.terminals = (board.terminals ?? []).filter((session) => session.id !== args.id);
+    docks.delete(`${args.id}:terminal`);
     emit("board", board);
     return;
   },
@@ -1430,10 +1560,17 @@ const mockCommands: IpcHandlers = {
   // Append runtime turn state after the numbered transcript; it is not a conversation line.
   chat_snapshot(args) {
     const s = scrollOf(String(args.session));
-    return { text: s.text + line({ v: 1, type: "session.state", at: Date.now(), state: "ready" }) + "\n", seq: s.seq };
+    // As after a restart, an interrupted conversation has no process behind it.
+    const state = mockTab(String(args.session))?.interrupted ? "stopped" : "ready";
+    return { text: s.text + line({ v: 1, type: "session.state", at: Date.now(), state }) + "\n", seq: s.seq };
   },
   // Respond to incoming messages so remote input and replies can be tested.
   chat_send(args) {
+    const tab = mockTab(String(args.session));
+    if (tab?.interrupted) {
+      tab.interrupted = false;
+      emit("board", board);
+    }
     sayInto(String(args.session), String(args.text));
     return;
   },
@@ -1723,9 +1860,10 @@ const mockCommands: IpcHandlers = {
       target.share_team = args.shared ? args.team : null;
       target.audience = args.shared ? args.audience ?? null : null;
       target.remote_control = args.shared && args.remoteControl;
+      target.rights = args.shared ? args.rights ?? { send: [], control: [] } : null;
     }
     // Persist sharing choices across page reloads, matching board.json.
-    localStorage.setItem(SHARED, JSON.stringify(board.workspaces.filter((x) => x.shared).map((x) => [x.id, x.audience, x.share_team, x.remote_control])));
+    localStorage.setItem(SHARED, JSON.stringify(board.workspaces.filter((x) => x.shared).map((x) => [x.id, x.audience, x.share_team, x.remote_control, x.rights])));
     emit("board", board);
     return;
   },
@@ -1738,6 +1876,14 @@ const mockCommands: IpcHandlers = {
   set_unread(args) {
     const target = board.workspaces.find((x) => x.id === args.id);
     if (target) target.unread = args.unread;
+    emit("board", board);
+    return;
+  },
+  set_confirm_messages(args) {
+    const target = board.workspaces.find((x) => x.id === args.id);
+    if (target) target.confirm_messages = args.confirm;
+    // Persist the choice across page reloads, matching board.json; held messages stay in memory.
+    localStorage.setItem(UNCONFIRMED, JSON.stringify(board.workspaces.filter((x) => !x.confirm_messages).map((x) => x.id)));
     emit("board", board);
     return;
   },
@@ -1810,8 +1956,16 @@ const mockCommands: IpcHandlers = {
           },
         },
         {
+          id: "cursor", label: "Cursor", installed: localStorage.getItem("mock:cursorMissing") !== "1",
+          authMethods: [{ id: "external", kind: "external", label: t("account.external.attach", { provider: "Cursor" }) }],
+          accountNotice: t("account.cursor.notice"), models: [],
+          capabilities: { initialPlanMode: true, resume: true, approvals: true, attachments: true,
+            usageTokens: false, usageCost: false, contextWindow: false,
+            workspaceMcpSelection: false, workspacePluginSelection: false, compact: false, contextReport: false, userQuestions: true },
+        },
+        {
           id: "antigravity", label: "Antigravity", installed: localStorage.getItem("mock:antigravityMissing") !== "1",
-          authMethods: [{ id: "external", kind: "external", label: t("account.external.attach") }],
+          authMethods: [{ id: "external", kind: "external", label: t("account.external.attach", { provider: "Antigravity" }) }],
           accountNotice: t("account.external.notice"),
           models: [],
           capabilities: { initialPlanMode: false, resume: true, approvals: false, attachments: true,
@@ -1836,13 +1990,16 @@ const mockCommands: IpcHandlers = {
       { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
       { id: "gpt-5.6-terra", label: "GPT-5.6-Terra", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"] },
       { id: "gpt-5.4", label: "GPT-5.4", efforts: ["low", "medium", "high", "xhigh"] },
-    ] : agent === "antigravity" ? [{ id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)", efforts: [] }] : [];
+    ] : agent === "cursor" ? [{ id: "default[]", label: "Auto", efforts: [] }, { id: "composer-2.5[fast=true]", label: "Composer 2.5", efforts: [] }] : agent === "antigravity" ? [{ id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)", efforts: [] }] : [];
     return { models, fetchedAt: Date.now() };
   },
   // Sample provider quotas keep usage indicators visible in the browser.
   usage() {
     const now = Math.floor(Date.now() / 1000);
     return {
+      ...(mockAccounts.accounts.some(a => a.id === "cursor") ? { cursor: {
+        windows: [{ kind: "weekly", pct: 14, resets: now + 6 * 86400 }], at: now,
+      } } : {}),
       ...Object.fromEntries(mockAccounts.accounts.filter((account) => account.id !== account.provider && account.connected && account.authMethod !== "apiKey").map((account, index) => [account.id, {
         windows: [{ kind: "session", pct: 9 + index, resets: now + 2 * 3600 }, { kind: "weekly", pct: 25 + index, resets: now + 4 * 86400 }],
         at: now,
@@ -2129,7 +2286,7 @@ const mockCommands: IpcHandlers = {
       procs: [
         { kind: "app", name: "Prometeu", detail: "", rss: 640 * 1024 * 1024, cpu: 0.8,
           hist: [0.4, 0.6, 1.2, 0.9, 0.7, 2.1, 1.4, 0.8, 0.6, 0.8] },
-        { kind: "chat", name: "Match the Conductor screen", detail: "Conversation 1", rss: 128 * 1024 * 1024, cpu: 2.2,
+        { kind: "chat", name: "Polish the chat screen", detail: "Conversation 1", rss: 128 * 1024 * 1024, cpu: 2.2,
           hist: [0, 0, 4.5, 8.2, 6.1, 3.3, 1.2, 2.8, 5.4, 2.2] },
         { kind: "term", name: "App icon", detail: "run", rss: 54 * 1024 * 1024, cpu: 0.4,
           hist: [0.2, 0.3, 0.2, 0.5, 0.4, 0.3, 0.4, 0.4, 0.3, 0.4] },
@@ -2138,7 +2295,8 @@ const mockCommands: IpcHandlers = {
       ports: [{ id: "0831-1714", title: "App icon", port: 3100 }],
     };
   },
-  list_branches() {
+  list_branches({ project }) {
+    if (emptyProjects.has(project)) return { all: [], local: [], default: "", git: true };
     return {
       all: [
         "origin/main", "main", "entire/checkpoints/v1", "manual-sleep-button",
@@ -2162,6 +2320,10 @@ const mockCommands: IpcHandlers = {
     const repo = String(draft.project).split("/").pop() ?? "repo";
     const fresh = ws(id, draft.project, repo, draft.title || draft.branch, draft.stage, []);
     fresh.branch = draft.branch || "main";
+    if (!draft.worktree) {
+      fresh.repo = fresh.worktree = board.projects.find(project => project.id === draft.project)?.path ?? draft.project;
+      fresh.repos = [{ path: fresh.repo, name: repo, worktree: fresh.worktree, base: draft.base, pr: null }];
+    }
     fresh.preserve_branches = draft.worktree && draft.newBranch === false ? [draft.project] : [];
     // Multiple repositories share a parent directory with one worktree each.
     const extras: string[] = draft.extras ?? [];
@@ -2210,6 +2372,10 @@ const mockCommands: IpcHandlers = {
     return [...docks]
       .filter(([k]) => k.startsWith(`${args.id}:`))
       .map(([k, alive]) => ({ kind: k.split(":")[1] as DockKind, alive }));
+  },
+  /// Browser shells have no foreground jobs, so only a live Setup or Run would be cut off.
+  running_terminals() {
+    return [...docks].filter(([k, alive]) => alive && !isTerm(k.slice(k.lastIndexOf(":") + 1) as DockKind)).length;
   },
   create_scripts_file() {
     return ".prometeu/settings.toml";
@@ -2435,6 +2601,20 @@ const mockCommands: IpcHandlers = {
     emit("board", board);
     return project;
   },
+  create_project({ directory, name }) {
+    name = name.trim();
+    if (!name || [".", "..", ".git"].includes(name.toLowerCase()) || /[\/\\\u0000-\u001f\u007f-\u009f]/.test(name))
+      throw 'i18n:{"code":"err.project.name"}';
+    if (!directory.startsWith("/")) throw 'i18n:{"code":"err.project.directory"}';
+    const path = `${directory.replace(/\/+$/, "")}/${name}`;
+    if (board.projects.some(project => project.path === path))
+      throw `i18n:${JSON.stringify({ code: "err.project.pathExists", args: { path } })}`;
+    const project = { id: path, name, path };
+    board.projects.push(project);
+    emptyProjects.add(path);
+    emit("board", board);
+    return project;
+  },
   // Mirrors session.rs: the closed tab leaves the board and the first survivor becomes active.
   close_tab(args) {
     const workspace = board.workspaces.find((x) => x.id === args.workspace);
@@ -2443,17 +2623,17 @@ const mockCommands: IpcHandlers = {
     if (workspace.active === args.tab) workspace.active = workspace.tabs[0]?.id ?? null;
     emit("board", board);
   },
+  // The browser preview never sends product analytics.
+  analytics_track() {},
+  analytics_enabled() { return localStorage.getItem("mock:analyticsEnabled") === "true"; },
+  analytics_needs_consent() { return !["true", "false"].includes(localStorage.getItem("mock:analyticsEnabled") ?? ""); },
+  analytics_set_enabled({ enabled }) { localStorage.setItem("mock:analyticsEnabled", String(enabled)); return enabled; },
   telemetry_summary({ filter }) { return telemetry.summary(filter); },
   telemetry_insights({ filter }) { return telemetry.insights(filter); },
   telemetry_turns({ conversation, messageIds }) { return telemetry.turns(conversation, messageIds); },
   telemetry_events({ filter, cursor }) { return telemetry.page(filter, cursor); },
   telemetry_export({ filter }) { localStorage.setItem("mock:telemetryExport", telemetry.exportData(filter)); return null; },
   telemetry_clear() { telemetry.clear(); return null; },
-  review_calibration_status() { return reviewCalibration.status(); },
-  review_calibration_set_enabled({ enabled }) { return reviewCalibration.setEnabled(enabled); },
-  review_calibration_append({ generation, record }) { reviewCalibration.append(generation, record); return null; },
-  review_calibration_clear() { return reviewCalibration.clear(); },
-  review_calibration_export() { localStorage.setItem("mock:reviewCalibrationExport", reviewCalibration.exportCsv()); return null; },
   typesafe_status() {
     return { ...mockTypeSafe(), problem: null };
   },
@@ -2525,7 +2705,7 @@ function call(cmd: string, args: Record<string, any> = {}): unknown {
 
 /// A fixed two-member team enables collaboration UI without a relay. mock.presence(false) simulates an offline member.
 let marcusOnline = true;
-const fakes: team.SocketLike[] = [];
+const fakes: SimulatedSocket[] = [];
 /// Marcus's shared workspace provides a running remote conversation.
 const marcusShare = (): Share => ({
   id: "ws-marcus",
@@ -2542,8 +2722,10 @@ const marcusShare = (): Share => ({
   sizes: { mt1: [100, 30], mt2: [100, 30] },
   audience: null,
 });
-function fakeSocket(url: string): team.SocketLike {
-  const socket = simulatedSocket(url, SAMPLE, marcusShare(), () => marcusOnline);
+/// `mock:marcusRights` replaces the rights Marcus announces, to preview a share you may only view (ADR 0090).
+const marcusRights = (): ShareRights | undefined => JSON.parse(localStorage.getItem("mock:marcusRights") ?? "null") ?? undefined;
+function fakeSocket(url: string): SimulatedSocket {
+  const socket = simulatedSocket(url, SAMPLE, marcusShare(), () => marcusOnline, marcusRights());
   fakes.push(socket);
   return socket;
 }
@@ -2576,6 +2758,8 @@ w.__TAURI_INTERNALS__ = {
 };
 
 // Console shortcut for file-drop testing: mock.drop([...]).
+seedInterrupted();
+
 w.mock = {
   catalog: (servers: McpServer[]) => { mcpHub = servers; emit("catalog", null); },
   usage: (payload: unknown) => emit("usage", payload),
@@ -2591,7 +2775,13 @@ w.mock = {
   team: () => ({ status: team.status(), remotes: team.remotes() }),
   presence: (online: boolean) => {
     marcusOnline = online;
-    for (const s of fakes) (s as unknown as { presence: () => void }).presence();
+    for (const s of fakes) s.presence();
+  },
+  /// Marcus messages the open conversation of a workspace you share with him. Grant him Send messages in the share
+  /// menu first; with confirmation on, the message waits above your composer (ADR 0090).
+  message: (text = "Can you also run the migrations before merging?", workspace?: string) => {
+    const ws = board.workspaces.find((x) => x.shared && (!workspace || x.id === workspace));
+    if (ws?.active) for (const s of fakes) s.message(ws.id, ws.active, text);
   },
   /// Simulate Tauri file drops using macOS logical window coordinates; see dropTarget in main.ts.
   drop: (paths: string[], x = innerWidth / 2, y = innerHeight / 2, dropX = x, dropY = y) => {

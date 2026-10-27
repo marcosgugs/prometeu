@@ -7,6 +7,7 @@ import { icon, iconNames, fileIcon, stageIcon, brand, avatar, avatars } from "./
 import { iconButton } from "./icon-button";
 import { conversationBlock, workCard, errorCard, noticeCard } from "./chat/blocks";
 import { requestCard } from "./chat/requests";
+import { pendingCard } from "./chat/pending";
 import { composer, attachmentChip } from "./chat/composer";
 import { contextGauge, openUsagePanel } from "./chat/usage";
 import * as menu from "./menu";
@@ -168,14 +169,19 @@ export const stories: Record<string, Factory> = {
   "chat-error": state => wrap(errorCard(state === "short" ? "Example operation failed" : "Example operation failed\nProcess exited with code 1\nThe original input remains available.")),
   "chat-notice": state => wrap(noticeCard(state === "short" ? 'Agent "explore" finished' : "## Findings\n\nThe renderer lives in `src/chat.ts` and the styles in `src/components/chat/chat.css`.\n\n- Short notices stay on one line.\n- Long reports fold behind their first line.", t("chat.notice.background"))),
   "chat-request"(state, report) {
-    const ask: Ask = { kind: "ask", id: "story-request", ts: 0, toolUseId: null, answered: state === "answered",
+    const ask: Ask = { kind: "ask", id: "story-request", ts: 0, toolUseId: null, answered: state === "answered", closed: state === "closed",
       requestKind: state === "plan" ? "plan" : state === "permission" ? "approval" : "question", tool: "Example tool",
       input: { questions: [{ question: "Which files should be reviewed?", header: "Files", options: [
         { label: "Changed files", description: "Review the current changes" }, { label: "All files", description: "Review the entire project" },
       ] }] },
     };
-    return wrap(requestCard(ask, { respond: value => report(JSON.stringify(value)), allowAlways: () => report("allowAlways"), feedbackOpen: false, feedbackChanged: open => report(String(open)) }));
+    return wrap(requestCard(ask, { respond: value => report(JSON.stringify(value)), allowAlways: () => report("allowAlways"),
+      feedbackOpen: false, feedbackChanged: open => report(String(open)), observer: state === "waiting" }));
   },
+  "chat-pending": (state, report) => wrap(pendingCard({ name: "Marcus Hale", text: state === "short"
+    ? "Can you also run the migrations before merging?"
+    : "Before merging, please:\n\n1. Run the migrations against a copy of production.\n2. Check that completed todos keep their completed_at.\n3. Compare the weekly digest before and after.\n4. Leave the old column until the next release.\n5. Tell me if any test needed a new fixture.\n6. Then merge and tag the release." },
+    { send: () => report("send"), edit: () => report("edit"), discard: () => report("discard") })),
   composer(state, report) {
     const view = composer({ send: () => report(view.area.value), stop: () => report("stop"), addFile: () => report("addFile"),
       voice: () => report("voice"), quote: () => report("quote"), actions: () => report("actions"), voiceAvailable: true });

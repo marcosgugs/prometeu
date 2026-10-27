@@ -1,7 +1,10 @@
 //! Safely expose workspace files to the tree and viewer.
 
 use super::cwd_of;
-use crate::{i18n, AppState};
+use crate::{
+    analytics::{self, Event, FileOperation},
+    i18n, AppState,
+};
 use std::path::Path;
 use tauri::State;
 
@@ -51,6 +54,11 @@ pub fn write_file(
     let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
     let file = inside(&root, &rel)?;
     let result = save(&file, &text, &was);
+    if result.is_ok() {
+        analytics::track(Event::FileOperationCompleted {
+            operation: FileOperation::Save,
+        });
+    }
     state.repository_git.invalidate(&file);
     result
 }
@@ -65,6 +73,15 @@ pub fn create_path(
 ) -> Result<(), String> {
     let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
     let result = state.project_entries.create(&root, &rel, dir);
+    if result.is_ok() {
+        analytics::track(Event::FileOperationCompleted {
+            operation: if dir {
+                FileOperation::CreateFolder
+            } else {
+                FileOperation::CreateFile
+            },
+        });
+    }
     state.repository_git.invalidate(&root);
     result
 }
@@ -78,6 +95,15 @@ pub fn rename_path(
 ) -> Result<(), String> {
     let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
     let result = state.project_entries.rename(&root, &from, &to);
+    if result.is_ok() {
+        analytics::track(Event::FileOperationCompleted {
+            operation: if Path::new(&from).parent() == Path::new(&to).parent() {
+                FileOperation::Rename
+            } else {
+                FileOperation::Move
+            },
+        });
+    }
     state.repository_git.invalidate(&root);
     result
 }
@@ -88,6 +114,11 @@ pub fn rename_path(
 pub fn trash_path(state: State<AppState>, id: String, rel: String) -> Result<(), String> {
     let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
     let result = state.project_entries.trash(&root, &rel);
+    if result.is_ok() {
+        analytics::track(Event::FileOperationCompleted {
+            operation: FileOperation::Trash,
+        });
+    }
     state.repository_git.invalidate(&root);
     result
 }

@@ -15,6 +15,7 @@ pub enum ProviderId {
     Claude,
     Codex,
     Antigravity,
+    Cursor,
     #[serde(rename = "gemini")]
     RetiredGemini,
 }
@@ -28,6 +29,7 @@ impl<'de> Deserialize<'de> for ProviderId {
         Ok(match value.as_str() {
             "codex" => Self::Codex,
             "antigravity" => Self::Antigravity,
+            "cursor" => Self::Cursor,
             "gemini" => Self::RetiredGemini,
             "" | "claude" => Self::Claude,
             _ => Self::default(),
@@ -124,6 +126,14 @@ pub struct Tab {
     /// boards and in every other conversation (ADR 0057).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kickoff: Option<String>,
+    /// The app ended while this conversation was working or waiting, so its last turn was cut
+    /// off. Set on revival, cleared by the next accepted message; absent while false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub interrupted: bool,
+    /// Transcript line counts where the app cut a turn off, recorded when the conversation starts
+    /// again. Replay stops at each one, so continuing never makes the cut reply look finished.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cuts: Vec<u64>,
 }
 
 impl Tab {
@@ -148,6 +158,24 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub path: String,
+    /// Sidebar folder chosen by the person. Projects without one sit at the top level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
+/// A local shell owned by the app rather than by a workspace or project (ADR 0096). Only this
+/// record persists: after a restart the session is listed as stopped, and opening it starts a new
+/// shell in the same folder. It never reaches the relay, the delegation MCP or telemetry.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TerminalSession {
+    /// `terminal-<uuid>`. Dock keys are `<owner>:<kind>`, so it has no `:`, and its prefix keeps
+    /// it apart from workspace UUIDs and project paths.
+    pub id: String,
+    /// The absolute folder the shell starts in.
+    pub folder: String,
+    /// A name the person set; without one the folder's name is shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// A repository's source clone and working copy. Multi-repository workspaces keep one adjacent
@@ -169,6 +197,17 @@ pub struct Repo {
     /// and controls. `None` covers both an unchecked branch and one without a PR.
     #[serde(default)]
     pub pr: Option<crate::domain::Pr>,
+}
+
+/// Person IDs allowed to act on a shared workspace's agent. The frontend enforces them for remote input.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ShareRights {
+    /// Send messages: prompts and interrupts.
+    #[serde(default)]
+    pub send: Vec<String>,
+    /// Control: answers to the agent's approvals and questions.
+    #[serde(default)]
+    pub control: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -246,6 +285,14 @@ pub struct Workspace {
     /// Allow companion devices belonging to the owner to view and control this workspace.
     #[serde(default)]
     pub remote_control: bool,
+    /// People the owner lets act beyond viewing and commenting (ADR 0090). `None` on shares made before rights
+    /// existed, which grant viewing and commenting only.
+    #[serde(default)]
+    pub rights: Option<ShareRights>,
+    /// Teammates' messages wait in the owner's composer until the owner sends, edits or discards them (ADR 0090).
+    /// On by default, including boards saved before the option existed.
+    #[serde(default = "confirm_by_default")]
+    pub confirm_messages: bool,
     /// Worktree preparation is running after the launcher closes. The board can show progress
     /// before any agent tab exists; processes start only after their working directories are ready.
     #[serde(default)]
@@ -272,6 +319,10 @@ pub struct Workspace {
     pub tabs: Vec<Tab>,
     #[serde(default)]
     pub active: Option<String>,
+}
+
+fn confirm_by_default() -> bool {
+    true
 }
 
 /// Read one workspace tool axis from either the layered `Selection` object or the legacy
@@ -394,6 +445,10 @@ pub struct Board {
     pub stages: Vec<String>,
     #[serde(default)]
     pub projects: Vec<Project>,
+    /// Terminal sessions in sidebar order (ADR 0096). Written only when there is one, so older
+    /// boards load unchanged and older versions ignore the field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub terminals: Vec<TerminalSession>,
     /// `cards` is the legacy name from when a workspace contained one session.
     #[serde(alias = "cards")]
     pub workspaces: Vec<Workspace>,
@@ -466,6 +521,7 @@ impl Default for Board {
                 .map(String::from)
                 .to_vec(),
             projects: Vec::new(),
+            terminals: Vec::new(),
             workspaces: Vec::new(),
         }
     }
@@ -495,6 +551,7 @@ impl Board {
                 id: ws.repo.clone(),
                 name: ws.repo_name.clone(),
                 path: ws.repo.clone(),
+                group: None,
             })
             .collect();
         for ws in &mut self.workspaces {
@@ -522,11 +579,14 @@ impl Board {
                     context_window: None,
                     choice: None,
                     kickoff: None,
+                    interrupted: false,
+                    cuts: Vec::new(),
                 });
             }
             // Processes do not survive app restarts. Remove generated placeholder titles so the UI
-            // can display the model.
+            // can display the model. A tab still working or waiting lost its turn with the app.
             for tab in &mut ws.tabs {
+                tab.interrupted |= matches!(tab.status, Status::Rodando | Status::Querendo);
                 tab.status = Status::Desligada;
                 // Tasks from versions with the removed PR monitor carry a start time and may wait
                 // for PR updates that no longer arrive. Settle them once so the command can start
@@ -737,6 +797,46 @@ mod tests {
         board.revive();
         assert!(board.workspaces[0].tabs.is_empty());
         assert!(board.workspaces[0].active.is_none());
+    }
+
+    /// A turn cut off by the app ending stays visible after restart, and a board from before the
+    /// marker loads and saves without it.
+    #[test]
+    fn tabs_working_when_the_app_ended_are_marked_interrupted() {
+        let mut board = board_json(
+            r#","tabs":[
+              {"id":"working","title":"","status":"rodando","note":null,"pending_prompt":null},
+              {"id":"waiting","title":"","status":"querendo","note":null,"pending_prompt":null},
+              {"id":"ready","title":"","status":"pronta","note":null,"pending_prompt":null},
+              {"id":"stopped","title":"","status":"desligada","note":null,"pending_prompt":null},
+              {"id":"again","title":"","status":"desligada","note":null,"pending_prompt":null,"interrupted":true}]"#,
+        );
+        board.revive();
+        let marked: Vec<(&str, bool)> = board.workspaces[0]
+            .tabs
+            .iter()
+            .map(|t| (t.id.as_str(), t.interrupted))
+            .collect();
+        assert_eq!(
+            marked,
+            [
+                ("working", true),
+                ("waiting", true),
+                ("ready", false),
+                ("stopped", false),
+                // Restarting again before the next message keeps the marker.
+                ("again", true)
+            ]
+        );
+        let saved = serde_json::to_value(&board).unwrap();
+        assert_eq!(saved["workspaces"][0]["tabs"][0]["interrupted"], true);
+        let ready = saved["workspaces"][0]["tabs"][2].as_object().unwrap();
+        assert!(ready.get("interrupted").is_none());
+        assert!(ready.get("cuts").is_none());
+        let mut cut = board.workspaces[0].tabs[0].clone();
+        cut.cuts = vec![3];
+        let restored: Tab = serde_json::from_value(serde_json::to_value(&cut).unwrap()).unwrap();
+        assert_eq!(restored.cuts, vec![3]);
     }
 
     /// Existing legacy sessions still receive their migrated tab.

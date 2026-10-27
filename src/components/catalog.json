@@ -182,7 +182,9 @@
     ],
     "consumers": [
       "src/action-settings.ts",
-      "src/components/resource-view.ts"
+      "src/components/resource-view.ts",
+      "src/issues.ts",
+      "src/github-issues.ts"
     ],
     "states": [
       "ready",
@@ -293,7 +295,24 @@
       "question",
       "permission",
       "plan",
-      "answered"
+      "answered",
+      "waiting",
+      "closed"
+    ]
+  },
+  {
+    "id": "chat-pending",
+    "name": "pendingCard",
+    "source": "src/components/chat/pending.ts",
+    "exports": [
+      "pendingCard"
+    ],
+    "consumers": [
+      "src/chat.ts"
+    ],
+    "states": [
+      "short",
+      "long"
     ]
   },
   {

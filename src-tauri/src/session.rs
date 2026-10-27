@@ -1,9 +1,11 @@
+use crate::analytics::{self, Event, ProjectAction, ResourceKind, ResourceScope, WorkspaceAction};
 #[cfg(test)]
 use crate::domain::Pr;
 use crate::lock::lock;
 use crate::selection::{Selection, Tools};
 use crate::state::{
-    publish, Board, Choice, Project, ProviderId, Repo, Status, Tab, ToolTrust, Workspace,
+    publish, Board, Choice, Project, ProviderId, Repo, ShareRights, Status, Tab, ToolTrust,
+    Workspace,
 };
 use crate::workspace_tools::{self, Axis};
 use crate::{chat, dock, i18n, paths, scripts, AppState};
@@ -34,6 +36,34 @@ pub fn load_board(state: State<AppState>) -> Board {
     lock(&state.board).clone()
 }
 
+/// Report once per start that saved workspaces came from the backup or started empty, and where
+/// the unreadable originals were copied.
+#[tauri::command]
+pub fn board_recovery(
+    store: State<std::sync::Arc<crate::board_store::FileBoardStore>>,
+) -> Option<crate::board_store::BoardRecovery> {
+    store.recovery()
+}
+
+/// Open the fixed recovery folder in the system file manager.
+#[tauri::command]
+pub fn board_recovery_open(
+    store: State<std::sync::Arc<crate::board_store::FileBoardStore>>,
+) -> Result<(), String> {
+    let folder = store.recovery_folder();
+    let opened = crate::platform::opener()
+        .arg(&folder)
+        .status()
+        .map_err(i18n::io)?
+        .success();
+    opened.then_some(()).ok_or_else(|| {
+        i18n::ta(
+            "err.session.openFailed",
+            &[("path", folder.display().to_string())],
+        )
+    })
+}
+
 /* ---------- projects ---------- */
 
 /// Register folders once so the launcher can reuse them. Non-Git folders support agent sessions but
@@ -45,19 +75,36 @@ pub fn add_project(
     path: String,
 ) -> Result<Project, String> {
     let path = PathBuf::from(expand(&path));
-    let project = register_local_project(&state.board, &path);
+    let project = register_local_project(&state.board, &path, ProjectAction::Add);
     publish(&app);
     Ok(project)
 }
 
-fn register_local_project(board: &std::sync::Mutex<Board>, path: &Path) -> Project {
+fn register_local_project(
+    board: &std::sync::Mutex<Board>,
+    path: &Path,
+    action: ProjectAction,
+) -> Project {
     let _sync = crate::catalog::guard();
-    register_project(&mut lock(board), path)
+    register_project(&mut lock(board), path, action)
+}
+
+#[tauri::command(async)]
+pub fn create_project(
+    app: AppHandle,
+    state: State<AppState>,
+    directory: String,
+    name: String,
+) -> Result<Project, String> {
+    let path = prometeu_git::create_repository(Path::new(&expand(&directory)), &name)?;
+    let project = register_local_project(&state.board, &path, ProjectAction::Create);
+    publish(&app);
+    Ok(project)
 }
 
 /// Both local folders and catalog clones use the same board registration while holding the catalog
 /// guard. Acquire that guard before the board lock, so origin checks and cloning stay serialized.
-pub(crate) fn register_project(board: &mut Board, path: &Path) -> Project {
+pub(crate) fn register_project(board: &mut Board, path: &Path, action: ProjectAction) -> Project {
     let id = path.display().to_string();
     let project = Project {
         id: id.clone(),
@@ -67,19 +114,45 @@ pub(crate) fn register_project(board: &mut Board, path: &Path) -> Project {
             .unwrap_or("repo")
             .into(),
         path: id,
+        group: None,
     };
-    prometeu_core::projects::register(board, project)
+    let added = !board
+        .projects
+        .iter()
+        .any(|existing| existing.id == project.id);
+    let project = prometeu_core::projects::register(board, project);
+    if added {
+        analytics::track(Event::ProjectActionUsed { action });
+    }
+    project
 }
 
 #[tauri::command(async)]
 pub fn remove_project(app: AppHandle, state: State<AppState>, id: String) {
-    remove_registered_project(&state.board, &id);
+    remove_registered_project(&state.board, &state.ptys, &id);
     publish(&app);
 }
 
-fn remove_registered_project(board: &std::sync::Mutex<Board>, id: &str) {
+/// The project's shells stop with its registration, as a workspace's docks do: otherwise they keep
+/// running out of reach, and adding the same folder again brings them back under the same keys.
+fn remove_registered_project(
+    board: &std::sync::Mutex<Board>,
+    ptys: &std::sync::Mutex<std::collections::HashMap<String, crate::pty::Pty>>,
+    id: &str,
+) {
     let _sync = crate::catalog::guard();
-    prometeu_core::projects::remove(&mut lock(board), id);
+    let removed = {
+        let mut board = lock(board);
+        let exists = board.projects.iter().any(|project| project.id == id);
+        prometeu_core::projects::remove(&mut board, id);
+        exists
+    };
+    if removed {
+        dock::kill_docks(ptys, id);
+        analytics::track(Event::ProjectActionUsed {
+            action: ProjectAction::Remove,
+        });
+    }
 }
 
 /// The sidebar lists projects in board order. Projects missing from `ids` (registered while the
@@ -88,7 +161,55 @@ fn remove_registered_project(board: &std::sync::Mutex<Board>, id: &str) {
 pub fn reorder_projects(app: AppHandle, state: State<AppState>, ids: Vec<String>) {
     {
         let _sync = crate::catalog::guard();
-        sort_projects(&mut lock(&state.board).projects, &ids);
+        let mut board = lock(&state.board);
+        let previous: Vec<_> = board
+            .projects
+            .iter()
+            .map(|project| project.id.clone())
+            .collect();
+        sort_projects(&mut board.projects, &ids);
+        if !board
+            .projects
+            .iter()
+            .map(|project| &project.id)
+            .eq(previous.iter())
+        {
+            analytics::track(Event::ProjectActionUsed {
+                action: ProjectAction::Reorder,
+            });
+        }
+    }
+    publish(&app);
+}
+
+/// Moving projects into a folder, renaming it and dissolving it are the same operation over the
+/// folder's member IDs; an empty name takes them out of the folder.
+#[tauri::command]
+pub fn group_projects(
+    app: AppHandle,
+    state: State<AppState>,
+    ids: Vec<String>,
+    group: Option<String>,
+) {
+    {
+        let _sync = crate::catalog::guard();
+        let mut board = lock(&state.board);
+        let previous: Vec<_> = board
+            .projects
+            .iter()
+            .map(|project| project.group.clone())
+            .collect();
+        prometeu_core::projects::group(&mut board.projects, &ids, group.as_deref());
+        if !board
+            .projects
+            .iter()
+            .map(|project| &project.group)
+            .eq(previous.iter())
+        {
+            analytics::track(Event::ProjectActionUsed {
+                action: ProjectAction::Group,
+            });
+        }
     }
     publish(&app);
 }
@@ -106,7 +227,12 @@ pub fn set_stage(app: AppHandle, state: State<AppState>, id: String, stage: Stri
     {
         let mut board = lock(&state.board);
         if let Some(ws) = board.workspace_mut(&id) {
-            ws.stage = stage;
+            if ws.stage != stage {
+                ws.stage = stage;
+                analytics::track(Event::WorkspaceActionUsed {
+                    action: WorkspaceAction::Stage,
+                });
+            }
         }
     }
     publish(&app);
@@ -125,8 +251,22 @@ pub fn archive_workspace(app: AppHandle, state: State<AppState>, id: String, arc
 /// separate, confirmed decision.
 #[tauri::command(async)]
 pub fn finish_workspace(app: AppHandle, state: State<AppState>, id: String) {
-    crate::workspace_lifecycle::finish(&mut lock(&state.board), &id);
+    let changed = {
+        let mut board = lock(&state.board);
+        let before = board
+            .workspace_mut(&id)
+            .map(|ws| (ws.stage.clone(), ws.archived));
+        crate::workspace_lifecycle::finish(&mut board, &id);
+        before.is_some_and(|(stage, archived)| {
+            !archived || board.workspace_mut(&id).is_some_and(|ws| ws.stage != stage)
+        })
+    };
     archive(&app, &state, &id, true);
+    if changed {
+        analytics::track(Event::WorkspaceActionUsed {
+            action: WorkspaceAction::Finish,
+        });
+    }
 }
 
 fn archive(app: &AppHandle, state: &State<AppState>, id: &str, archived: bool) {
@@ -136,7 +276,7 @@ fn archive(app: &AppHandle, state: &State<AppState>, id: &str, archived: bool) {
     if archived {
         // Stop docks before the archive script removes resources that development servers still
         // use.
-        dock::kill_docks(state, id);
+        dock::kill_docks(&state.ptys, id);
         if let Some(ws) = workspace_copy(state, id) {
             if let Some(command) = dock::scripts_of(&ws).archive {
                 let mut cmd = Command::new("/bin/sh");
@@ -154,6 +294,13 @@ fn archive(app: &AppHandle, state: &State<AppState>, id: &str, archived: bool) {
     stop(state, &effects.stop_tabs);
     publish(app);
     if effects.changed {
+        analytics::track(Event::WorkspaceActionUsed {
+            action: if archived {
+                WorkspaceAction::Archive
+            } else {
+                WorkspaceAction::Restore
+            },
+        });
         crate::telemetry::journey(
             app,
             generation,
@@ -187,7 +334,13 @@ pub fn rename_workspace(app: AppHandle, state: State<AppState>, id: String, titl
     }
     {
         let mut board = lock(&state.board);
-        let _ = workspace_lifecycle::apply(&mut board, &id, Change::Rename(title.into()));
+        let changed = board.workspace_mut(&id).is_some_and(|ws| ws.title != title);
+        let applied = workspace_lifecycle::apply(&mut board, &id, Change::Rename(title.into()));
+        if changed && applied.is_ok() {
+            analytics::track(Event::WorkspaceActionUsed {
+                action: WorkspaceAction::Rename,
+            });
+        }
     }
     publish(&app);
 }
@@ -197,7 +350,19 @@ pub fn rename_workspace(app: AppHandle, state: State<AppState>, id: String, titl
 pub fn pin_workspace(app: AppHandle, state: State<AppState>, id: String, pinned: bool) {
     {
         let mut board = lock(&state.board);
-        let _ = workspace_lifecycle::apply(&mut board, &id, Change::Pin(pinned));
+        let changed = board
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.pinned != pinned);
+        let applied = workspace_lifecycle::apply(&mut board, &id, Change::Pin(pinned));
+        if changed && applied.is_ok() {
+            analytics::track(Event::WorkspaceActionUsed {
+                action: if pinned {
+                    WorkspaceAction::Pin
+                } else {
+                    WorkspaceAction::Unpin
+                },
+            });
+        }
     }
     publish(&app);
 }
@@ -239,7 +404,16 @@ pub fn set_workspace_mcp(
 ) -> Result<(), String> {
     let parsed = axis_patch(request.body(), "mcp", Axis::Mcp)?;
     if let Some(value) = parsed {
+        let changed = lock(&state.board)
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.mcp != value);
         workspace_tools::change(&state.board, &id, Axis::Mcp, value);
+        if changed {
+            analytics::track(Event::ResourceSelectionChanged {
+                kind: ResourceKind::Mcp,
+                scope: ResourceScope::Workspace,
+            });
+        }
     }
     publish(&app);
     Ok(())
@@ -256,7 +430,16 @@ pub fn set_workspace_plugins(
 ) -> Result<(), String> {
     let parsed = axis_patch(request.body(), "plugins", Axis::Plugins)?;
     if let Some(value) = parsed {
+        let changed = lock(&state.board)
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.plugins != value);
         workspace_tools::change(&state.board, &id, Axis::Plugins, value);
+        if changed {
+            analytics::track(Event::ResourceSelectionChanged {
+                kind: ResourceKind::Plugin,
+                scope: ResourceScope::Workspace,
+            });
+        }
     }
     publish(&app);
     Ok(())
@@ -273,7 +456,16 @@ pub fn set_workspace_skills(
 ) -> Result<(), String> {
     let parsed = axis_patch(request.body(), "skills", Axis::Skills)?;
     if let Some(value) = parsed {
+        let changed = lock(&state.board)
+            .workspace_mut(&id)
+            .is_some_and(|ws| ws.skills != value);
         workspace_tools::change(&state.board, &id, Axis::Skills, value);
+        if changed {
+            analytics::track(Event::ResourceSelectionChanged {
+                kind: ResourceKind::Skill,
+                scope: ResourceScope::Workspace,
+            });
+        }
     }
     publish(&app);
     Ok(())
@@ -294,13 +486,31 @@ pub fn set_tools_global(
     {
         let mut board = lock(&state.board);
         if let Some(value) = mcp {
-            board.tools.mcp = value;
+            if board.tools.mcp != value {
+                board.tools.mcp = value;
+                analytics::track(Event::ResourceSelectionChanged {
+                    kind: ResourceKind::Mcp,
+                    scope: ResourceScope::Global,
+                });
+            }
         }
         if let Some(value) = plugins {
-            board.tools.plugins = value;
+            if board.tools.plugins != value {
+                board.tools.plugins = value;
+                analytics::track(Event::ResourceSelectionChanged {
+                    kind: ResourceKind::Plugin,
+                    scope: ResourceScope::Global,
+                });
+            }
         }
         if let Some(value) = skills {
-            board.tools.skills = value;
+            if board.tools.skills != value {
+                board.tools.skills = value;
+                analytics::track(Event::ResourceSelectionChanged {
+                    kind: ResourceKind::Skill,
+                    scope: ResourceScope::Global,
+                });
+            }
         }
     }
     publish(&app);
@@ -539,6 +749,7 @@ pub fn set_unread(app: AppHandle, state: State<AppState>, id: String, unread: bo
 /// Persist sharing intent so reopening the app restores it. The frontend owns relay announcements
 /// and stream forwarding.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn set_shared(
     app: AppHandle,
     state: State<AppState>,
@@ -547,15 +758,32 @@ pub fn set_shared(
     audience: Option<Vec<String>>,
     remote_control: bool,
     team: Option<String>,
+    rights: Option<ShareRights>,
 ) {
     {
         let mut board = lock(&state.board);
-        if let Some(ws) = board.workspace_mut(&id) {
-            ws.shared = shared;
-            ws.share_team = if shared { team } else { None };
-            ws.audience = if shared { audience } else { None };
-            ws.remote_control = shared && remote_control;
-        }
+        let _ = workspace_lifecycle::apply(
+            &mut board,
+            &id,
+            Change::Share {
+                shared,
+                audience,
+                remote_control,
+                team,
+                rights,
+            },
+        );
+    }
+    publish(&app);
+}
+
+/// Persist whether teammates' messages wait for the owner in this workspace (ADR 0090). The frontend holds them in
+/// memory; the board keeps only the choice.
+#[tauri::command]
+pub fn set_confirm_messages(app: AppHandle, state: State<AppState>, id: String, confirm: bool) {
+    {
+        let mut board = lock(&state.board);
+        let _ = workspace_lifecycle::apply(&mut board, &id, Change::ConfirmMessages(confirm));
     }
     publish(&app);
 }
@@ -581,7 +809,7 @@ pub fn look_at(app: AppHandle, state: State<AppState>, id: Option<String>) {
 /// requires a separate decision.
 #[tauri::command]
 pub fn remove_workspace(app: AppHandle, state: State<AppState>, id: String) {
-    dock::kill_docks(&state, &id);
+    dock::kill_docks(&state.ptys, &id);
     let (dead, removed): (Vec<String>, bool) = {
         let mut board = lock(&state.board);
         let removed = board.workspaces.iter().any(|ws| ws.id == id);
@@ -594,6 +822,9 @@ pub fn remove_workspace(app: AppHandle, state: State<AppState>, id: String) {
     };
     stop(&state, &dead);
     if removed {
+        analytics::track(Event::WorkspaceActionUsed {
+            action: WorkspaceAction::Remove,
+        });
         crate::plugins::forget_codex_workspace(&id);
     }
     publish(&app);
@@ -647,7 +878,7 @@ pub fn cleanup_worktree(
 
     // Stop agents and docks before removing their directories. The archive script already ran
     // during archiving; starting it again would race Git while the worktree disappears.
-    dock::kill_docks(&state, &id);
+    dock::kill_docks(&state.ptys, &id);
     let dead: Vec<String> = lock(&state.board)
         .workspace_mut(&id)
         .map(|ws| ws.tabs.iter().map(|t| t.id.clone()).collect())
@@ -655,6 +886,9 @@ pub fn cleanup_worktree(
     stop(&state, &dead);
 
     state.worktree_cleanup.remove(&ws)?;
+    analytics::track(Event::WorkspaceActionUsed {
+        action: WorkspaceAction::Cleanup,
+    });
     // Remove the application-owned directory that grouped the worktrees after its children are
     // gone.
     if ws.multi() {
@@ -748,7 +982,21 @@ pub(crate) fn resolve_workspace_tools(
     agent: ProviderId,
 ) -> ResolvedTools {
     let project = trusted_project(trust, ws);
-    let workspace = ws.tools();
+    let mut workspace = ws.tools();
+    let capabilities = crate::agents::capabilities(agent);
+    // Hidden tool axes must not inherit unsupported hub selections. Preserve explicit workspace
+    // requests so the provider can reject them instead of silently dropping requested tools.
+    if !capabilities.workspace_mcp_selection {
+        workspace.mcp.get_or_insert_with(|| Selection::only(vec![]));
+    }
+    if !capabilities.workspace_plugin_selection {
+        workspace
+            .plugins
+            .get_or_insert_with(|| Selection::only(vec![]));
+        workspace
+            .skills
+            .get_or_insert_with(|| Selection::only(vec![]));
+    }
     let (mcp_base, mut mcp_universe) = mcp_base_and_universe(ws, agent);
     if agent == ProviderId::Claude {
         keep_selected_connectors(&mut mcp_universe, [global, &project, &workspace]);
@@ -842,7 +1090,7 @@ pub(crate) fn workspace_launch_of(
             .and_then(|t| t.choice.clone()),
         tools,
     );
-    if launch.agent == ProviderId::Antigravity {
+    if matches!(launch.agent, ProviderId::Antigravity | ProviderId::Cursor) {
         if let Some(tab) = workspace.tabs.iter().find(|t| t.id == tab) {
             launch.plan = tab.plan;
             launch.permission = tab.permission;
@@ -1037,6 +1285,8 @@ pub(crate) fn create_workspace_owned(
         share_team: None,
         audience: None,
         remote_control: false,
+        rights: None,
+        confirm_messages: true,
         preparing: true,
         failed: None,
         agent: draft.launch.agent,
@@ -1095,6 +1345,10 @@ pub(crate) fn create_workspace_owned(
             },
         },
     );
+    crate::analytics::track(crate::analytics::Event::WorkspaceCreated {
+        provider: draft.launch.agent,
+        is_worktree: draft.worktree,
+    });
     let (bg, id) = (app.clone(), ws.id.clone());
     std::thread::spawn(move || prepare(&bg, &id, draft, cols, rows, generation));
 
@@ -1357,6 +1611,9 @@ pub fn new_tab(
             },
         );
     }
+    crate::analytics::track(crate::analytics::Event::ConversationCreated {
+        provider: launch.agent,
+    });
     chat::ready_now(&app, &tab.id);
     Ok(tab)
 }
@@ -1472,7 +1729,7 @@ fn spawn_tab_with_id(
     )?;
     // The caller publishes the tab before chat::ready_now releases its pending prompt.
     Ok(Tab {
-        plan: launch.agent == ProviderId::Antigravity && launch.plan,
+        plan: matches!(launch.agent, ProviderId::Antigravity | ProviderId::Cursor) && launch.plan,
         permission: launch.permission,
         task: None,
         id,
@@ -1486,6 +1743,8 @@ fn spawn_tab_with_id(
         context_window: None,
         choice,
         kickoff: None,
+        interrupted: false,
+        cuts: Vec::new(),
     })
 }
 
@@ -1891,7 +2150,11 @@ mod tests {
     fn project_order_follows_ids_and_keeps_unlisted_projects_last() {
         let mut board = crate::state::Board::default();
         for path in ["/a", "/b", "/c", "/d"] {
-            super::register_project(&mut board, Path::new(path));
+            super::register_project(
+                &mut board,
+                Path::new(path),
+                crate::analytics::ProjectAction::Add,
+            );
         }
         let ids = ["/c", "/gone", "/a"].map(String::from);
         super::sort_projects(&mut board.projects, &ids);
@@ -1905,7 +2168,11 @@ mod tests {
         use std::time::Duration;
 
         let mut initial = crate::state::Board::default();
-        super::register_project(&mut initial, Path::new("/old"));
+        super::register_project(
+            &mut initial,
+            Path::new("/old"),
+            crate::analytics::ProjectAction::Add,
+        );
         let board = Mutex::new(initial);
         let sync = crate::catalog::guard();
         let (started, ready) = mpsc::channel();
@@ -1913,12 +2180,16 @@ mod tests {
         std::thread::scope(|scope| {
             let add = scope.spawn(|| {
                 started.send(()).unwrap();
-                super::register_local_project(&board, Path::new("/new"));
+                super::register_local_project(
+                    &board,
+                    Path::new("/new"),
+                    crate::analytics::ProjectAction::Add,
+                );
                 finished.send(()).unwrap();
             });
             let remove = scope.spawn(|| {
                 started.send(()).unwrap();
-                super::remove_registered_project(&board, "/old");
+                super::remove_registered_project(&board, &Mutex::default(), "/old");
                 finished.send(()).unwrap();
             });
             ready.recv().unwrap();
@@ -1947,6 +2218,138 @@ mod tests {
         assert_eq!(board.projects[0].path, "/new");
     }
 
+    /// A live shell whose native close only records that it was asked to stop.
+    struct Shell(std::sync::atomic::AtomicBool);
+    impl prometeu_core::terminal::TerminalControl for Shell {
+        fn resize(&self, _: prometeu_core::terminal::TerminalSize) -> Result<(), String> {
+            Ok(())
+        }
+        fn running(&self) -> bool {
+            self.0.load(std::sync::atomic::Ordering::Relaxed)
+        }
+        fn system_id(&self) -> u32 {
+            0
+        }
+        fn close(&self) {
+            self.0.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    struct Silent;
+    impl prometeu_core::terminal::TerminalEvents for Silent {
+        fn output(&self, _: &[u8], _: u64) {}
+        fn closed(&self, _: Option<u32>) {}
+    }
+    fn shell() -> std::sync::Arc<Shell> {
+        std::sync::Arc::new(Shell(std::sync::atomic::AtomicBool::new(true)))
+    }
+    fn pty(shell: &std::sync::Arc<Shell>) -> crate::pty::Pty {
+        let output = prometeu_core::terminal::TerminalOutput::new(std::sync::Arc::new(Silent));
+        crate::pty::Pty::new(
+            Box::new(std::io::sink()),
+            shell.clone(),
+            std::sync::Arc::new(output),
+            None,
+        )
+    }
+    fn projects(paths: &[&str]) -> std::sync::Mutex<crate::state::Board> {
+        let mut board = crate::state::Board::default();
+        for path in paths {
+            super::register_project(
+                &mut board,
+                Path::new(path),
+                crate::analytics::ProjectAction::Add,
+            );
+        }
+        std::sync::Mutex::new(board)
+    }
+
+    #[test]
+    fn removing_a_project_stops_its_shells_and_keeps_other_docks() {
+        use prometeu_core::terminal::TerminalControl;
+        use std::sync::Mutex;
+
+        let board = projects(&["/repo", "/repo:v2"]);
+        let keys = [
+            "/repo:terminal",
+            "/repo:terminal-2",
+            "/repo:v2:terminal",
+            "workspace:terminal",
+        ];
+        let shells = keys.map(|_| shell());
+        let ptys: Mutex<std::collections::HashMap<_, _>> = Mutex::new(
+            keys.iter()
+                .zip(&shells)
+                .map(|(key, shell)| (key.to_string(), pty(shell)))
+                .collect(),
+        );
+        let running = || shells.each_ref().map(|shell| shell.running());
+
+        // An id that is no registered project stops nothing, not even a workspace's shell.
+        super::remove_registered_project(&board, &ptys, "workspace");
+        assert_eq!(running(), [true; 4]);
+
+        super::remove_registered_project(&board, &ptys, "/repo");
+        let mut left: Vec<_> = ptys.lock().unwrap().keys().cloned().collect();
+        left.sort();
+        assert_eq!(left, ["/repo:v2:terminal", "workspace:terminal"]);
+        assert_eq!(running(), [false, false, true, true]);
+        let projects = board.into_inner().unwrap().projects;
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].id, "/repo:v2");
+    }
+
+    /// A removal that lands while the project's shell is spawning waits to stop it, and a shell
+    /// asked for after the removal finds no folder.
+    #[test]
+    fn removing_a_project_while_its_shell_starts_stops_that_shell() {
+        use prometeu_core::terminal::TerminalControl;
+        use std::sync::{mpsc, Mutex};
+        use std::time::Duration;
+
+        // Shells start only in a folder that exists.
+        let folder =
+            std::env::temp_dir().join(format!("prometeu-project-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let id = folder.display().to_string();
+        let key = format!("{id}:terminal");
+        let board = projects(&[&id]);
+        let ptys = Mutex::new(std::collections::HashMap::new());
+        let started = shell();
+        let (spawning, spawned) = mpsc::channel();
+        let (release, go) = mpsc::channel::<()>();
+        let (finished, removal) = mpsc::channel();
+        std::thread::scope(|scope| {
+            let (ptys, board, started, id, key) = (&ptys, &board, &started, &id, &key);
+            let start = scope.spawn(move || {
+                crate::dock::start_shell(ptys, board, id, key, |_| {
+                    spawning.send(()).unwrap();
+                    go.recv().unwrap();
+                    Ok(pty(started))
+                })
+            });
+            spawned.recv().unwrap();
+            scope.spawn(move || {
+                super::remove_registered_project(board, ptys, id);
+                finished.send(()).unwrap();
+            });
+            let waited = matches!(
+                removal.recv_timeout(Duration::from_millis(100)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            );
+            release.send(()).unwrap();
+            assert_eq!(start.join().unwrap(), Ok(true));
+            assert!(waited, "removal must wait for the starting shell");
+            removal.recv().unwrap();
+        });
+        assert!(ptys.lock().unwrap().is_empty());
+        assert!(!started.running());
+        let late = crate::dock::start_shell(&ptys, &board, &id, &key, |_| {
+            panic!("a removed project has no folder to start in")
+        });
+        assert_eq!(late, Err(crate::i18n::t("err.session.noWorkspace")));
+        std::fs::remove_dir_all(folder).unwrap();
+    }
+
     fn pr(number: u64, branch: &str, state: &str) -> Pr {
         Pr {
             number,
@@ -1954,6 +2357,8 @@ mod tests {
             is_draft: false,
             state: state.into(),
             head_ref_name: branch.into(),
+            checks: None,
+            node_id: String::new(),
         }
     }
 
@@ -2037,6 +2442,8 @@ mod tests {
             share_team: None,
             audience: None,
             remote_control: false,
+            rights: None,
+            confirm_messages: true,
             preparing: false,
             mcp: None,
             plugins: None,
@@ -2075,6 +2482,24 @@ mod tests {
         // Force permits the explicitly approved loss of uncommitted changes.
         super::hard(&ws).unwrap();
         std::fs::remove_file(dest.join("c.txt")).unwrap();
+        super::check(&ws).unwrap();
+
+        // A status Git cannot read never counts as clean, even with the PR merged; the person sees
+        // Git's message and force remains the explicit way through.
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&dest)
+            .args(["rev-parse", "--path-format=absolute", "--git-path", "index"])
+            .output()
+            .unwrap();
+        let index = std::path::PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+        let readable = std::fs::read(&index).unwrap();
+        std::fs::write(&index, "not an index").unwrap();
+        let blocked = super::check(&ws).unwrap_err();
+        assert!(blocked.contains("err.cleanup.unverified"), "{blocked}");
+        assert!(blocked.contains("index"), "{blocked}");
+        super::hard(&ws).unwrap();
+        std::fs::write(&index, readable).unwrap();
         super::check(&ws).unwrap();
 
         // Force never bypasses the requirement to archive first.
@@ -2284,6 +2709,8 @@ mod tests {
             share_team: None,
             audience: None,
             remote_control: false,
+            rights: None,
+            confirm_messages: true,
             preparing: false,
             mcp: None,
             plugins: None,
@@ -2324,6 +2751,8 @@ mod tests {
             context_window: None,
             choice,
             kickoff: None,
+            interrupted: false,
+            cuts: Vec::new(),
         }
     }
 
@@ -2439,9 +2868,10 @@ mod tests {
             ] {
                 let expected = match provider {
                     ProviderId::Claude => crate::paths::transcript(id, Path::new(&ws.worktree)),
-                    ProviderId::Codex | ProviderId::Antigravity | ProviderId::RetiredGemini => {
-                        crate::paths::chat_log(id)
-                    }
+                    ProviderId::Codex
+                    | ProviderId::Antigravity
+                    | ProviderId::Cursor
+                    | ProviderId::RetiredGemini => crate::paths::chat_log(id),
                 };
                 assert_eq!(crate::chat::transcript_of(&ws, id), expected, "tab {id}");
             }
@@ -2784,12 +3214,90 @@ mod tests {
                         )
                         .unwrap();
                     }
-                    ProviderId::Codex | ProviderId::Antigravity | ProviderId::RetiredGemini => {
+                    ProviderId::Codex
+                    | ProviderId::Antigravity
+                    | ProviderId::Cursor
+                    | ProviderId::RetiredGemini => {
                         crate::mcp::codex_config("test", launch.mcp.as_deref()).unwrap();
                     }
                 }
             }
         }
+        // Unsupported providers must not inherit global or trusted-project tools on any axis.
+        std::fs::write(
+            crate::paths::root().join("plugins.json"),
+            r#"[{"id":"reviewer","source":"/fixture"},{"id":"skill-review","source":"/fixture"}]"#,
+        )
+        .unwrap();
+        let inherited = Tools {
+            mcp: Some(Selection::only(vec!["hub".into()])),
+            plugins: Some(Selection::only(vec!["reviewer".into()])),
+            skills: Some(Selection::only(vec!["skill-review".into()])),
+        };
+        ws.repo = ws.worktree.clone();
+        ws.repos.clear();
+        ws.mcp = None;
+        ws.plugins = None;
+        ws.skills = None;
+        let root = Path::new(&ws.worktree);
+        std::fs::create_dir_all(root.join(".prometeu")).unwrap();
+        std::fs::write(root.join(".prometeu/settings.toml"),
+            "[tools]\nmcp = { add = [\"hub\"] }\nplugins = { add = [\"reviewer\"] }\nskills = { add = [\"skill-review\"] }\n").unwrap();
+        let declaration = super::project_declaration(root, root).unwrap();
+        let trust = vec![crate::state::ToolTrust {
+            repo: declaration.repo,
+            hash: declaration.hash,
+            approved: true,
+            at: 0,
+        }];
+        for global in [&inherited, &Tools::default()] {
+            for agent in [ProviderId::Cursor, ProviderId::Antigravity] {
+                let tools = resolve_workspace_tools(global, &trust, &ws, agent);
+                assert_eq!(tools.mcp, Some(vec![]));
+                assert_eq!(tools.plugins, Some(vec![]));
+                assert_eq!(tools.skills, Some(vec![]));
+                let choice = Choice {
+                    agent,
+                    ..Choice::default()
+                };
+                ws.tabs = vec![tab("mixed", Some(choice.clone()))];
+                for launch in [
+                    workspace_launch_with(&ws, Some(choice), &tools),
+                    workspace_launch_of(&ws, "mixed", &tools),
+                ] {
+                    assert_eq!(launch.mcp, Some(vec![]));
+                    assert_eq!(launch.plugins, Some(vec![]));
+                    assert_eq!(launch.skills, Some(vec![]));
+                }
+            }
+        }
+        // Explicit workspace requests still reach Cursor's rejection guard.
+        ws.mcp = inherited.mcp;
+        ws.plugins = inherited.plugins;
+        ws.skills = inherited.skills;
+        let tools = resolve_workspace_tools(&Tools::default(), &trust, &ws, ProviderId::Cursor);
+        assert_eq!(tools.mcp, Some(vec!["hub".into()]));
+        assert_eq!(tools.plugins, Some(vec!["reviewer".into()]));
+        assert_eq!(tools.skills, Some(vec!["skill-review".into()]));
+        let launch = workspace_launch_with(
+            &ws,
+            Some(Choice {
+                agent: ProviderId::Cursor,
+                ..Choice::default()
+            }),
+            &tools,
+        );
+        assert_eq!(
+            crate::cursor::prepare(
+                "test",
+                Path::new(&ws.worktree),
+                None,
+                &launch,
+                &crate::account_profiles::native()
+            )
+            .err(),
+            Some(crate::i18n::t("err.cursor.unsupported"))
+        );
     }
 
     /// The setters' payload gate: `null` means inherit, a well-formed `Selection` passes, a
@@ -3562,6 +4070,8 @@ diff --git a/docs/with spaces.md b/docs/with spaces.md
             share_team: None,
             audience: None,
             remote_control: false,
+            rights: None,
+            confirm_messages: true,
             preparing: false,
             mcp: None,
             plugins: None,
@@ -3872,7 +4382,10 @@ fn repos_of(state: &State<AppState>, id: &str) -> Vec<Repo> {
 /// resolve to their registered clone, allowing file access without a workspace. Project and
 /// workspace IDs never overlap.
 pub(crate) fn cwd_of(state: &State<AppState>, id: &str) -> Option<PathBuf> {
-    let board = lock(&state.board);
+    cwd_in(&lock(&state.board), id)
+}
+
+pub(crate) fn cwd_in(board: &Board, id: &str) -> Option<PathBuf> {
     board
         .workspaces
         .iter()

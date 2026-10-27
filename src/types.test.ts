@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { use } from "./i18n";
-import { branchTaken, fmtTokens, repoPath, tabLabel, toggleSelection, type Board, type Selection, type Tab, type Workspace } from "./types";
+import { branchTaken, dockLabel, fmtTokens, projectMatches, refillOrder, repoPath, tabLabel, toggleSelection, type Board, type Selection, type Tab, type Workspace } from "./types";
 
 use("en");
 
@@ -125,5 +125,30 @@ describe("repoPath", () => {
 
   it("falls back to the workspace root for an unknown repository", () => {
     expect(repoPath(multi, "gone", "README.md")).toBe("README.md");
+  });
+});
+
+describe("dockLabel", () => {
+  it("numbers later shells the way their dock tabs do", () => {
+    expect((["terminal", "terminal-2", "terminal-10"] as const).map(dockLabel)).toEqual(["Terminal", "Terminal 2", "Terminal 10"]);
+  });
+});
+
+
+describe("sidebar projects", () => {
+  it("reorders one list without moving projects from other folders", () => {
+    // Folder projects b and d sit between loose projects a and c in the board order.
+    expect(refillOrder(["a", "b", "c", "d"], ["c", "a"])).toEqual(["c", "b", "a", "d"]);
+    expect(refillOrder(["a", "b", "c", "d"], ["d", "b"])).toEqual(["a", "d", "c", "b"]);
+  });
+
+  it("filters by project name, workspace title or branch, ignoring case", () => {
+    const project = { id: "/api", name: "capim-api", path: "/api" };
+    const ws = [{ title: "Boleto webhook", branch: "pato-verde" }] as Workspace[];
+    expect(projectMatches(project, ws, "")).toBe(true);
+    expect(projectMatches(project, ws, " API ")).toBe(true);
+    expect(projectMatches(project, ws, "webhook")).toBe(true);
+    expect(projectMatches(project, ws, "pato")).toBe(true);
+    expect(projectMatches(project, ws, "relay")).toBe(false);
   });
 });

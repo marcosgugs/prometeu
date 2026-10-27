@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { getBundleType, getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
@@ -122,6 +123,8 @@ export function view(phase: Phase): View {
 /// Inject update checking, restart, clock, rendering, and notices for deterministic tests.
 export type Io = {
   check: () => Promise<Found | null>;
+  /// Whether restarting may cut off local work now; the installed version also applies at the next start.
+  allow: (version: string) => Promise<boolean>;
   relaunch: () => Promise<void>;
   clock: () => string;
   show: (view: View) => void;
@@ -176,6 +179,7 @@ export function updater(io: Io) {
 
   // The bundle on disk is ready; explicit restart replaces the running app and ends its processes.
   const restart = async (version: string) => {
+    if (!(await io.allow(version))) return;
     go({ at: "restarting", version });
     try {
       await io.relaunch();
@@ -211,6 +215,7 @@ let click: () => void = () => {};
 const clock = () => new Date().toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 
 function dress(btn: HTMLButtonElement) {
+  btn.dataset.track = now.ready ? "update.restart" : now.footer ? "update.install" : "update.check";
   btn.textContent = now.text;
   btn.title = now.title;
   btn.disabled = now.disabled;
@@ -249,6 +254,7 @@ export function settingsRow(): HTMLElement {
   el.querySelector("b")!.textContent = ver ? `Prometeu ${ver}` : "Prometeu";
   // Offer release notes before download, only when notes exist.
   const link = h("button", "ghost md notes") as HTMLButtonElement;
+  link.dataset.track = "update.notes";
   link.addEventListener("click", () => {
     if (now.notes) openNotes(now.notes.version, now.notes.body);
   });
@@ -261,7 +267,7 @@ export function settingsRow(): HTMLElement {
   return el;
 }
 
-export async function init(say: Io["say"]) {
+export async function init(say: Io["say"], allow: Io["allow"]) {
   ver = `v${await getVersion()}`;
   $("ver").textContent = ver;
   // Only AppImage supports replacing itself; distro packages stay with their package manager.
@@ -273,7 +279,9 @@ export async function init(say: Io["say"]) {
 
   const up = updater({
     check,
-    relaunch,
+    allow,
+    // Relaunch may terminate this process before its promise returns. This records intent only.
+    relaunch: () => { track({ name: "update_action_used", action: "restart" }); return relaunch(); },
     clock,
     say,
     show: (next) => {
@@ -281,7 +289,14 @@ export async function init(say: Io["say"]) {
       paint();
     },
   });
-  click = () => void up.click();
+  click = () => {
+    const before = up.phase().at;
+    void up.click().then(() => {
+      const after = up.phase().at;
+      if (before === "found" && after === "ready") track({ name: "update_action_used", action: "install" });
+      else if (["quiet", "fresh", "failed"].includes(before) && (after === "found" || after === "fresh")) track({ name: "update_action_used", action: "check" });
+    });
+  };
 
   $("update").addEventListener("click", () => click());
   // Check during startup so the first Settings status reflects an actual result.

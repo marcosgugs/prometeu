@@ -155,7 +155,7 @@ As stories isoladas de chat e Git não têm E2E dedicado. A galeria permite
 inspeção visual; os testes existentes do produto cobrem sua integração.
 
 A implementação cobre o catálogo, Recursos, Ações e as extrações de chat e Git
-descritas acima. TypeSafe, telemetria e o restante de Configurações mantêm
+descritas acima. Telemetria e o restante de Configurações mantêm
 suas composições atuais. Carregamento e erro da lista inteira são entradas demonstradas na
 galeria; a política de carregamento inicial dos hubs não foi alterada.
 

@@ -218,6 +218,69 @@ fn command(root: &Path) -> Command {
     command
 }
 
+/// Create only a new child directory. Registration belongs to the host after Git succeeds.
+pub fn create_repository(directory: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = name.trim();
+    if name.is_empty()
+        || matches!(name, "." | "..")
+        || name.eq_ignore_ascii_case(".git")
+        || name
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\'))
+    {
+        return Err(prometeu_core::error::code("err.project.name"));
+    }
+    if !directory.is_absolute() || !directory.is_dir() {
+        return Err(prometeu_core::error::code("err.project.directory"));
+    }
+    let path = directory.canonicalize().map_err(io_error)?.join(name);
+    std::fs::create_dir(&path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            prometeu_core::error::with_args(
+                "err.project.pathExists",
+                &[("path", path.display().to_string())],
+            )
+        } else {
+            io_error(error)
+        }
+    })?;
+    let mut git = command(&path);
+    // An inherited repository or template must not redirect writes or populate the new project.
+    for key in [
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ] {
+        git.env_remove(key);
+    }
+    let result = git
+        .args(["init", "--template="])
+        .output()
+        .map_err(io_error)
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(prometeu_core::error::with_args(
+                    "err.git.command",
+                    &[(
+                        "cause",
+                        String::from_utf8_lossy(&output.stderr).trim().to_string(),
+                    )],
+                ))
+            }
+        });
+    if let Err(error) = result {
+        // Remove only an empty directory; retain partial Git state or concurrently written files.
+        let _ = std::fs::remove_dir(&path);
+        return Err(error);
+    }
+    Ok(path)
+}
+
 fn output(root: &Path, args: &[&str]) -> Result<Output, String> {
     command(root).args(args).output().map_err(io_error)
 }

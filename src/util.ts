@@ -13,12 +13,13 @@ export function template(tag: string, className: string, html: string): HTMLElem
 }
 
 /// A full-page empty state with a title, explanation, and optional action.
-export function empty(title: string, text: string, action?: [string, () => void]): HTMLElement {
+export function empty(title: string, text: string, action?: [string, () => void, string?]): HTMLElement {
   const box = template("div", "iempty", `<h3></h3><p></p>`);
   box.children[0].textContent = title;
   box.children[1].textContent = text;
   if (action) {
     const b = h("button", "outline md", action[0]);
+    if (action[2]) b.dataset.track = action[2];
     b.addEventListener("click", action[1]);
     box.append(b);
   }
@@ -32,4 +33,15 @@ export function debounce<A extends unknown[]>(ms: number, fn: (...args: A) => vo
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), ms);
   };
+}
+
+/// Show at most two duration units, such as 3h 15m or 3d 4h.
+export function span(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d) return h ? `${d}d ${h}h` : `${d}d`;
+  if (h) return m ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
 }

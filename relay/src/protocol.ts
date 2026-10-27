@@ -110,8 +110,9 @@ export type Share = {
   audience: string[] | null;
 };
 
-/// A share plus relay-owned owner identity and presence.
-export type Shared = Share & { owner: string; online: boolean };
+/// A share plus relay-owned owner identity and presence. `left` lists the people who left the share; the relay keeps
+/// them out of its audience until the owner readmits them, and omits the field when nobody left.
+export type Shared = Share & { owner: string; online: boolean; left?: string[] };
 
 /// A member is one device. `person` links a companion device to the membership it belongs to; absent on primary members and legacy teams.
 export type Member = { id: string; name: string; online: boolean; key?: string; person?: string };
@@ -149,6 +150,10 @@ export type Up =
   | { t: "me"; name: string }
   | { t: "share"; share: Share }
   | { t: "unshare"; ws: string }
+  /// A viewer leaves another owner's share: every device of the viewer's person stops receiving it.
+  | { t: "leave"; ws: string }
+  /// The owner lets a person who left back into the share's audience.
+  | { t: "readmit"; ws: string; person: string }
   | { t: "attach"; ws: string; tab: string }
   | { t: "detach" }
   | { t: "size"; ws: string; tab: string; cols: number; rows: number }
@@ -276,8 +281,11 @@ export function parseUp(value: unknown): Up | null {
       return share ? { t: "share", share } : null;
     }
     case "unshare":
+    case "leave":
     case "notes":
       return id(value.ws) ? { t: value.t, ws: value.ws } : null;
+    case "readmit":
+      return id(value.ws) && id(value.person) ? { t: "readmit", ws: value.ws, person: value.person } : null;
     case "attach":
       return id(value.ws) && id(value.tab) ? { t: "attach", ws: value.ws, tab: value.tab } : null;
     case "detach":
@@ -340,7 +348,9 @@ function parseMembers(value: unknown): Member[] | null {
 function parseShared(value: unknown): Shared | null {
   const share = parseShare(value);
   if (!share || !record(value) || !id(value.owner) || typeof value.online !== "boolean") return null;
-  return { ...share, owner: value.owner, online: value.online };
+  if (value.left !== undefined && (!Array.isArray(value.left) || value.left.length > MEMBERS_MAX || !value.left.every(id))) return null;
+  const left = Array.isArray(value.left) && value.left.length ? { left: [...new Set(value.left as string[])] } : {};
+  return { ...share, owner: value.owner, online: value.online, ...left };
 }
 
 export function parseNote(value: unknown): Note | null {

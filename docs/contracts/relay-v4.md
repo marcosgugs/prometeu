@@ -23,7 +23,9 @@ send other updates to a socket that has not identified itself yet.
 
 The client records each member/key link before use. A changed key replaces the
 link automatically, with no local acceptance ([ADR 0042](../decisions/0042-automatic-key-rotation.md)). Missing keys receive no
-content and do not erase links. Renewing tickets does not reset TOFU.
+content and do not erase links. Renewing tickets does not reset TOFU. Content
+follows the link; remote input additionally needs the owner's approval of that
+member and key, described under [Authority and replay](#authority-and-replay).
 See [organizations](cloud-organizations.md) for leases and Cloud authorization.
 
 After the identity, organization sockets receive `lease { expires_in }` (1 to
@@ -47,10 +49,15 @@ DHKEM(P-256, HKDF-SHA256), HKDF-SHA256, AES-256-GCM. The `info` binds the JSON
 never from a free field of the envelope.
 
 The plaintext contains `{ frame: Up }` or `{ binary: base64url }`. `share`
-includes `revision`, monotonic and persisted by the owner. `write` includes
-`expires`, at most two minutes ahead. The client validates the payload again
-after opening the box and checks the workspace, tab, author, recipient and
-audience.
+includes `revision`, monotonic and persisted by the owner, and `rights`
+`{ send, control }`, the people allowed to send messages and to control
+([ADR 0090](../decisions/0090-approved-remote-input.md)). Rights travel only
+inside the authenticated payload, never in the outer frame, so
+`relay/src/protocol.ts` does not carry them. Older clients ignore the field; an
+announcement without it comes from an owner that predates rights, and peers keep
+showing its controls. `write` includes `expires`, at most two minutes ahead. The
+client validates the payload again after opening the box and checks the
+workspace, tab, author, recipient and audience.
 
 In the outer frame:
 
@@ -111,11 +118,40 @@ the action. The receipts survive reconnection and restart. Local card validation
 is still mandatory. Conversation sequences handle snapshot/live duplicates; the
 relay may still omit content or present an incomplete history.
 
-An authenticated message from a companion whose `person` is the conversation's
-owner reaches the agent with the original text, as a message from the person
-themselves. Peers and legacy teams keep the team's authorship prefix. That
-distinction uses the authorized roster, never the name or a field sent freely in
-the message.
+Remote input needs a right on the sender's person, enforced by the owner from
+its board whatever the peer shows: prompts and `turn.interrupt` need Send
+messages, and `request.respond` needs Control. The owner's devices hold both
+through `remote_control`. Input without the right is discarded silently.
+
+The owner then runs remote input only from a member whose current key it
+approved locally ([ADR 0090](../decisions/0090-approved-remote-input.md)).
+Approvals are per scope and per member and key; the relay neither receives nor
+enforces rights or approvals. For any other sender, the owner opens the
+envelope and spends the receipt as usual, then discards the input without
+running it and records a notice that names the person. A changed key, a member
+that first appears in the directory and a new device, including one whose
+`person` is the owner, fall in that case. `watch`, snapshots, the live stream
+and comments depend on neither.
+
+An authenticated and approved message from a companion whose `person` is the
+conversation's owner reaches the agent with the original text, as a message
+from the person themselves. Peers and legacy teams keep the team's authorship
+prefix. That distinction uses the authorized roster, never the name or a field
+sent freely in the message. A peer's message waits on the owner's Mac, in
+memory, until the owner sends, edits or discards it, unless the workspace turned
+owner confirmation off; interrupts and answers do not wait. The sender receives
+no receipt either way.
+
+A viewer leaves another owner's share with `leave { ws }`. The relay removes
+every device of the viewer's person from the stored audience, records the person
+in the entry's `left`, detaches them, sends `unshare` and drops the share's inbox
+items, even while the owner is offline. Later `share` announcements cannot bring
+that person back: the relay filters their devices out until the owner sends
+`readmit { ws, person }`, which only the owner may send. `Shared.left` reaches the
+owner, and is omitted when nobody left; the owner's channel excludes those people
+from its recipients and discards their watch and input. Stopping the share
+deletes `left` with the entry; the roster drops people who left the
+organization. Decision in [ADR 0094](../decisions/0094-leaving-a-share.md).
 
 Peers' comments use the last authenticated audience they received. If the relay
 omits an update, revocation may be delayed for those senders. Content already
@@ -134,8 +170,9 @@ encrypting, the client expands each person into their devices that have a key:
 the boxes, the audience published in the relay and the frame's `mentions` come
 to list devices, so the relay applies `watch`, `attach`, `write` and inbox per
 device without knowing the rule. The owner accepts `watch` and `write` from a
-device through the person it belongs to. Key links and receipts stay per device. Decision and limits in
-[ADR 0027](../decisions/0027-companion-devices.md).
+device through the person it belongs to, and runs that `write` only once the
+device's key is approved. Key links, approvals and receipts stay per device.
+Decision and limits in [ADR 0027](../decisions/0027-companion-devices.md).
 
 The owner's companion devices enter the recipient list only when the local
 `Workspace.remote_control` is active. That permission does not cross the
@@ -170,8 +207,10 @@ content in v3 collaboration; see the limits and the operation in ADR 0022.
 ## Evidence
 
 `team-crypto.test.ts`, `team-security.test.ts` and `team-channel.test.ts` check
-the client's boundary with real cryptography. `protocol.test.ts` and
-`logic.test.ts` check the relay's contracts and rules. The real local Worker is
+the client's boundary with real cryptography; `team-owner.test.ts` checks that
+input runs only from approved identities while content keeps flowing.
+`protocol.test.ts` and `logic.test.ts` check the relay's contracts and rules,
+including leaving and readmission. The real local Worker is
 exercised in `relay/src/worker.integration.test.ts`, and the web mock uses the
 same encrypted channel for the E2E flows. There has been no independent security
 audit. `team-organizations.test.ts` covers renewal on the same socket, discarding

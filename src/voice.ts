@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { track } from "./analytics";
 import { current } from "./i18n";
 
 /// Browser speech recognition, when the webview offers it. Recognition runs on the platform's speech service; nothing crosses Prometeu's own boundaries, so no IPC is involved.
@@ -7,6 +8,7 @@ type Recognition = {
   lang: string;
   interimResults: boolean;
   continuous: boolean;
+  onstart: (() => void) | null;
   onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
   onend: (() => void) | null;
   onerror: ((e: { error: string }) => void) | null;
@@ -52,10 +54,12 @@ export function listen(onText: (settled: string, interim: string) => void, onEnd
   let error: string | undefined;
   let active = true;
   let stopping = false;
+  let inserted = false;
   let fallback: ReturnType<typeof setTimeout> | undefined;
   const finish = () => {
     if (!active) return;
     active = false;
+    r.onstart = null;
     r.onend = null;
     r.onresult = null;
     r.onerror = null;
@@ -71,10 +75,12 @@ export function listen(onText: (settled: string, interim: string) => void, onEnd
       else interim += piece;
     }
     onText(settled, interim);
+    if (settled && !inserted) { inserted = true; track({ name: "dictation_text_inserted" }); }
   };
   // "aborted" is the user pressing stop; "no-speech" is silence. Neither deserves an error.
   r.onerror = (e) => { if (e.error !== "aborted" && e.error !== "no-speech") error = e.error; };
   r.onend = finish;
+  r.onstart = () => { r.onstart = null; track({ name: "dictation_started" }); };
   r.start();
   return (discard = false) => {
     if (!active) return;

@@ -7,10 +7,12 @@ mod accounts;
 mod actions;
 mod agent_launch;
 mod agents;
+mod analytics;
 mod antigravity;
 mod awake;
 mod background;
 mod board_store;
+mod cursor;
 
 #[cfg(test)]
 mod boundary_contract;
@@ -22,6 +24,8 @@ mod cloud;
 mod codex;
 mod conversation;
 mod delegation;
+#[cfg(any(target_os = "linux", test))]
+mod desktop_entry;
 mod dock;
 mod domain;
 mod embedded_mcp;
@@ -29,8 +33,11 @@ mod evaluation;
 mod feedback;
 mod file_drop;
 mod github;
+mod github_auth;
 mod github_issues;
+mod github_notifications;
 mod i18n;
+mod island;
 mod kickoff;
 mod linear;
 mod lock;
@@ -45,7 +52,7 @@ mod paths;
 mod platform;
 mod plugins;
 mod pty;
-mod review_calibration;
+mod recovery;
 mod scripts;
 mod selection;
 mod session;
@@ -53,6 +60,7 @@ mod skills;
 mod state;
 mod team;
 mod telemetry;
+mod terminal_sessions;
 mod tool_materialization;
 mod transcript;
 mod transcript_store;
@@ -140,6 +148,7 @@ fn main() {
         return;
     }
     install_crypto();
+    analytics::track(analytics::Event::AppOpened);
     adopt_login_path();
     let root = paths::root();
     let profiles: Arc<dyn prometeu_profiles::ProfileBackend> = Arc::new(account_profiles::native());
@@ -172,14 +181,19 @@ fn main() {
             process_launcher: Arc::new(prometeu_process::UnixProcessLauncher),
             telemetry: Mutex::new(telemetry),
             board: Mutex::new(board),
-            save: BoardPublisher::new(board_store),
+            save: BoardPublisher::new(board_store.clone()),
             ptys: Mutex::new(HashMap::new()),
             looking: Mutex::new(None),
         })
+        .manage(board_store)
         .manage(background::State::default())
         .manage(usage::Service::new())
         .manage(machine::Service::new())
         .invoke_handler(tauri::generate_handler![
+            analytics::analytics_track,
+            analytics::analytics_enabled,
+            analytics::analytics_needs_consent,
+            analytics::analytics_set_enabled,
             background::background_context,
             notifications::notification_permission,
             notifications::notification_show,
@@ -187,6 +201,11 @@ fn main() {
             notifications::notification_dismiss,
             notifications::notification_open,
             notifications::notification_sound,
+            island::island_enable,
+            island::island_update,
+            island::island_current,
+            island::island_resize,
+            island::island_open,
             actions::actions_save,
             actions::action_start,
             i18n::set_lang,
@@ -209,9 +228,13 @@ fn main() {
             machine::set_resource_detail,
             awake::set_awake,
             session::load_board,
+            session::board_recovery,
+            session::board_recovery_open,
             session::add_project,
+            session::create_project,
             session::remove_project,
             session::reorder_projects,
+            session::group_projects,
             session::list_branches,
             session::create_workspace,
             session::set_stage,
@@ -230,6 +253,7 @@ fn main() {
             session::set_tab_choice,
             session::set_unread,
             session::set_shared,
+            session::set_confirm_messages,
             session::look_at,
             session::rename_workspace,
             session::remove_workspace,
@@ -258,9 +282,13 @@ fn main() {
             dock::close_dock,
             dock::workspace_scripts,
             dock::dock_state,
+            dock::running_terminals,
             dock::create_scripts_file,
             dock::scripts_prompt,
             dock::open_run,
+            terminal_sessions::terminal_create,
+            terminal_sessions::terminal_rename,
+            terminal_sessions::terminal_close,
             browser::browser_open,
             browser::browser_url,
             browser::browser_navigate,
@@ -280,9 +308,14 @@ fn main() {
             file_drop::paste_files,
             session::pr_prompt,
             github::pr_open,
-            github_issues::github_identity,
+            github_auth::github_status,
+            github_auth::github_connect,
+            github_auth::github_disconnect,
             github_issues::github_issues,
-            github_issues::github_repositories,
+            github_issues::github_claim,
+            github_notifications::github_feed,
+            github_notifications::github_subjects,
+            github_notifications::github_detail,
             github_issues::github_issue_open,
             github_issues::github_projects,
             github_issues::github_prepare,
@@ -350,17 +383,14 @@ fn main() {
             typesafe::typesafe_remove_key,
             typesafe::typesafe_set_enabled,
             typesafe::context_evaluate,
-            review_calibration::review_calibration_status,
-            review_calibration::review_calibration_set_enabled,
-            review_calibration::review_calibration_append,
-            review_calibration::review_calibration_clear,
-            review_calibration::review_calibration_export,
         ])
         .setup(|app| {
             if let Some(window) = tauri::Manager::get_window(app, "main") {
                 background::refresh_window(&window);
             }
             background::watch(app.handle().clone());
+            #[cfg(target_os = "linux")]
+            desktop_entry::install(app.handle());
             notifications::install(app.handle());
             embedded_mcp::start(app.handle().clone())?;
             // The account connectors are part of the inherited MCP base; fetch them before the
@@ -375,14 +405,23 @@ fn main() {
         .on_window_event(|window, _event| background::refresh_window(window))
         .build(tauri::generate_context!())
         .expect("erro ao subir o Prometeu")
-        .run(|app, event| {
+        .run(|app, event| match event {
+            // Tauri exits when the last window closes, but the island overlay is only ever hidden
+            // and nothing could bring the main window back. Closing it quits, as without the island.
+            // The interface holds the close first while local work would be cut off (ADR 0097).
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } if label == "main" => app.exit(0),
             // Flush deferred board writes during shutdown, when no later save can be assumed.
-            if matches!(event, tauri::RunEvent::Exit) {
+            tauri::RunEvent::Exit => {
                 awake::shutdown();
                 embedded_mcp::shutdown();
                 notifications::shutdown();
                 accounts::shutdown();
                 state::save_now(app);
             }
+            _ => {}
         });
 }

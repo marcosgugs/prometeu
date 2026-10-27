@@ -1,10 +1,13 @@
 import { icon } from "./icons.js";
+import { identifyControl, inheritTrackingArea } from "./tracking.js";
 
 /// Context menus group workspace actions such as rename, stage changes and archive.
 export type Item =
   | "sep"
   | {
       label: string;
+      /** Static interaction identity supplied by the consumer, never an item ID. */
+      track?: string;
       /// A rendered glyph supports both computed stage icons and named icons.
       glyph?: string;
       /// Display only keyboard shortcuts that actually exist.
@@ -119,6 +122,8 @@ export type Where = {
   y: number;
   /// Open upward to keep the editor below the menu visible.
   above?: boolean;
+  anchor?: HTMLElement;
+  area?: string;
 };
 
 /// Open at the click position, clamped to the viewport. `cls` allows a consumer-specific panel size.
@@ -128,6 +133,7 @@ export function openAt(at: Where, items: Item[], cls?: string, onClosed?: () => 
   keyboardFocus = focus;
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   root = panel(items);
+  inheritTrackingArea(root, at.anchor, at.area);
   if (cls) root.classList.add(cls);
   afterClose = onClosed;
   (document.querySelector("dialog[open]") ?? document.body).append(root);
@@ -149,6 +155,7 @@ export function selectAt(index: number) {
 
 /** Join the shared menu lifetime with a panel that owns its internal keyboard interaction. */
 export function openPanel(anchor: HTMLElement, panel: HTMLElement, key: (event: KeyboardEvent) => void, closed: () => void) {
+  inheritTrackingArea(panel, anchor, panel.dataset.trackArea);
   close();
   root = panel; keyboardFocus = true; previousFocus = anchor; panelKey = key;
   afterClose = closed;
@@ -193,6 +200,7 @@ function panel(items: Item[]): HTMLElement {
     }
     const row = document.createElement("button");
     row.type = "button";
+    if (item.track) identifyControl(row, item.track);
     row.tabIndex = -1;
     row.className = "mrow" + (item.danger ? " danger" : "") + (item.disabled ? " off" : "");
     row.disabled = item.disabled ?? false;
@@ -220,8 +228,10 @@ function panel(items: Item[]): HTMLElement {
       opener = row; openers.set(sub, row);
       row.setAttribute("aria-expanded", "true");
       const at = row.getBoundingClientRect();
-      // Anchor the submenu to its row rather than the pointer position.
-      place(sub, at.right - 4, at.top - 6);
+      // Anchor the submenu to its row rather than the pointer position. Without room on the right it opens on the
+      // left, so it never covers the menu that opened it.
+      const width = sub.getBoundingClientRect().width;
+      place(sub, at.right - 4 + width > innerWidth - 8 ? at.left - width + 4 : at.right - 4, at.top - 6);
       return sub;
     };
     if (item.sub && !item.disabled) {

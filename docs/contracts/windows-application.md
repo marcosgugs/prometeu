@@ -33,7 +33,7 @@ Host-only commands outside the shared registry are `application_open`,
 | Board and session | `load_board`, `set_stage`, `focus_tab`, `look_at`, `set_lang`, `rename_workspace`, `rename_tab`, `pin_workspace`, `set_unread`, `set_tab_choice` |
 | Workspace lifecycle | `archive_workspace`, `finish_workspace`, `remove_workspace`, `cleanup_list`, `cleanup_worktree` |
 | Conversation | `chat_snapshot`, `chat_send`, `chat_control`, `new_tab`, `close_tab` |
-| Projects | `add_project`, `remove_project`, `reorder_projects` |
+| Projects | `create_project`, `add_project`, `remove_project`, `reorder_projects`, `group_projects` |
 | Project files | `list_dir`, `read_file`, `read_bytes`, `file_stamp`, `write_file`, `create_path`, `rename_path`, `trash_path`, `find_paths`, `reveal_path` |
 | Shell, Setup and Run | `open_dock`, `close_dock`, `dock_state`, `pty_buffer`, `pty_write`, `pty_resize` |
 | Git | `workspace_git_status`, `workspace_git_diff`, `workspace_git_action`, `workspace_git_history`, `workspace_git_branches`, `workspace_git_conflict`, `workspace_git_resolve`, `tree_git_status`, `tree_restore`, `file_base` |
@@ -71,7 +71,7 @@ names. Observed statuses overlay the saved board; work stage stays independent.
 ## Paths and host effects
 
 `ApplicationPaths` translates native selections before they reach shared
-drafts or `add_project`: `\\wsl.localhost\<distribution>` and
+drafts, `add_project` or the parent of `create_project`: `\\wsl.localhost\<distribution>` and
 `\\wsl$\<distribution>` paths of the connected distribution become Linux paths;
 drive paths go through that distribution's `wslpath`, respecting its mounts.
 Literal process arguments are used. Other distributions, network shares and
@@ -111,9 +111,27 @@ cancellation.
 Dock keys keep the desktop `<workspace>:terminal[-N]` format, up to 32 shells per
 workspace. Shells survive window closure and stop on explicit runtime shutdown.
 The transport orders `pty_write` per terminal; a failed write rejects its queued
-suffix without replay. A stopped dock keeps its output until rerun; reopening a
-running Run reuses it and a conflicting name rejects. Setup and Run use the shared
-hydration, port reservation and script environment through `/bin/sh -lc`.
+suffix without replay. As on the desktop, `close_dock` drops a shell once it has
+stopped, and `remove_project` stops and drops the project's shells, which could
+no longer be listed or closed without the registration
+(`crates/runtime/tests/resident.rs`). A stopped Setup or Run keeps its output
+until rerun; reopening a running Run reuses it and a conflicting name rejects.
+Setup and Run use the shared hydration, port reservation and script environment
+through `/bin/sh -lc`.
+
+Terminal sessions ([ADR 0096](../decisions/0096-terminal-sessions.md)) are not
+available on Windows yet. `src/windows/main.ts` calls `useTerminalSessions(false)`
+before the shared interface loads, which hides the sidebar group, the File menu
+item and Ctrl+Shift+T; the runtime rejects `terminal_create`, `terminal_rename`
+and `terminal_close` as unimplemented, and `open_dock` refuses a session id
+through `file_root`. `Board.terminals` still round-trips through the runtime
+catalog, so nothing is lost if a later version adds them.
+
+Ending the app never asks on Windows: closing the window only detaches it, and
+the resident runtime keeps every agent and terminal. `src/windows/main.ts` calls
+`useQuitGuard(false)` before the shared interface loads, and the runtime does not
+implement `running_terminals`
+([ADR 0097](../decisions/0097-ask-before-ending-the-app.md)).
 
 ## Deferred application effects
 
@@ -171,10 +189,18 @@ implemented.
 
 ## GitHub discovery
 
-The GitHub inbox commands (`github_identity`, `github_issues`, `github_repositories`,
-`github_issue_open`, `github_projects`, `github_prepare`) currently have desktop
-and browser-mock adapters only. The WSL runtime reports them unsupported; this
-does not claim native Windows GitHub discovery or PR launch support.
+The GitHub commands (`github_status`, `github_connect`, `github_disconnect`,
+`github_issues`, `github_claim`, `github_issue_open`, `github_projects`,
+`github_prepare`, `github_feed`, `github_subjects`, `github_detail`) currently have
+desktop and browser-mock adapters only. The WSL runtime reports them unsupported;
+this does not claim native Windows GitHub discovery, notifications or PR launch
+support.
+
+## Product analytics
+
+The WSL runtime does not implement `analytics_track`; the frontend ignores the
+rejection, so native Windows builds send no
+[product analytics](product-analytics.md).
 
 ## Conversation tools
 

@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { parseConversationEvent } from "./conversation";
-import * as team from "./team";
+import { count as notificationCount } from "./notification-center";
 import type { Board } from "./types";
 
 /// Track unread activity for the Dock badge.
@@ -11,6 +11,8 @@ type Ctx = {
   /// Visible tabs in the workspace or desk; window focus is checked here.
   visible: (tab: string) => boolean;
   notify?: (kind: "approval" | "done" | "error", tab: string) => void;
+  /// Unread activity changed, e.g. for the notch island.
+  changed?: () => void;
 };
 
 let ctx: Ctx = { visible: () => false };
@@ -180,23 +182,27 @@ export function chatChanged(tab: string, line: string) {
   }
 }
 
-/// Team updates may change the mention inbox.
+/// Team mentions and GitHub notifications change the badge.
 export function teamChanged() {
   badge();
 }
 
 /* Dock badge. */
 
-/// Count unread workspaces plus inbox comments; zero clears the badge.
+/// Count unread workspaces plus mentions and unread GitHub notifications; zero clears the badge.
 export function waiting() {
   const workspaces = new Set(unread);
   for (const conversation of conversations.values()) {
     if (conversation.pending) workspaces.add(conversation.workspace);
   }
-  return workspaces.size + team.inboxCount();
+  return workspaces.size + notificationCount();
 }
 
+/// Activity the person has not looked at yet, the same signal the Dock counts.
+export const unseen = (tab: string) => conversations.get(tab)?.pending ?? false;
+
 function badge() {
+  ctx.changed?.();
   getCurrentWindow()
     .setBadgeCount(waiting() || undefined)
     .catch((e) => {

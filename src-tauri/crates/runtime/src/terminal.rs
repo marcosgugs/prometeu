@@ -25,7 +25,8 @@ impl ShellPreparation for LoginShell {
         let mut command = CommandBuilder::new(&self.0);
         command.arg("-l");
         command.cwd(workdir);
-        command.env("TERM", "xterm-256color");
+        // The runtime does not know the app version, so it claims none.
+        prometeu_process::terminal::own_terminal(&mut command, None);
         command
     }
 }
@@ -51,7 +52,7 @@ impl ShellPreparation for ScriptShell {
         let mut command = CommandBuilder::new("/bin/sh");
         command.args(["-lc", &self.command]);
         command.cwd(workdir);
-        command.env("TERM", "xterm-256color");
+        prometeu_process::terminal::own_terminal(&mut command, None);
         for (key, value) in &self.environment {
             command.env(key, value);
         }
@@ -313,10 +314,12 @@ impl TerminalService {
         let active = self.active(id)?;
         active.flow.close();
         active.control.close();
+        // Hangup, terminate and kill escalation plus the final drain can exceed five seconds on a
+        // loaded machine; reporting a retained handle is only for a genuinely stuck shell.
         let (done, _) = active
             .done
             .1
-            .wait_timeout_while(lock(&active.done.0), Duration::from_secs(5), |done| {
+            .wait_timeout_while(lock(&active.done.0), Duration::from_secs(15), |done| {
                 *done != 2
             })
             .map_err(|e| e.to_string())?;
@@ -357,4 +360,37 @@ fn size(cols: u16, rows: u16) -> Result<TerminalSize, String> {
         return Err("terminal dimensions must be between 1 and 500".into());
     }
     Ok(TerminalSize { cols, rows })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shells_and_scripts_present_prometeu_and_keep_their_variables() {
+        let environment = vec![("PROMETEU_WORKSPACE_PATH".to_string(), "/w".to_string())];
+        let shell = EnvironmentShell {
+            shell: LoginShell("/bin/sh".into()),
+            environment: environment.clone(),
+        };
+        let script = ScriptShell {
+            command: "npm run dev".into(),
+            environment,
+        };
+        for command in [
+            shell.prepare(Path::new("/w")),
+            script.prepare(Path::new("/w")),
+        ] {
+            let value = |key: &str| {
+                command
+                    .get_env(key)
+                    .map(|v| v.to_string_lossy().into_owned())
+            };
+            assert_eq!(value("TERM_PROGRAM").as_deref(), Some("Prometeu"));
+            assert_eq!(value("TERM_PROGRAM_VERSION"), None);
+            assert_eq!(value("CLAUDECODE"), None);
+            assert_eq!(value("TMUX"), None);
+            assert_eq!(value("PROMETEU_WORKSPACE_PATH").as_deref(), Some("/w"));
+        }
+    }
 }

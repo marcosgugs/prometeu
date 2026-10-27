@@ -42,7 +42,7 @@ export function treeMenu(entry: Entry, ctx: Context): menu.Item[] {
   // Nothing is on disk to open, attach, rename or reveal; the path still copies.
   if (ctx.gone) {
     return [
-      { label: t("tree.menu.restore"), glyph: icon("rotate"), run: () => hooks.restore(entry.path) },
+      { label: t("tree.menu.restore"), track: "tree.menu.restore", glyph: icon("rotate"), run: () => hooks.restore(entry.path) },
       "sep",
       ...file.fileGroups({ path: entry.path, dir: entry.dir, missing: true }, ctx),
     ];
@@ -52,19 +52,19 @@ export function treeMenu(entry: Entry, ctx: Context): menu.Item[] {
   return [
     entry.dir
       ? {
-          label: t(ctx.expanded ? "tree.menu.collapse" : "tree.menu.expand"),
+          label: t(ctx.expanded ? "tree.menu.collapse" : "tree.menu.expand"), track: "tree.folder.toggle",
           glyph: icon(ctx.expanded ? "chevron-down" : "chevron-right"),
           run: () => hooks.toggle(entry.path),
         }
-      : { label: t("tree.menu.open"), glyph: icon("file"), run: () => hooks.open(entry.path) },
+      : { label: t("tree.menu.open"), track: "tree.menu.open", glyph: icon("file"), run: () => hooks.open(entry.path) },
     "sep",
     ...createItems(parent, hooks),
     "sep",
     ...file.fileGroups(entry, ctx),
     "sep",
-    { label: t("tree.menu.rename"), glyph: icon("pencil"), hint: "F2", run: () => hooks.rename(entry) },
+    { label: t("tree.menu.rename"), track: "tree.menu.rename", glyph: icon("pencil"), hint: "F2", run: () => hooks.rename(entry) },
     {
-      label: t("tree.menu.trash"),
+      label: t("tree.menu.trash"), track: "tree.menu.trash",
       glyph: icon("trash"),
       hint: (ctx.mac ?? mac) ? "⌘⌫" : "Del",
       danger: true,
@@ -78,7 +78,7 @@ export function rootMenu(hooks: RootHooks): menu.Item[] {
   return [
     ...createItems("", hooks),
     "sep",
-    { label: t("file.menu.reveal"), glyph: icon("external-link"), run: () => hooks.reveal("") },
+    { label: t("file.menu.reveal"), track: "file.menu.reveal", glyph: icon("external-link"), run: () => hooks.reveal("") },
   ];
 }
 
@@ -86,7 +86,7 @@ export const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastInd
 
 function createItems(parent: string, hooks: RootHooks): menu.Item[] {
   return [
-    { label: t("tree.menu.newFile"), glyph: icon("file-plus"), run: () => hooks.create(parent, false) },
-    { label: t("tree.menu.newFolder"), glyph: icon("folder-plus"), run: () => hooks.create(parent, true) },
+    { label: t("tree.menu.newFile"), track: "tree.menu.newFile", glyph: icon("file-plus"), run: () => hooks.create(parent, false) },
+    { label: t("tree.menu.newFolder"), track: "tree.menu.newFolder", glyph: icon("folder-plus"), run: () => hooks.create(parent, true) },
   ];
 }

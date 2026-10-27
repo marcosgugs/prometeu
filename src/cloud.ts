@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { invoke, type IpcResult } from "./ipc";
 import * as catalog from "./catalog";
 import { fromBack, t } from "./i18n";
@@ -43,25 +44,25 @@ export function accountButton() {
     const at = control.getBoundingClientRect();
     control.setAttribute("aria-expanded", "true");
     if (pending) {
-      menu.openAt({ x: at.left, y: at.bottom + 4 }, [
-        { label: t("cloud.openBrowser"), run: pending.open },
-        { label: t("cloud.cancel"), run: pending.cancel },
+      menu.openAt({ x: at.left, y: at.bottom + 4, anchor: control }, [
+        { track: "cloud.openBrowser", label: t("cloud.openBrowser"), run: pending.open },
+        { track: "cloud.cancel", label: t("cloud.cancel"), run: pending.cancel },
       ], undefined, () => control.setAttribute("aria-expanded", "false"));
       return;
     }
-    menu.openAt({ x: at.left, y: at.bottom + 4 }, [
-      { label: t("catalog.manage"), run: () => { void invoke("open_external", { url: `${status.origin}/catalog` }).catch(error => fail(fromBack(error))); } },
-      { label: t("organization.manage"), run: () => { void invoke("open_external", { url: `${status.origin}/settings/organizations` }).catch(error => fail(fromBack(error))); } },
-      { label: t("cloud.manage"), glyph: icon("external-link"), run: () => {
+    menu.openAt({ x: at.left, y: at.bottom + 4, anchor: control }, [
+      { track: "catalog.manage", label: t("catalog.manage"), run: () => { void invoke("open_external", { url: `${status.origin}/catalog` }).catch(error => fail(fromBack(error))); } },
+      { track: "organization.manage", label: t("organization.manage"), run: () => { void invoke("open_external", { url: `${status.origin}/settings/organizations` }).catch(error => fail(fromBack(error))); } },
+      { track: "cloud.manage", label: t("cloud.manage"), glyph: icon("external-link"), run: () => {
         void invoke("open_external", { url: status.origin }).catch(error => fail(fromBack(error)));
       } },
-      { label: t("cloud.refresh"), glyph: icon("rotate"), run: () => void refresh() },
+      { track: "cloud.refresh", label: t("cloud.refresh"), glyph: icon("rotate"), run: () => void refresh() },
       "sep",
-      { label: t("cloud.logout"), run: () => {
-        void invoke("cloud_logout").then(value => { status = value; changed(); void catalog.load().catch(error => fail(fromBack(error))); }).catch(error => fail(fromBack(error)));
+      { track: "cloud.logout", label: t("cloud.logout"), run: () => {
+        void invoke("cloud_logout").then(value => { track({ name: "integration_action_used", integration: "cloud", action: "disconnect" }); status = value; changed(); void catalog.load().catch(error => fail(fromBack(error))); }).catch(error => fail(fromBack(error)));
       } },
     ], undefined, () => control.setAttribute("aria-expanded", "false"));
-  }, "ghost");
+  }, "ghost", "cloud.account");
   control.classList.remove("md"); control.classList.add("navitem", "brand", "cloud-account");
   control.classList.toggle("cloud-guest", !status.user);
   const glyph = h("span", "av");
@@ -102,7 +103,7 @@ export function connect() {
     try {
       const value = await invoke("cloud_login_poll", { id: attempt.id });
       if (closed) return;
-      if (value) { status = value; close(); void catalog.load().catch(cause => fail(fromBack(cause))); void refresh(); } else schedule();
+      if (value) { track({ name: "integration_action_used", integration: "cloud", action: "connect" }); status = value; close(); void catalog.load().catch(cause => fail(fromBack(cause))); void refresh(); } else schedule();
     } catch (cause) {
       if (!closed) { close(); fail(fromBack(cause)); }
     } finally { busy = false; }

@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { listen } from "@tauri-apps/api/event";
 import { PROTO, formatInvite, normalizeName, parseInvite, parseMembership, type Member, type Note } from "../relay/src/protocol";
 import type { CloudStatus } from "./cloud";
@@ -9,7 +10,7 @@ import * as owner from "./team-owner";
 import type { Membership, Phase } from "./team-ports";
 import { wsUrl as transportWsUrl } from "./team-transport";
 import * as viewer from "./team-viewer";
-import type { Workspace } from "./types";
+import type { ShareRights, Workspace } from "./types";
 
 export type { SocketLike, Transport } from "./team-transport";
 export type { GuestSink, Phase } from "./team-ports";
@@ -39,7 +40,7 @@ member.useSecurityStore({
   write: (state) => invoke("team_security_set", { state }),
 });
 member.register((ctx) => owner.install(ctx, {
-  setShared: (id, shared, audience, remoteControl, team) => invoke("set_shared", { id, shared, audience, remoteControl, team }),
+  setShared: (id, shared, audience, remoteControl, team, rights) => invoke("set_shared", { id, shared, audience, remoteControl, team, rights }),
   snapshot: (tab) => invoke("chat_snapshot", { session: tab }),
   control: (tab, frame) => invoke("chat_control_remote", { session: tab, frame }),
   prompt: (tab, text) => invoke("chat_send", { session: tab, text }),
@@ -48,8 +49,55 @@ member.register(comments.install);
 member.register(viewer.install);
 
 export const { useTransport, onChange, onError, nameOf, people, personOf } = member;
-export const { setSink, isRemote, attachedTab, attach, detach, write } = viewer;
-export const { boardChanged, share, remoteControl, sharedHere, sharedWithTeam, isShared, watchersOf } = owner;
+export const { setSink, isRemote, attachedTab, attach, detach, write, rightsIn } = viewer;
+export async function leaveShare(...args: Parameters<typeof viewer.leave>) {
+  const result = await viewer.leave(...args);
+  if (result) track({ name: "collaboration_action_used", action: "leave" });
+  return result;
+}
+export const { boardChanged, leftOf, sharedHere, sharedWithTeam, isShared, watchersOf, pausedIn, pendingIn } = owner;
+export async function share(...args: Parameters<typeof owner.share>) {
+  await owner.share(...args);
+  track({ name: "collaboration_action_used", action: args[1] === false || args[1]?.length === 0 ? "unshare" : "share" });
+}
+export async function grant(...args: Parameters<typeof owner.grant>) {
+  const count = await owner.grant(...args);
+  track({ name: "collaboration_action_used", action: args[3] ? "grant" : "revoke" });
+  return count;
+}
+export async function remoteControl(...args: Parameters<typeof owner.remoteControl>) {
+  const count = await owner.remoteControl(...args);
+  track({ name: "collaboration_action_used", action: args[1] ? "companion_enable" : "companion_disable" });
+  return count;
+}
+export async function readmit(...args: Parameters<typeof owner.readmit>) {
+  await owner.readmit(...args);
+  track({ name: "collaboration_action_used", action: "readmit" });
+}
+export async function allowInput(...args: Parameters<typeof owner.allowInput>) {
+  const count = await owner.allowInput(...args);
+  track({ name: "collaboration_action_used", action: "allow_input" });
+  return count;
+}
+export async function dismissInput(...args: Parameters<typeof owner.dismissInput>) {
+  await owner.dismissInput(...args);
+  track({ name: "collaboration_action_used", action: "dismiss_input" });
+}
+export async function sendPending(...args: Parameters<typeof owner.sendPending>) {
+  const sent = await owner.sendPending(...args);
+  if (sent) track({ name: "collaboration_action_used", action: "send_pending" });
+  return sent;
+}
+export function editPending(...args: Parameters<typeof owner.editPending>) {
+  const text = owner.editPending(...args);
+  if (text !== null) track({ name: "collaboration_action_used", action: "edit_pending" });
+  return text;
+}
+export function discardPending(...args: Parameters<typeof owner.discardPending>) {
+  owner.discardPending(...args);
+  track({ name: "collaboration_action_used", action: "discard_pending" });
+}
+export type { PausedInput, PendingMessage } from "./team-owner";
 export const { inboxCount, inboxItems, supportsThreads, inboxList } = comments;
 
 /* Configuration. */
@@ -266,6 +314,7 @@ export async function leave() {
   member.reset();
   cfg = null;
   await invoke("team_config_set", { config: null });
+  track({ name: "collaboration_action_used", action: "leave" });
   member.notify();
 }
 
@@ -299,6 +348,9 @@ export function remotes(): Workspace[] {
     shared: false,
     audience: null,
     remote_control: false,
+    rights: null,
+    // This Mac holds nothing for a remote owner, whose choice is not announced.
+    confirm_messages: false,
     // Remote shares are announced only after preparation is complete.
     preparing: false,
     failed: null,
@@ -324,15 +376,39 @@ export async function addNote(
   quote: string | null,
 ): Promise<boolean> {
   try { await owner.includeMentioned(id, mentions); } catch { return false; }
-  return comments.addNote(viewer.relayId(id), tab, anchor, text, mentions, quote);
+  const sent = await comments.addNote(viewer.relayId(id), tab, anchor, text, mentions, quote);
+  if (sent) track({ name: "collaboration_action_used", action: "comment" });
+  return sent;
 }
 
 export async function replyNote(id: string, note: string, text: string, mentions: string[]): Promise<boolean> {
   try { await owner.includeMentioned(id, mentions); } catch { return false; }
-  return comments.replyNote(viewer.relayId(id), note, text, mentions);
+  const sent = await comments.replyNote(viewer.relayId(id), note, text, mentions);
+  if (sent) track({ name: "collaboration_action_used", action: "reply" });
+  return sent;
 }
 
-export const resolveNote = (id: string, note: string) => comments.resolveNote(viewer.relayId(id), note);
+export const resolveNote = async (id: string, note: string) => {
+  const sent = await comments.resolveNote(viewer.relayId(id), note);
+  if (sent) track({ name: "collaboration_action_used", action: "resolve" });
+  return sent;
+};
+
+/// People who may act in a workspace beyond viewing and commenting: the local rights, or the ones a remote owner
+/// announced. Null when nothing is known, as for remote owners from before rights (ADR 0090).
+export function actorsOf(ws: Workspace): ShareRights | null {
+  if (ws.remote) return viewer.announcedRights(ws.id) ?? null;
+  return owner.sharedWithTeam(ws) ? ws.rights ?? null : null;
+}
+
+/// Shares made before rights now let people only view and comment; the owner hears about it once on this Mac.
+const RIGHTS_NOTICE_KEY = "prometeu:share-rights-notice";
+export const rightsNoticeDue = (ws: Workspace) =>
+  !ws.remote && ws.rights == null && owner.sharedWithTeam(ws) && globalThis.localStorage?.getItem(RIGHTS_NOTICE_KEY) !== "seen";
+export function dismissRightsNotice() {
+  globalThis.localStorage?.setItem(RIGHTS_NOTICE_KEY, "seen");
+  member.notify();
+}
 
 export function readInbox(id: string): { workspace: string; note: string; tab: string | null } | null {
   const item = comments.readInbox(id);

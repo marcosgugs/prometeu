@@ -37,14 +37,16 @@ export type Ask = {
   input: Record<string, unknown>;
   toolUseId: string | null;
   answered: boolean;
+  /// The process ended before anyone answered, so the request can no longer be answered.
+  closed?: boolean;
 };
 
 export type Item =
   | { kind: "user"; ts: number; text: string }
-  | { kind: "assistant"; ts: number; msg: string; blocks: Block[]; streaming: boolean; next: number; completion?: TurnMetadata }
+  | { kind: "assistant"; ts: number; msg: string; blocks: Block[]; streaming: boolean; next: number; completion?: TurnMetadata; cut?: boolean }
   | Ask
   | { kind: "result"; ts: number; error: boolean; text: string; cost: number | null; ms: number | null }
-  | { kind: "system"; ts: number; text: string; error: boolean; what?: "compacted" | "summary" | "stderr" | "background"; tokens?: [number, number]; trigger?: "auto" | "manual" }
+  | { kind: "system"; ts: number; text: string; error: boolean; what?: "compacted" | "summary" | "stderr" | "background" | "interrupted"; tokens?: [number, number]; trigger?: "auto" | "manual" }
   | { kind: "context"; ts: number; report: Report };
 
 export type Command = SlashCommand;
@@ -72,7 +74,7 @@ export class Timeline {
   private restoredContext?: { before: ContextState | null; position: number; current: ContextState };
 
   get pending(): Ask[] {
-    return this.items.filter((item): item is Ask => item.kind === "ask" && !item.answered);
+    return this.items.filter((item): item is Ask => item.kind === "ask" && !item.answered && !item.closed);
   }
 
   load(text: string, now = Date.now()) {
@@ -239,7 +241,8 @@ export class Timeline {
           this.busy = true;
           return [];
         }
-        return event.state === "ready" || event.state === "stopped" ? this.idle() : [];
+        if (event.state === "stopped") return this.stop(event.at);
+        return event.state === "ready" ? this.idle() : [];
       case "commands.updated":
         this.commands = event.commands;
         return [];
@@ -280,11 +283,39 @@ export class Timeline {
         item.streaming = false;
         touched.push(index);
       }
-      if (item.kind === "ask" && !item.answered) {
+      if (item.kind === "ask" && !item.answered && !item.closed) {
         item.answered = true;
         touched.push(index);
       }
     });
+    return touched;
+  }
+
+  /// The process is gone. Work it had not finished stays visibly cut off instead of reading as
+  /// done: the partial reply is incomplete, open requests close without an answer, and a notice
+  /// marks the place. A conversation that had settled is left as it was.
+  private stop(at: number): number[] {
+    let cut = this.busy || this.tasks.size > 0;
+    const touched = this.changeBackground([]);
+    this.busy = false;
+    this.compacting = false;
+    this.items.forEach((item, index) => {
+      if (item.kind === "assistant" && item.streaming) {
+        item.streaming = false;
+        item.cut = true;
+        cut = true;
+        touched.push(index);
+      }
+      if (item.kind === "ask" && !item.answered && !item.closed) {
+        item.closed = true;
+        cut = true;
+        touched.push(index);
+      }
+    });
+    if (!cut) return touched;
+    // Place the notice at the last known activity; the stop itself is only observed later.
+    const ts = this.items[this.items.length - 1]?.ts ?? at;
+    touched.push(this.add({ kind: "system", ts, text: "", error: false, what: "interrupted" }));
     return touched;
   }
 
@@ -373,7 +404,7 @@ export class Timeline {
     tool.background = background;
     const touched = [location.item];
     this.items.forEach((candidate, index) => {
-      if (candidate.kind === "ask" && candidate.toolUseId === toolId && !candidate.answered) {
+      if (candidate.kind === "ask" && candidate.toolUseId === toolId && !candidate.answered && !candidate.closed) {
         candidate.answered = true;
         touched.push(index);
       }
@@ -402,7 +433,7 @@ export class Timeline {
     const index = this.items.findIndex((item) => item.kind === "ask" && item.id === id);
     if (index === -1) return [];
     const ask = this.items[index] as Ask;
-    if (ask.answered) return [];
+    if (ask.answered || ask.closed) return [];
     ask.answered = true;
     return [index];
   }
@@ -427,7 +458,7 @@ export class Timeline {
         item.streaming = false;
         touched.push(index);
       }
-      if (item.kind === "ask" && !item.answered) {
+      if (item.kind === "ask" && !item.answered && !item.closed) {
         item.answered = true;
         touched.push(index);
       }
@@ -561,7 +592,8 @@ export type Piece =
 /** Only the final speech of a settled turn owns its usage and copy footer. */
 export function turnMetadata(items: Item[], piece: Extract<Piece, { kind: "say" }>): TurnMetadata | null {
   const item = items[piece.at];
-  if (item?.kind !== "assistant" || item.streaming || piece.block !== item.blocks.length - 1) return null;
+  // A reply cut off with its process has no completed turn to measure.
+  if (item?.kind !== "assistant" || item.streaming || item.cut || piece.block !== item.blocks.length - 1) return null;
   for (let i = piece.at + 1; i < items.length; i++) {
     if (items[i].kind === "assistant") return null;
     if (items[i].kind === "user") break;

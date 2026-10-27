@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as accounts from "./accounts";
 import { button, checkbox, dropdown, field, input } from "./ui";
 export type { Group } from "./ui";
@@ -16,8 +17,6 @@ import * as plugins from "./plugins";
 import * as menu from "./menu";
 import { invoke } from "./ipc";
 import { pasteFiles } from "./paste";
-import { reviewControls } from "./context-review-view";
-import type { ReviewContext } from "./context-review";
 import { h, template } from "./util";
 import { branchTaken, type Board, type Issue, type IssueRef, type ProviderId, type Workspace } from "./types";
 
@@ -78,7 +77,7 @@ export type Open = {
   seed?: Issue;
   /// The Git panel can seed a chosen base or branch in an isolated worktree.
   git?: { base: string; branch?: string; source?: string };
-  go: (d: Draft) => Promise<boolean>;
+  go: (d: Draft) => void;
   /// The Linear setup action closes the launcher and opens Settings.
   toSettings: () => void;
 };
@@ -146,7 +145,6 @@ export function openLauncher(board: Board, opts: Open) {
           <div class="attach" id="d-inj" hidden></div>
           <div class="launcher-attachments" id="d-attachments"></div>
         </div>
-        <div class="launcher-review" id="d-review" hidden></div>
         <section class="launcher-repository" aria-labelledby="d-repository-title">
           <h2 id="d-repository-title" data-t="git.repository"></h2>
           <div class="launcher-fields" id="d-repository-fields"></div>
@@ -172,12 +170,14 @@ export function openLauncher(board: Board, opts: Open) {
       <span class="hint" id="d-hint" role="status"></span>
       <div class="launcher-actions" id="d-actions"></div>
     </footer>`;
+  sheet.dataset.trackArea = "launcher";
   paint(sheet);
 
   const $ = <T extends HTMLElement>(id: string) => sheet.querySelector(`#${id}`) as T;
-  const pick = (id: string) => {
+  const pick = (id: "d-project" | "d-base" | "d-issuebtn" | "d-model" | "d-effort" | "d-mcp" | "d-plugins") => {
     const control = button("");
     control.id = id;
+    control.dataset.track = `launcher.${id.slice(2)}`;
     control.className = "ui-select pick";
     control.append(h("span", ""));
     control.insertAdjacentHTML("beforeend", icon("chevron-down", 12));
@@ -187,48 +187,46 @@ export function openLauncher(board: Board, opts: Open) {
   projectButton.disabled = !!git?.source;
   const baseButton = pick("d-base");
   baseButton.querySelector("span")!.id = "d-basename";
-  const projectField = field(t("launcher.project"), projectButton);
-  const branchField = field(t("launcher.base.label"), baseButton);
+  const projectField = field(t("launcher.project"), projectButton, undefined, "launcher.project");
+  const branchField = field(t("launcher.base.label"), baseButton, undefined, "launcher.base.label");
   $("d-repository-fields").append(projectField, branchField);
-  $("d-issue-field").append(field(t("launcher.issue.label"), pick("d-issuebtn")));
-  $("d-model-field").append(field(t("actions.model"), pick("d-model")));
+  $("d-issue-field").append(field(t("launcher.issue.label"), pick("d-issuebtn"), undefined, "launcher.issue.label"));
+  $("d-model-field").append(field(t("actions.model"), pick("d-model"), undefined, "actions.model"));
   const effortButton = pick("d-effort");
   effortButton.classList.add("effort");
   effortButton.querySelector("span")!.className = "el";
   effortButton.insertAdjacentHTML("afterbegin", '<span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>');
-  $("d-effort-field").append(field(t("models.effort"), effortButton));
-  $("d-mcp-field").append(field(t("launcher.mcp"), pick("d-mcp")));
-  $("d-plugins-field").append(field(t("launcher.plugins"), pick("d-plugins")));
-  const worktree = checkbox(t("launcher.worktree"), draft.worktree);
+  $("d-effort-field").append(field(t("models.effort"), effortButton, undefined, "models.effort"));
+  $("d-mcp-field").append(field(t("launcher.mcp"), pick("d-mcp"), undefined, "launcher.mcp"));
+  $("d-plugins-field").append(field(t("launcher.plugins"), pick("d-plugins"), undefined, "launcher.plugins"));
+  const worktree = checkbox(t("launcher.worktree"), draft.worktree, "launcher.worktree");
   worktree.control.id = "d-wt";
-  const newBranch = checkbox(t("launcher.newBranch"), draft.newBranch);
+  const newBranch = checkbox(t("launcher.newBranch"), draft.newBranch, "launcher.newBranch");
   newBranch.control.id = "d-nb";
   $("d-switches").append(worktree.label, newBranch.label);
-  const planMode = checkbox(t("launcher.plan.start"), draft.plan);
+  const planMode = checkbox(t("launcher.plan.start"), draft.plan, "launcher.plan.start");
   planMode.control.id = "d-plan";
   $("d-plan-field").append(planMode.label);
-  const moreButton = button(t("launcher.addRepo.label"), undefined, "ghost");
+  const moreButton = button(t("launcher.addRepo.label"), undefined, "ghost", "launcher.addRepo.label");
   moreButton.id = "d-more";
   moreButton.insertAdjacentHTML("afterbegin", icon("plus", 14));
   $("d-extra-repositories").append(moreButton);
-  const prompt = input("", true);
+  const prompt = input("", true, "launcher.prompt");
   prompt.id = "d-prompt";
   $("d-prompt-box").prepend(prompt);
-  const attach = button(t("launcher.attach.label"), undefined, "ghost");
+  const attach = button(t("launcher.attach.label"), undefined, "ghost", "launcher.attach.label");
   attach.id = "d-add";
   attach.title = t("launcher.attach");
   attach.insertAdjacentHTML("afterbegin", icon("paperclip", 14));
   // The starting skill sits next to the prompt it opens, sharing the attachment row.
-  const kickoffBtn = button("", undefined, "ghost");
+  const kickoffBtn = button("", undefined, "ghost", "launcher.skill");
   kickoffBtn.id = "d-kickoff";
   kickoffBtn.classList.add("launcher-kickoff");
   kickoffBtn.insertAdjacentHTML("afterbegin", icon("sparkles", 14));
   kickoffBtn.append(h("span", ""));
   $("d-attachments").append(attach, kickoffBtn);
-  const cancel = button(t("account.cancel"), () => hide(), "ghost");
-  // Optional missing-context review; created after the draft helpers below exist.
-  let review: ReturnType<typeof reviewControls> | null = null;
-  const create = button(t("launcher.go"), undefined, "pri");
+  const cancel = button(t("account.cancel"), () => hide(), "ghost", "account.cancel");
+  const create = button(t("launcher.go"), undefined, "pri", "launcher.go");
   create.id = "d-go";
   create.append(h("kbd", "", "↵"));
   $("d-actions").append(cancel, create);
@@ -271,7 +269,6 @@ export function openLauncher(board: Board, opts: Open) {
     hint.title = aviso || `${names} · ${onde}`;
     hint.textContent = aviso || onde;
     $<HTMLButtonElement>("d-go").disabled = !!aviso || receiving > 0 || needsChoice;
-    review?.update();
   };
   drawHint();
 
@@ -284,14 +281,15 @@ export function openLauncher(board: Board, opts: Open) {
   const drawExtras = () => {
     more.hidden = board.projects.length < 2;
     // Multiple repositories require Git-backed worktrees.
-    more.disabled = !!git?.source || !others().length || !isGit;
-    more.title = t(!isGit ? "launcher.noGit" : others().length ? "launcher.addRepo" : "launcher.addRepo.none");
+    more.disabled = !!git?.source || !others().length || !!branchProblem;
+    more.title = branchProblem || t(others().length ? "launcher.addRepo" : "launcher.addRepo.none");
     reposBox.hidden = !draft.extras.length;
     reposBox.replaceChildren(
       ...draft.extras.map((id) => {
         const chip = template("span", "injchip repo", `${icon("git-branch", 12)}<span></span><button class="ico sm">${icon("x", 12)}</button>`);
         chip.children[1].textContent = nameOf(id);
         (chip.children[2] as HTMLElement).title = t("launcher.removeRepo", { name: nameOf(id) });
+        (chip.children[2] as HTMLElement).dataset.track = "launcher.repository.remove";
         chip.children[2].addEventListener("click", () => {
           draft.extras = draft.extras.filter((x) => x !== id);
           drawExtras();
@@ -305,10 +303,11 @@ export function openLauncher(board: Board, opts: Open) {
   more.addEventListener("click", () => {
     const at = more.getBoundingClientRect();
     menu.openAt(
-      { x: at.left, y: at.bottom + 4 },
+      { area: "launcher", x: at.left, y: at.bottom + 4 },
       others().map((p) => ({
-        label: p.name,
+        label: p.name, track: "launcher.repository.add",
         run: () => {
+          branchChoices = null;
           draft.extras.push(p.id);
           // A shared parent directory makes multiple repositories available to one agent session.
           draft.worktree = true;
@@ -328,8 +327,10 @@ export function openLauncher(board: Board, opts: Open) {
   const wt = worktree.control;
   const nb = newBranch.control;
 
-  // Disable branch/worktree controls for non-Git directories after reference discovery confirms their status.
-  let isGit = true;
+  // Branches and worktrees need a repository with a committed base.
+  let branchProblem = "";
+  // Explicit choices supersede this snapshot, even while reference discovery is pending.
+  let branchChoices: Pick<Draft, "worktree" | "newBranch"> | null = null;
 
   const drawSwitches = () => {
     for (const [el, on] of [
@@ -338,11 +339,11 @@ export function openLauncher(board: Board, opts: Open) {
     ] as const) {
       el.checked = on;
     }
-    nb.disabled = !!git?.source || !!draft.extras.length || !isGit;
-    nb.title = t(!isGit ? "launcher.noGit" : draft.extras.length ? "launcher.nb.locked" : "launcher.nb.off");
-    wt.disabled = !!git || draft.extras.length > 0 || !isGit;
-    wt.title = t(!isGit ? "launcher.noGit" : draft.extras.length ? "launcher.wt.locked" : draft.worktree ? "launcher.wt.on" : "launcher.wt.off");
-    $("d-repo-hint").textContent = t(!isGit ? "launcher.noGit" : draft.worktree ? "launcher.wt.on" : draft.newBranch ? "launcher.wt.off" : "launcher.nb.off");
+    nb.disabled = !!git?.source || !!draft.extras.length || !!branchProblem;
+    nb.title = branchProblem || t(draft.extras.length ? "launcher.nb.locked" : "launcher.nb.off");
+    wt.disabled = !!git || draft.extras.length > 0 || !!branchProblem;
+    wt.title = branchProblem || t(draft.extras.length ? "launcher.wt.locked" : draft.worktree ? "launcher.wt.on" : "launcher.wt.off");
+    $("d-repo-hint").textContent = branchProblem || t(draft.worktree ? "launcher.wt.on" : draft.newBranch ? "launcher.wt.off" : "launcher.nb.off");
     const branchLabel = t(draft.worktree && !draft.newBranch ? "launcher.branch.label" : "launcher.base.label");
     branchField.querySelector("label")!.textContent = branchLabel;
     baseBtn.setAttribute("aria-label", branchLabel);
@@ -355,6 +356,7 @@ export function openLauncher(board: Board, opts: Open) {
   };
 
   wt.addEventListener("change", () => {
+    branchChoices = null;
     draft.worktree = wt.checked;
     draft.branch = draft.worktree && !draft.newBranch ? selectedBranch() : generatedBranch;
     localStorage.setItem(WORKTREE_KEY, draft.worktree ? "1" : "0");
@@ -362,6 +364,7 @@ export function openLauncher(board: Board, opts: Open) {
     drawSwitches();
   });
   nb.addEventListener("change", () => {
+    branchChoices = null;
     draft.newBranch = nb.checked;
     draft.branch = draft.newBranch ? generatedBranch : selectedBranch();
     localStorage.setItem(BRANCH_KEY, draft.newBranch ? "1" : "0");
@@ -370,12 +373,12 @@ export function openLauncher(board: Board, opts: Open) {
 
   /* Model, effort, and plan controls. */
 
-  const accountButton = button("", () => accounts.openPicker(draft.agent), "ghost");
+  const accountButton = button("", () => accounts.openPicker(draft.agent), "ghost", "launcher.account");
   accountButton.id = "d-account";
   accountButton.classList.add("launcher-account");
   const accountName = h("span", "launcher-account-name");
   accountButton.append(accountName, h("span", "launcher-account-change", t("launcher.account.change")));
-  const accountField = field(t("launcher.account.label"), accountButton);
+  const accountField = field(t("launcher.account.label"), accountButton, undefined, "launcher.account.label");
   const accountMeta = h("p", "ui-hint");
   accountField.append(accountMeta);
   $("d-account-field").append(accountField);
@@ -486,7 +489,7 @@ export function openLauncher(board: Board, opts: Open) {
         draft.mcp = ids;
         drawMcp();
       },
-      at: () => ({ x: at.left, y: at.bottom + 4 }),
+      at: () => ({ x: at.left, y: at.bottom + 4, anchor: mcpBtn }),
     });
   });
   const forgetMcp = mcp.onChange(drawMcp);
@@ -511,7 +514,7 @@ export function openLauncher(board: Board, opts: Open) {
         draft.plugins = ids;
         drawPlugins();
       },
-      at: () => ({ x: at.left, y: at.bottom + 4 }),
+      at: () => ({ x: at.left, y: at.bottom + 4, anchor: plugBtn }),
     });
   });
   const forgetPlugins = plugins.onChange(drawPlugins);
@@ -606,7 +609,7 @@ export function openLauncher(board: Board, opts: Open) {
     existingRef = "";
     draft.source = undefined;
     if (draft.worktree && !draft.newBranch) draft.branch = "";
-    isGit = true;
+    branchProblem = "";
     baseBtn.disabled = true;
     baseName.textContent = t("launcher.loading");
     drawHint();
@@ -619,12 +622,18 @@ export function openLauncher(board: Board, opts: Open) {
         existingRef = fromGit.source;
         draft.source = fromGit.source;
       }
-      isGit = got.git;
-      // A non-Git directory opens directly without branch operations.
-      if (!isGit) {
+      branchProblem = !got.git ? t("launcher.noGit") : !got.all.length ? t("launcher.noCommits") : "";
+      // Empty repositories and non-Git folders start directly, without inventing an initial commit.
+      if (branchProblem) {
+        branchChoices ??= { worktree: draft.worktree, newBranch: draft.newBranch };
         draft.worktree = false;
         draft.newBranch = false;
+        draft.extras = [];
+      } else if (branchChoices) {
+        Object.assign(draft, branchChoices);
+        branchChoices = null;
       }
+      drawExtras();
       drawSwitches();
       // Refresh generated names after loading repository references while preserving explicit Git or issue selections.
       if (!seed) generatedBranch = fromGit?.branch || freshBranch(branches);
@@ -632,7 +641,7 @@ export function openLauncher(board: Board, opts: Open) {
       setBase(fromGit?.base ?? got.default);
     } catch {
       if (draft.project !== loadingProject) return;
-      // A newly initialized repository without references branches from its current HEAD.
+      // Preserve the selected base when reference discovery fails.
       setBase(fromGit?.base ?? "");
       drawSwitches();
     }
@@ -666,6 +675,7 @@ export function openLauncher(board: Board, opts: Open) {
       chip.children[2].textContent = issue.title;
       chip.title = `${issue.title}\n${issue.url}`;
       chip.querySelector("button")!.disabled = !!git?.source;
+      (chip.children[3] as HTMLElement).dataset.track = "launcher.issue.remove";
       chip.children[3].addEventListener("click", () => {
         setSeed(undefined);
         prompt.focus();
@@ -745,7 +755,6 @@ export function openLauncher(board: Board, opts: Open) {
   // Keep attachments visible between the prompt and footer because they belong to the first message.
   const injList = $("d-inj");
   const drawInject = () => {
-    review?.update();
     injList.hidden = !draft.inject.length;
     injList.replaceChildren(
       ...draft.inject.map((path, i) => {
@@ -754,6 +763,7 @@ export function openLauncher(board: Board, opts: Open) {
         row.innerHTML = `<span></span><button class="ico sm">${icon("x", 12)}</button>`;
         row.children[0].textContent = path.split("/").pop() ?? path;
         row.children[0].setAttribute("title", path);
+        (row.children[1] as HTMLElement).dataset.track = "launcher.attachment.remove";
         row.children[1].addEventListener("click", () => {
           draft.inject.splice(i, 1);
           drawInject();
@@ -764,7 +774,9 @@ export function openLauncher(board: Board, opts: Open) {
   };
   const addFiles = (paths: string[]) => {
     if (!capabilitiesOf(draft.agent).attachments) return;
+    const before = draft.inject.length;
     for (const path of paths) if (path && !draft.inject.includes(path)) draft.inject.push(path);
+    if (draft.inject.length > before) track({ name: "attachment_added" });
     drawInject();
   };
   // Pasted screenshots and copied files become attachments, like a drop on the launcher.
@@ -788,23 +800,7 @@ export function openLauncher(board: Board, opts: Open) {
     },
   };
 
-  // Review input: the draft, the complete originating issue and the project metadata the launcher
-  // actually has. Attachments are counted as uninspected; their paths and contents are not sent.
-  const reviewContext = (): ReviewContext => ({
-    draft: prompt.value,
-    issue: seed
-      ? { identifier: seed.identifier, title: seed.title, description: seed.description, state: seed.state.name,
-          labels: seed.labels.map(label => label.name), team: seed.team, project: seed.project }
-      : null,
-    project: { name: projectName(), repositories: draft.extras.map(nameOf), base: draft.newBranch ? draft.base : "" },
-    attachments: draft.inject.length,
-  });
-  review = reviewControls({ panel: $("d-review"), prompt, context: reviewContext, edited: () => review?.update() });
-  $("d-actions").prepend(review.trigger);
-  prompt.addEventListener("input", () => review?.update());
-
-  const hide = (creation?: Promise<boolean>) => {
-    review?.close(creation);
+  const hide = () => {
     menu.close();
     forgetCatalog();
     forgetAccounts();
@@ -830,7 +826,8 @@ export function openLauncher(board: Board, opts: Open) {
     draft.prompt = seed ? issueBlock(seed, prompt.value) : prompt.value;
     // Derive the title from the issue, then prompt, then branch.
     draft.title = draft.title || summarize(prompt.value) || draft.branch || projectName();
-    hide(Promise.resolve().then(() => go(draft)));
+    hide();
+    go(draft);
   };
 
   $("d-go").addEventListener("click", submit);
@@ -868,6 +865,7 @@ function picker(o: {
   el.innerHTML = `<label class="pfind">${icon("search", 14)}<input spellcheck="false" /></label><div class="plist"></div>`;
   const find = el.querySelector("input")!;
   find.placeholder = o.placeholder;
+  find.dataset.track = `${btn.dataset.track}.search`;
   const list = el.querySelector<HTMLElement>(".plist")!;
   let marked = 0;
 
@@ -888,6 +886,7 @@ function picker(o: {
       ...hits.slice(0, 300).map((row, i) => {
         const b = document.createElement("button");
         b.className = "prow" + (i === marked ? " on" : "");
+        b.dataset.track = `${btn.dataset.track}.select`;
         b.innerHTML =
           `<span class="pc">${row.id === o.current() ? icon("check", 14) : (row.glyph ?? "")}</span>` +
           (row.sub === undefined ? "" : `<span class="iid"></span>`) +

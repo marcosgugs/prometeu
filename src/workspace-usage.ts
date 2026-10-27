@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { invoke } from "./ipc";
 import { listen } from "@tauri-apps/api/event";
 import { descriptors } from "./agents";
@@ -16,7 +17,7 @@ onTelemetryCleared(() => { cleared++; });
 
 /** One header chip owns its snapshot and invalidates reads whenever the workspace changes. */
 export class WorkspaceUsage {
-  readonly root = button(t("usage.title"), () => this.open(), "ghost");
+  readonly root = button(t("usage.title"), () => this.open(), "ghost", "usage.summary");
   private label = h("span", "workspace-usage-label", t("usage.title"));
   private workspace: Workspace | null = null;
   private board: Board = { stages: [], projects: [], workspaces: [] };
@@ -81,6 +82,7 @@ export class WorkspaceUsage {
   private open() {
     if (!this.workspace) return;
     if (this.panel?.isConnected) { menu.close(); return; }
+    track({ name: "usage_summary_viewed" });
     this.root.setAttribute("aria-expanded", "true");
     this.panel = openUsagePanel(this.root, this.data(), () => { this.panel = null; this.root.setAttribute("aria-expanded", "false"); });
     void this.refresh();

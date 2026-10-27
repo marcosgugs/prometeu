@@ -298,14 +298,7 @@ fn read(app: &AppHandle, memo: &mut Memo, cadence: Duration) -> Option<Machine> 
 /// lifecycle lock order.
 fn roots(state: &tauri::State<AppState>) -> Vec<Root> {
     let board = lock(&state.board).clone();
-    let title_of = |id: &str| {
-        board
-            .workspaces
-            .iter()
-            .find(|w| w.id == id)
-            .map(|w| w.title.clone())
-            .unwrap_or_else(|| id.to_string())
-    };
+    let title_of = |id: &str| owner_title(&board, id);
     let mut roots = vec![Root {
         pid: std::process::id(),
         kind: "app",
@@ -342,6 +335,18 @@ fn roots(state: &tauri::State<AppState>) -> Vec<Root> {
         });
     }
     roots
+}
+
+/// Name a dock's row after its owner as the sidebar does: a workspace's title, a project's name
+/// or a terminal session's name, never its id or folder path.
+fn owner_title(board: &crate::state::Board, id: &str) -> String {
+    let workspace = board.workspaces.iter().find(|w| w.id == id);
+    let project = board.projects.iter().find(|p| p.id == id);
+    workspace
+        .map(|w| w.title.clone())
+        .or_else(|| project.map(|p| p.name.clone()))
+        .or_else(|| prometeu_core::terminal_sessions::find(board, id).map(|s| s.title()))
+        .unwrap_or_else(|| id.to_string())
 }
 
 fn alive_terms(state: &tauri::State<AppState>) -> usize {
@@ -453,6 +458,25 @@ mod tests {
             power,
             revision: 0,
         }
+    }
+
+    #[test]
+    fn dock_rows_are_named_after_their_owner() {
+        let mut board: crate::state::Board = serde_json::from_value(serde_json::json!({
+            "stages": [],
+            "projects": [{"id": "/code/app", "name": "app", "path": "/code/app"}],
+            "workspaces": [{
+                "id": "workspace", "title": "Fix login", "repo": "/code/app", "repo_name": "app",
+                "branch": "fix", "worktree": "/code/fix", "stage": ""
+            }]
+        }))
+        .unwrap();
+        let session = prometeu_core::terminal_sessions::create(&mut board, "/Users/me/notes");
+        let renamed = prometeu_core::terminal_sessions::create(&mut board, "/Users/me");
+        prometeu_core::terminal_sessions::rename(&mut board, &renamed.id, Some("server"));
+        let names = ["workspace", "/code/app", &session.id, &renamed.id, "gone"]
+            .map(|id| owner_title(&board, id));
+        assert_eq!(names, ["Fix login", "app", "notes", "server", "gone"]);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Canonical event reactions. Vendor usage adaptation and feature effects stay behind ports.
 use super::SessionService;
 use crate::board::{Note, Status};
-use crate::conversation::{agent_activity, work::Work};
+use crate::conversation::work::Work;
 use crate::error::{code, with_args};
 use crate::lock::lock;
 use serde_json::Value;
@@ -30,18 +30,14 @@ pub struct SessionReactions<'a> {
 }
 
 impl SessionReactions<'_> {
-    fn observe_work(&self, session: &str, event: &Value) -> bool {
-        lock(self.work)
-            .entry(session.into())
-            .or_default()
-            .observe(event)
-    }
-
     pub fn react(&self, id: &str, frame: &Value, ready: &AtomicBool) -> bool {
-        // A resumed main turn invalidates the terminal previously held by its children.
-        if agent_activity(frame) {
-            self.observe_work(id, frame);
-        }
+        let (settled, status) = {
+            let mut work = lock(self.work);
+            let work = work.entry(id.into()).or_default();
+            let waited = work.waiting();
+            let settled = work.observe(frame);
+            (settled, next_status(frame, settled, waited, work))
+        };
         match frame["type"].as_str() {
             Some("session.state") if frame["state"] == "starting" => {
                 lock(self.work).remove(id);
@@ -68,12 +64,22 @@ impl SessionReactions<'_> {
                     self.sessions.remember_session(id, identity);
                 }
             }
-            Some("assistant.block") => {
+            // Any accepted message moves an interrupted conversation on, Continue included.
+            Some("user.message") => {
+                let resumed = lock(self.sessions.board)
+                    .tab_mut(id)
+                    .is_some_and(|tab| std::mem::take(&mut tab.interrupted));
+                if resumed {
+                    self.sessions.update(id, None, Note::Keep, None);
+                }
+            }
+            // Output while a request is open leaves the tab waiting and the request's note.
+            Some("assistant.block") if status == Some(Status::Rodando) => {
                 let note = match frame["block"]["kind"].as_str() {
                     Some("tool") => Note::Set(activity(&frame["block"])),
                     _ => Note::Keep,
                 };
-                self.sessions.update(id, Some(Status::Rodando), note, None);
+                self.sessions.update(id, status, note, None);
             }
             Some("request.opened") => {
                 let note = match frame["kind"].as_str() {
@@ -90,33 +96,51 @@ impl SessionReactions<'_> {
                 self.sessions
                     .update(id, Some(Status::Querendo), Note::Set(note), None);
             }
+            Some("request.closed") if status == Some(Status::Rodando) => {
+                self.sessions.update(id, status, Note::Clear, None);
+            }
             Some("turn.completed") => {
                 self.actions.completed(
                     id,
                     frame["outcome"] == "error" || frame["outcome"] == "interrupted",
                 );
-                let settled = self.observe_work(id, frame);
-                let status = match settled {
-                    true => Status::Pronta,
-                    false => Status::Rodando,
+                let note = match status {
+                    Some(Status::Querendo) => Note::Keep,
+                    _ => Note::Clear,
                 };
                 self.sessions
-                    .update(id, Some(status), Note::Clear, self.context.tokens(id));
+                    .update(id, status, note, self.context.tokens(id));
                 return settled;
             }
-            Some("background.changed") if self.observe_work(id, frame) => {
-                self.sessions.update(
-                    id,
-                    Some(Status::Pronta),
-                    Note::Clear,
-                    self.context.tokens(id),
-                );
+            Some("background.changed") if settled => {
+                self.sessions
+                    .update(id, status, Note::Clear, self.context.tokens(id));
                 return true;
             }
             _ => {}
         }
         false
     }
+}
+
+/// The status a canonical event moves its tab to, after `work` observed it; `None` leaves the
+/// status as it is. `waited` tells whether a request was open before the event. While one is open
+/// the tab waits for its person, whatever else the agent streams, and the answer to the last one
+/// lets the agent run again. The desktop reactions and the WSL runtime both derive status here.
+pub fn next_status(event: &Value, settled: bool, waited: bool, work: &Work) -> Option<Status> {
+    let moved = match event["type"].as_str() {
+        Some("user.message" | "assistant.started" | "assistant.block") => Status::Rodando,
+        Some("request.opened") => Status::Querendo,
+        Some("request.closed") if waited => Status::Rodando,
+        Some("turn.completed") if settled => Status::Pronta,
+        Some("turn.completed") => Status::Rodando,
+        Some("background.changed") if settled => Status::Pronta,
+        _ => return None,
+    };
+    Some(match work.waiting() {
+        true => Status::Querendo,
+        false => moved,
+    })
 }
 
 /// Build a compact activity label such as `Bash cd /Users/...`.

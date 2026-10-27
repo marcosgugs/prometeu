@@ -365,6 +365,11 @@ mod tests {
         }
         std::fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn install_script_is_embedded_with_unix_line_endings() {
+        // WSL's sh rejects `set -eu\r`; a Windows checkout without .gitattributes embeds CRLF.
+        assert!(!INSTALL.contains('\r'));
+    }
     #[cfg(unix)]
     #[test]
     fn native_install_checks_content_and_preserves_an_existing_binary_on_failure() {

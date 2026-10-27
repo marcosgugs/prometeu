@@ -23,7 +23,10 @@ prometeu-runtime --root DIR --workdir DIR [--codex EXE] [--model MODEL]
   `workspace` seeds the initial directory as the primary workspace. The seed
   applies only when no catalog exists and is not part of the attachment handshake.
 - `--shell` defaults to `$SHELL`, then `/bin/sh`. Shells run as login shells with
-  `TERM=xterm-256color` under the distribution's user.
+  `TERM=xterm-256color` and `TERM_PROGRAM=Prometeu` under the distribution's
+  user, without the launching terminal's handles or an agent's session markers;
+  the runtime does not know the app version, so it sets no
+  `TERM_PROGRAM_VERSION`. Setup and Run follow the same rule as the desktop.
 - Only Codex is registered. It uses the native authentication and configuration
   of the execution environment; approvals default to Ask for diagnostic sessions
   and to the launcher's stored policy for application sessions.
@@ -136,7 +139,7 @@ explicit cleanup command.
 | `terminal_snapshot` | `id` | `{ id, data, seq, running, code }` |
 | `terminal_current` | none | that snapshot or `null` |
 | `terminal_acknowledge` | `id`, `seq` | `{ acknowledged: true }` |
-| `terminal_close` | `id` | `{ closed: true }` after observed cleanup |
+| `terminal_close` | `id` | `{ closed: true }` after observed cleanup; an error that retains the handle after 15 s |
 
 Frames are `{ v: 1, terminal: { kind: "output" | "closed" | "error", id, ... } }`
 with raw bytes, including split or invalid UTF-8. Rows and columns are 1–500;

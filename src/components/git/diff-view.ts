@@ -155,7 +155,7 @@ export function diffView(review: {
     const box = document.createElement("div");
     box.className = "drepo";
 
-    const head = document.createElement("button");
+    const head = document.createElement("button"); head.dataset.track = "git.diff.repository.toggle";
     head.className = "drhead";
     head.title = r.name;
     head.innerHTML =
@@ -224,8 +224,9 @@ export function diffView(review: {
       shut.has(k) ? shut.delete(k) : shut.add(k);
       glyph();
       fill();
-    }, "ghost");
+    }, "ghost", "git.diff.file.toggle");
     fold.classList.add("dtoggle");
+    if (!change.deleted) fold.dataset.trackDoubleClick = "git.diff.file.open";
     fold.setAttribute("aria-label", t("diff.toggle", { path: change.path }));
     fold.setAttribute("aria-controls", body.id);
     fold.title = change.deleted ? change.path : change.path + "\n" + t("diff.open");
@@ -239,6 +240,7 @@ export function diffView(review: {
 
     const stats = document.createElement("span");
     stats.className = "dstats";
+    if (!change.deleted) stats.dataset.trackDoubleClick = "git.diff.file.open";
     stats.innerHTML = '<span class="new"></span><span class="dot"></span><span class="a"></span><span class="r"></span>';
     stats.children[0].textContent = change.new_file ? t("diff.new") : change.deleted ? t("diff.deleted") : "";
     const dot = stats.children[1] as HTMLElement;
@@ -247,10 +249,10 @@ export function diffView(review: {
     stats.children[2].textContent = change.added ? "+" + change.added : "";
     stats.children[3].textContent = change.removed ? "−" + change.removed : "";
 
-    const open = button(t("git.openFile"), () => currentDiffSnapshot.onOpen(repo, change.path), "ghost");
+    const open = button(t("git.openFile"), () => currentDiffSnapshot.onOpen(repo, change.path), "ghost", "git.openFile");
     open.classList.add("dopen");
     open.disabled = change.deleted;
-    const seen = checkbox(t("diff.reviewed"), false);
+    const seen = checkbox(t("diff.reviewed"), false, "git.diff.reviewed");
     seen.control.classList.add("dseen");
     seen.control.setAttribute("aria-label", t("diff.reviewFile", { path: change.path }));
     const paintSeen = () => {

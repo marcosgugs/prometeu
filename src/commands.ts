@@ -50,8 +50,8 @@ export function typed(area: HTMLTextAreaElement, all: Suggestion[], onChange: ()
   };
   const box = area.getBoundingClientRect();
   menu.openAt(
-    { x: box.left, y: box.top - 4, above: true },
-    list.map((c) => ({ label: `/${c.name}`, badge: c.badge, hint: brief(c.description), run: () => put(c.name) })),
+    { anchor: area, x: box.left, y: box.top - 4, above: true },
+    list.map((c) => ({ label: `/${c.name}`, track: "command.select", badge: c.badge, hint: brief(c.description), run: () => put(c.name) })),
     "cmds",
   );
   picking = { first: () => put(list[0].name), exact: list.some((c) => c.name.toLowerCase() === at.query.toLowerCase()) };

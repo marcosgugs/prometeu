@@ -1,11 +1,13 @@
 //! Run workspace shells, setup, and development scripts with their reserved port. Repository
 //! configuration owns these commands.
 
+use crate::analytics::{self, Event, ProjectAction, ScriptKind};
 use crate::lock::lock;
-use crate::session::cwd_of;
 use crate::state::{Board, Workspace};
 use crate::{chat, i18n, pty, scripts, AppState};
 use portable_pty::CommandBuilder;
+use prometeu_core::terminal::dock_kind;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
@@ -44,17 +46,14 @@ pub fn open_dock(
     // workspace can still open a shell using only its directory, without workspace script
     // variables.
     if is_terminal(&kind) {
-        let root = cwd_of(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
-        let shell = crate::platform::shell();
-        let mut cmd = CommandBuilder::new(shell);
-        cmd.cwd(&root);
-        cmd.env("TERM", "xterm-256color");
-        for (key, value) in found.as_ref().map(script_env).unwrap_or_default() {
-            cmd.env(key, value);
+        let started = start_shell(&state.ptys, &state.board, &id, &key, |root| {
+            let cmd = shell_command(&crate::platform::shell(), root, found.as_ref());
+            pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())
+        })?;
+        if started {
+            crate::machine::publish_counts(&app);
+            analytics::track(Event::TerminalOpened);
         }
-        let handle = pty::spawn(&app, &key, cmd, cols, rows, pty::Dock::default())?;
-        lock(&state.ptys).insert(key.clone(), handle);
-        crate::machine::publish_counts(&app);
         return Ok(key);
     }
 
@@ -90,6 +89,26 @@ pub fn open_dock(
     };
     start_script(&app, &state, &ws, script, cols, rows)?;
     Ok(key)
+}
+
+/// Resolve the shell's folder and insert the new shell under one PTY lock. Removing its owner stops
+/// docks through the same lock, so it either finds the shell or leaves no folder to start in; a
+/// shell spawned between the two would outlive its project. Returns whether a shell started.
+pub(crate) fn start_shell(
+    ptys: &Mutex<HashMap<String, pty::Pty>>,
+    board: &Mutex<Board>,
+    id: &str,
+    key: &str,
+    spawn: impl FnOnce(&Path) -> Result<pty::Pty, String>,
+) -> Result<bool, String> {
+    let mut ptys = lock(ptys);
+    if ptys.get(key).is_some_and(|p| p.alive()) {
+        return Ok(false);
+    }
+    let root = crate::terminal_sessions::shell_folder(&lock(board), id)?;
+    let handle = spawn(&root)?;
+    ptys.insert(key.to_string(), handle);
+    Ok(true)
 }
 
 /// Show copied files before the repository setup command. Either operation can create a Setup tab;
@@ -221,17 +240,7 @@ fn start_script(
         header,
     } = script;
     let key = format!("{}:{kind}", ws.id);
-    // Use a login shell so nvm, rbenv, mise, and similar setup tools see profile exports even when
-    // the app starts from Finder.
-    let mut cmd = CommandBuilder::new("/bin/sh");
-    cmd.args(["-lc", command]);
-    // Run the primary repository's script in its worktree, not the multi-repository grouping
-    // directory.
-    cmd.cwd(&ws.primary().worktree);
-    cmd.env("TERM", "xterm-256color");
-    for (key, value) in script_env(ws) {
-        cmd.env(key, value);
-    }
+    let cmd = script_command(ws, command);
     // Only setup completion releases pending initial agent messages.
     let on_exit: Option<pty::OnExit> = (kind == "setup").then(|| {
         let app = app.clone();
@@ -261,6 +270,13 @@ fn start_script(
     ptys.insert(key, handle);
     drop(ptys);
     crate::machine::publish_counts(app);
+    analytics::track(Event::ProjectScriptStarted {
+        kind: if kind == "setup" {
+            ScriptKind::Setup
+        } else {
+            ScriptKind::Run
+        },
+    });
     Ok(())
 }
 
@@ -307,6 +323,31 @@ fn script_name(ws: &Workspace) -> String {
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| ws.branch.replace('/', "-"))
+}
+
+/// A workspace shell gets the script variables; a registered project's shell has only its folder.
+fn shell_command(shell: &str, root: &Path, ws: Option<&Workspace>) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(shell);
+    cmd.cwd(root);
+    prometeu_process::terminal::own_terminal(&mut cmd, Some(env!("CARGO_PKG_VERSION")));
+    for (key, value) in ws.map(script_env).unwrap_or_default() {
+        cmd.env(key, value);
+    }
+    cmd
+}
+
+/// Use a login shell so nvm, rbenv, mise, and similar setup tools see profile exports even when the
+/// app starts from Finder. Run the primary repository's script in its worktree, not the
+/// multi-repository grouping directory.
+fn script_command(ws: &Workspace, command: &str) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new("/bin/sh");
+    cmd.args(["-lc", command]);
+    cmd.cwd(&ws.primary().worktree);
+    prometeu_process::terminal::own_terminal(&mut cmd, Some(env!("CARGO_PKG_VERSION")));
+    for (key, value) in script_env(ws) {
+        cmd.env(key, value);
+    }
+    cmd
 }
 
 /// Run and archive use the primary repository's environment.
@@ -370,14 +411,28 @@ pub fn open_run(app: AppHandle, state: State<AppState>, id: String) -> Result<()
 
 #[tauri::command]
 pub fn close_dock(state: State<AppState>, id: String, kind: String) {
-    pty::kill(&state, &format!("{id}:{kind}"));
+    let key = format!("{id}:{kind}");
+    let alive = lock(&state.ptys)
+        .get(&key)
+        .is_some_and(|process| process.alive());
+    pty::kill(&state, &key);
+    if alive {
+        match kind.as_str() {
+            "setup" => analytics::track(Event::ProjectScriptStopped {
+                kind: ScriptKind::Setup,
+            }),
+            "run" => analytics::track(Event::ProjectScriptStopped {
+                kind: ScriptKind::Run,
+            }),
+            _ => {}
+        }
+    }
 }
 
-/// Stop every workspace dock when archiving or removing the workspace so hidden servers cannot
-/// remain active.
-pub(crate) fn kill_docks(state: &State<AppState>, id: &str) {
-    let prefix = format!("{id}:");
-    lock(&state.ptys).retain(|key, _| !key.starts_with(&prefix));
+/// Stop every dock of a workspace being archived, cleaned up or removed, or of a project being
+/// removed, so hidden shells and servers cannot remain active.
+pub(crate) fn kill_docks(ptys: &Mutex<HashMap<String, pty::Pty>>, id: &str) {
+    lock(ptys).retain(|key, _| dock_kind(key, id).is_none());
 }
 
 /// Expose repository script declarations and the workspace port so the frontend can render
@@ -401,16 +456,34 @@ pub struct DockView {
 /// opens a log tab.
 #[tauri::command]
 pub fn dock_state(state: State<AppState>, id: String) -> Vec<DockView> {
-    let prefix = format!("{id}:");
     lock(&state.ptys)
         .iter()
         .filter_map(|(key, pty)| {
             Some(DockView {
-                kind: key.strip_prefix(&prefix)?.to_string(),
+                kind: dock_kind(key, &id)?.to_string(),
                 alive: pty.alive(),
             })
         })
         .collect()
+}
+
+/// Whether quitting would cut off a terminal's work (ADR 0097): Setup and Run are their scripts,
+/// while a shell waiting at its prompt loses only its scrollback.
+fn cuts_off(kind: &str, alive: bool, running_command: impl FnOnce() -> bool) -> bool {
+    alive && (!is_terminal(kind) || running_command())
+}
+
+/// Count the terminals that quitting or restarting would cut off, for the question asked first.
+#[tauri::command]
+pub fn running_terminals(state: State<AppState>) -> usize {
+    lock(&state.ptys)
+        .iter()
+        .filter(|(key, pty)| {
+            // Owners may contain ':' but kinds never do.
+            let kind = key.rsplit_once(':').map_or(key.as_str(), |(_, kind)| kind);
+            cuts_off(kind, pty.alive(), || pty.running_command())
+        })
+        .count()
 }
 
 #[tauri::command]
@@ -424,7 +497,7 @@ pub fn workspace_scripts(app: AppHandle, state: State<AppState>, id: String) -> 
 
 /// Create the commented settings example only when no configuration exists. For worktrees
 /// inheriting clone settings, copy those settings into the worktree instead, allowing isolated
-/// edits. Existing Prometeu or Conductor files are returned without overwriting them.
+/// edits. Existing settings files are returned without overwriting them.
 #[tauri::command]
 pub fn create_scripts_file(state: State<AppState>, id: String) -> Result<String, String> {
     let ws = workspace_copy(&state, &id).ok_or_else(|| i18n::t("err.session.noWorkspace"))?;
@@ -446,6 +519,9 @@ pub fn create_scripts_file(state: State<AppState>, id: String) -> Result<String,
         .ok_or_else(|| i18n::t("err.session.badPath"))?;
     std::fs::create_dir_all(parent).map_err(i18n::io)?;
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    analytics::track(Event::ProjectActionUsed {
+        action: ProjectAction::Configure,
+    });
     Ok(rel)
 }
 
@@ -480,6 +556,58 @@ mod tests {
             }))
             .unwrap(),
         )
+    }
+
+    #[test]
+    fn quitting_cuts_off_live_scripts_and_shells_running_a_command() {
+        for (kind, alive, command, expected) in [
+            ("setup", true, false, true),
+            ("run", true, false, true),
+            ("run", false, false, false),
+            ("terminal", true, false, false),
+            ("terminal", true, true, true),
+            ("terminal-2", true, true, true),
+            ("terminal-2", false, true, false),
+        ] {
+            assert_eq!(cuts_off(kind, alive, || command), expected, "{kind}");
+        }
+    }
+
+    #[test]
+    fn dock_shells_and_scripts_present_prometeu_and_keep_workspace_variables() {
+        let ws = board(Some(4100)).into_inner().unwrap().workspaces.remove(0);
+        let expected = script_env(&ws);
+        assert!(expected
+            .iter()
+            .any(|(key, value)| key == "PORT" && value == "4100"));
+        for cmd in [
+            shell_command("/bin/sh", Path::new("/workspace"), Some(&ws)),
+            script_command(&ws, "npm run dev"),
+        ] {
+            let value = |key: &str| cmd.get_env(key).map(|v| v.to_string_lossy().into_owned());
+            assert_eq!(value("TERM").as_deref(), Some("xterm-256color"));
+            assert_eq!(value("TERM_PROGRAM").as_deref(), Some("Prometeu"));
+            assert_eq!(
+                value("TERM_PROGRAM_VERSION").as_deref(),
+                Some(env!("CARGO_PKG_VERSION"))
+            );
+            // Whatever ran these tests, its terminal and agent markers stay behind.
+            for key in ["CLAUDECODE", "CODEX_THREAD_ID", "TMUX", "ITERM_SESSION_ID"] {
+                assert_eq!(value(key), None, "{key}");
+            }
+            for (key, expected) in &expected {
+                assert_eq!(value(key).as_deref(), Some(expected.as_str()), "{key}");
+            }
+        }
+        // A registered project's shell has its folder but no workspace variables.
+        let project = shell_command("/bin/sh", Path::new("/project"), None);
+        assert!(expected
+            .iter()
+            .all(|(key, _)| project.get_env(key).is_none()));
+        assert_eq!(
+            project.get_env("TERM_PROGRAM").and_then(|v| v.to_str()),
+            Some("Prometeu")
+        );
     }
 
     #[test]

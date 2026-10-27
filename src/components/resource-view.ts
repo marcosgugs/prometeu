@@ -29,12 +29,12 @@ export function resourceView(options: {
   const { labels } = options;
   let snapshot = options.snapshot;
   let selection = { filter: "all" as ResourceFilter, query: "", ...options.selection };
-  const root = h("div", "resources-view");
-  const add = menuButton(labels.add, () => options.add(add));
+  const root = h("div", "resources-view"); root.dataset.trackArea = "settings.resources";
+  const add = menuButton(labels.add, () => options.add(add), "resources.add");
   add.classList.replace("ghost", "pri"); add.dataset.focus = "resource-add";
   add.insertAdjacentHTML("afterbegin", icon("plus", 14));
   const intro = sectionHeader({ description: labels.hint,
-    supporting: [button(labels.defaults, options.defaults, "ghost")], actions: [add] });
+    supporting: [button(labels.defaults, options.defaults, "ghost", "resources.defaults")], actions: [add] });
   intro.classList.add("resources-intro");
 
   const filters = h("div", "resource-filters");
@@ -42,12 +42,12 @@ export function resourceView(options: {
   const controls = (Object.keys(labels.filters) as ResourceFilter[]).map(kind => {
     const control = button(labels.filters[kind], () => {
       selection.filter = kind; options.changed?.({ ...selection }); paint();
-    }, "ghost");
+    }, "ghost", `resources.filter.${kind}`);
     const count = h("span", "resource-count");
     control.append(count); control.dataset.filter = kind; control.dataset.focus = `resource-filter-${kind}`;
     filters.append(control); return { kind, control, count };
   });
-  const search = input(selection.query); search.type = "search";
+  const search = input(selection.query, false, "resources.search"); search.type = "search";
   search.placeholder = labels.search; search.setAttribute("aria-label", labels.search);
   search.dataset.focus = "resource-search";
   search.oninput = () => { selection.query = search.value; options.changed?.({ ...selection }); paint(); };
@@ -84,7 +84,7 @@ export function resourceView(options: {
       const row = itemRow({ title: item.id, description: item.description, glyph: item.glyph,
         status: item.status, busy: item.busy,
         metadata: [h("span", "resource-type", labels.kinds[item.kind]), origin],
-        actions: item.actions.length ? [overflowAction({ label: labels.more(item.id), key: item.key,
+        actions: item.actions.length ? [overflowAction({ label: labels.more(item.id), key: item.key, track: "resources.more",
           items: item.actions, busy: item.busy || snapshot.loading })] : [],
       });
       row.root.classList.add("resource-row");
@@ -97,7 +97,7 @@ export function resourceView(options: {
     }
     message.append(listState(snapshot.error
       ? { kind: "error", text: snapshot.error, retry: options.retry
-        ? { label: labels.retry, run: options.retry, key: "resource-retry" } : undefined }
+        ? { label: labels.retry, run: options.retry, key: "resource-retry", track: "resources.retry" } : undefined }
       : snapshot.loading ? { kind: "loading", text: labels.loading }
       : !items.length ? { kind: "empty", text: snapshot.items.length ? labels.noResults : labels.empty }
       : { kind: "ready" }));

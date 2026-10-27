@@ -130,11 +130,16 @@ absence of forward secrecy, are in
 - `team_config_set`: still stores private JSON. Organization configuration keeps
   the legacy fields, with empty `secret` and `credential`, and adds
   `cloud: { user, origin, slug, name }`. Tickets are never persisted.
-- `set_shared`: receives `remoteControl` and the optional `team` argument;
-  persists `remote_control` and `share_team` in the workspace. An organization
-  uses `organization:<id>:<member>`. A legacy team uses `team:<id>`. Their
-  absence in old boards authorizes only the legacy path; a missing
-  `remote_control` means `false`.
+- `set_shared`: receives `remoteControl`, the optional `team` and the optional
+  `rights` arguments; persists `remote_control`, `share_team` and `rights` in the
+  workspace. An organization uses `organization:<id>:<member>`. A legacy team
+  uses `team:<id>`. Their absence in old boards authorizes only the legacy path;
+  a missing `remote_control` means `false`, and missing `rights` lets people
+  only view and comment ([ADR 0090](../decisions/0090-approved-remote-input.md)).
+- `set_confirm_messages`: receives `id` and `confirm` and persists
+  `confirm_messages` in the workspace, independent of `set_shared`. A missing
+  field means `true`: teammates' messages wait for the owner. Windows does not
+  implement it, like `set_shared`.
 
 With exactly one accepted membership, the desktop activates it by itself when
 listing the organizations; leaving stores that decision in `localStorage`

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 
 async function boot(page: Page) {
   await page.goto("/");
@@ -37,6 +37,100 @@ async function waiting(page: Page) {
 async function release(page: Page, error?: string) {
   await page.evaluate(error => (window as unknown as { auditRelease: (error?: string) => void }).auditRelease(error), error);
 }
+
+test.describe("first-run analytics consent", () => {
+  test.use({ analyticsConsentAnswered: false });
+
+  // Consent depends on native Escape, submit-button routing and disabled controls in a modal.
+  // Calling mocked callbacks cannot prove that either real button saves or that pending saves
+  // prevent dismissal; the Settings focus scenario below never opens this dialog.
+  test("real choices save, Escape defers and failed saves remain retryable @webkit", async ({ page }) => {
+    await boot(page);
+    const dialog = page.getByRole("dialog", { name: "Let's make Prometeu better together", exact: true });
+    const accept = dialog.getByRole("button", { name: "Share usage data", exact: true });
+    const decline = dialog.getByRole("button", { name: "Do not share", exact: true });
+    const saved = () => page.evaluate(() => localStorage.getItem("mock:analyticsEnabled"));
+    await expect(dialog).toBeVisible();
+    expect(await saved()).toBeNull();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    expect(await saved()).toBeNull();
+
+    for (const share of [false, true]) {
+      await page.evaluate(() => localStorage.removeItem("mock:analyticsEnabled"));
+      await page.reload();
+      await expect(dialog).toBeVisible();
+      const choice = share ? accept : decline;
+      await hold(page, "analytics_set_enabled");
+      await choice.click();
+      await waiting(page);
+      await expect(accept).toBeDisabled();
+      await expect(decline).toBeDisabled();
+      await expect(dialog.locator(":scope > form")).toHaveAttribute("aria-busy", "true");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeVisible();
+      expect(await saved()).toBeNull();
+
+      await release(page, "Consent save failed");
+      await expect(dialog.getByRole("alert")).toContainText("Consent save failed");
+      await expect(accept).toBeEnabled();
+      await expect(decline).toBeEnabled();
+      expect(await saved()).toBeNull();
+
+      await hold(page, "analytics_set_enabled");
+      await choice.click();
+      await waiting(page);
+      await expect(accept).toBeDisabled();
+      await expect(decline).toBeDisabled();
+      await expect(dialog.getByRole("alert")).toBeHidden();
+      await release(page);
+      await expect(dialog).toBeHidden();
+      await expect.poll(saved).toBe(String(share));
+      await page.reload();
+      await expect(page.locator("#deskView")).toBeVisible();
+      await expect(dialog).toHaveCount(0);
+      expect(await saved()).toBe(String(share));
+    }
+  });
+});
+
+// Settings replaces its DOM while saving. Native disabled controls lose focus, which mocked
+// elements cannot reproduce; cover success, failure and moving focus during the pending save.
+test("analytics saves restore keyboard focus without stealing it @webkit", async ({ page }) => {
+  await boot(page);
+  await page.locator("#settings").click();
+  await page.locator(".setnavitem").getByText("General", { exact: true }).click();
+  const control = page.getByRole("switch", { name: "Share usage data", exact: true });
+  await expect(control).toBeEnabled();
+  await expect(control).toHaveAttribute("data-track", "settings.analytics.enabled");
+  expect(await control.evaluate(element => element.closest<HTMLElement>("[data-track-area]")?.dataset.trackArea)).toBe("settings.privacy");
+  await hold(page, "analytics_set_enabled");
+  await control.press("Space");
+  await waiting(page);
+  await expect(control).toBeDisabled();
+  await release(page);
+  await expect(control).toBeEnabled();
+  await expect(control).toBeChecked();
+  await expect(control).toBeFocused();
+
+  await hold(page, "analytics_set_enabled");
+  await control.press("Space");
+  await waiting(page);
+  await release(page, 'i18n:{"code":"err.analytics.storage"}');
+  await expect(control).toBeEnabled();
+  await expect(control).toBeChecked();
+  await expect(control).toBeFocused();
+
+  await hold(page, "analytics_set_enabled");
+  await control.press("Space");
+  await waiting(page);
+  const search = page.getByRole("searchbox", { name: "Search settings…" });
+  await search.focus();
+  await release(page);
+  await expect(control).toBeEnabled();
+  await expect(control).not.toBeChecked();
+  await expect(search).toBeFocused();
+});
 
 async function openFile(page: Page, path: string) {
   await page.locator("#tree .treerow", { hasText: path }).click();

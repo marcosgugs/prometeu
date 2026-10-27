@@ -231,6 +231,7 @@ export class MobileView {
     const status = h("div", "m-connection");
     status.setAttribute("role", "status");
     composer.append(box, button, status);
+    const viewOnly = h("p", "ui-hint m-viewonly", t("mobile.viewOnly"));
     const resize = () => {
       box.style.height = "auto";
       box.style.height = `${box.scrollHeight + 2}px`;
@@ -255,16 +256,22 @@ export class MobileView {
         this.paintComposer();
       }
     });
-    this.root.append(composer);
+    this.root.append(composer, viewOnly);
     this.paintComposer();
   }
 
   private paintComposer() {
     if (this.screen.kind !== "chat") return;
-    const share = viewer.remotes().find((r) => r.id === (this.screen as Extract<Screen, { kind: "chat" }>).id)?.share;
+    const id = this.screen.id;
+    const share = viewer.remotes().find((r) => r.id === id)?.share;
     const box = this.root.querySelector<HTMLTextAreaElement>(".m-composer textarea");
     const button = this.root.querySelector<HTMLButtonElement>(".m-composer button");
     if (!box || !button) return;
+    // Only the composer reflects rights here; the phone has no request answers to hide (ADR 0090).
+    const send = viewer.rightsIn(id).send;
+    box.closest<HTMLElement>(".m-composer")!.hidden = !send;
+    const viewOnly = this.root.querySelector<HTMLElement>(".m-viewonly");
+    if (viewOnly) viewOnly.hidden = send;
     const phase = member.current().phase;
     const online = phase === "online" && !!share?.online;
     button.disabled = !online || this.sending || !box.value.trim();
@@ -341,11 +348,13 @@ function itemNode(item: Item): HTMLElement {
       return box;
     }
     case "ask":
-      return h("div", "m-item m-ask", t("mobile.ask", { tool: toolLabel(item.tool) }));
+      return h("div", "m-item m-ask", item.closed
+        ? t("chat.unanswered", { what: toolLabel(item.tool) })
+        : t("mobile.ask", { tool: toolLabel(item.tool) }));
     case "result":
       return h("div", `m-item m-result${item.error ? " err" : ""}`, item.text);
     case "system":
-      return h("div", `m-item m-system${item.error ? " err" : ""}`, item.text);
+      return h("div", `m-item m-system${item.error ? " err" : ""}`, item.what === "interrupted" ? t("chat.interrupted") : item.text);
     case "context":
       return h("div", "m-item m-hidden");
   }

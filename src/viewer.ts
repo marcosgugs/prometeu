@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { invoke } from "./ipc";
 import { fromBack, t } from "./i18n";
 import { highlight } from "./highlight";
@@ -62,9 +63,9 @@ const imageTypes: Record<string, string> = {
 export function init(onError: (m: string) => void, onSaved: (id: string) => void) {
   fail = onError;
   saved = onSaved;
-  const source = button(t("viewer.edit"), () => view(false), "ghost");
+  const source = button(t("viewer.edit"), () => view(false), "ghost", "viewer.edit");
   source.id = "vsource";
-  const preview = button(t("viewer.preview"), () => view(true), "ghost");
+  const preview = button(t("viewer.preview"), () => view(true), "ghost", "viewer.preview");
   preview.id = "vpreview";
   $("vview").setAttribute("aria-label", t("viewer.mode"));
   $("vview").append(source, preview);
@@ -112,7 +113,7 @@ export function init(onError: (m: string) => void, onSaved: (id: string) => void
 }
 
 function initFind() {
-  query = input();
+  query = input("", false, "viewer.find.query");
   query.id = "vfindq";
   query.type = "search";
   query.spellcheck = false;
@@ -151,6 +152,7 @@ function openFind(): boolean {
   // Only an editor selection seeds the query; repeating the shortcut in the bar keeps the typed text.
   const picked = document.activeElement === ta ? ta.value.slice(ta.selectionStart, ta.selectionEnd) : "";
   if (picked && !picked.includes("\n")) query.value = picked;
+  if (!finding) track({ name: "file_search_used" });
   finding = true;
   $("vfind").hidden = false;
   query.focus();
@@ -249,17 +251,18 @@ export function moveDrafts(id: string, from: string, to: string | null) {
 }
 
 /// Board events refresh open files; preserve scrolling when the content is unchanged.
-export async function show(id: string, path: string) {
+export async function show(id: string, path: string, opened = false) {
   const extension = path.split(".").pop()?.toLowerCase() ?? "";
   const kind = /\.pdf$/i.test(path) ? "pdf" : /\.csv$/i.test(path) ? "csv"
     : Object.prototype.hasOwnProperty.call(imageTypes, extension) ? "image" : null;
-  if (kind) return showBlob(id, path, kind);
+  if (kind) return showBlob(id, path, kind, opened);
+  const record = () => { if (opened) track({ name: "file_opened", kind: /\.(md|markdown)$/i.test(path) ? "markdown" : "text" }); };
   const k = key(id, path);
   const same = shown?.id === id && shown.path === path;
   const currentRequest = ++request;
   void loadBase(id, path, !same);
   // An unsaved draft owns the displayed text.
-  if (same && drafts.has(k)) return;
+  if (same && drafts.has(k)) { record(); return; }
 
   let text = "";
   let error = "";
@@ -270,8 +273,8 @@ export async function show(id: string, path: string) {
   }
   if (currentRequest !== request) return;
   // The user may start typing while the disk read is pending.
-  if (shown?.id === id && shown.path === path && drafts.has(k)) return;
-  if (same && shown!.text === text && !error) return;
+  if (shown?.id === id && shown.path === path && drafts.has(k)) { record(); return; }
+  if (same && shown!.text === text && !error) { record(); return; }
   shown = { id, path, text };
   crumb(path);
   blob(false);
@@ -291,6 +294,7 @@ export async function show(id: string, path: string) {
     return;
   }
 
+  record();
   // Restore the draft and the disk baseline from when editing began.
   const pending = drafts.get(k);
   if (pending) shown = { id, path, text: pending.was };
@@ -369,7 +373,8 @@ function renderImage(into: HTMLElement, content: Blob, path: string, onError: ()
 
 /// WebKit renders PDF in an iframe; CSV uses a table; images use the browser decoder.
 /// Read bytes only when the disk stamp changes to avoid large reads on every board event.
-async function showBlob(id: string, path: string, kind: "pdf" | "csv" | "image") {
+async function showBlob(id: string, path: string, kind: "pdf" | "csv" | "image", opened: boolean) {
+  const record = () => { if (opened) track({ name: "file_opened", kind }); };
   const same = shown?.id === id && shown.path === path;
   const currentRequest = ++request;
   let stamp = "";
@@ -378,7 +383,7 @@ async function showBlob(id: string, path: string, kind: "pdf" | "csv" | "image")
   try {
     stamp = await invoke("file_stamp", { id, rel: path });
     if (currentRequest !== request) return;
-    if (same && shown!.text === stamp) return;
+    if (same && shown!.text === stamp) { record(); return; }
     bytes = await invoke("read_bytes", { id, rel: path });
   } catch (e) {
     error = fromBack(e);
@@ -399,6 +404,7 @@ async function showBlob(id: string, path: string, kind: "pdf" | "csv" | "image")
     $("vpre").children[0].textContent = error;
     return;
   }
+  record();
   const into = $("vfile");
   into.className = `vfile ${kind}`;
   if (kind === "pdf") {

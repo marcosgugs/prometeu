@@ -2,18 +2,22 @@ import * as actions from "./actions";
 import * as background from "./background";
 import * as cloud from "./cloud";
 import { invoke } from "./ipc";
+import { track, trackClicks, viewScreen, type Screen } from "./analytics";
+import { askAnalyticsConsent } from "./analytics-settings";
 import { onConnectionRestored } from "./connection";
 import { listen } from "@tauri-apps/api/event";
 import { openProjects } from "./projects";
 import * as alert from "./alert";
 import * as notifications from "./notifications";
+import * as island from "./island";
 import { installed, loadAgents } from "./agents";
 import * as appmenu from "./appmenu";
 import type { Info } from "./chat";
 import * as archived from "./archived";
 import * as sidebar from "./sidebar";
 import { openCleanup } from "./cleanup";
-import { openInbox } from "./inbox";
+import { announceBoardRecovery } from "./board-recovery";
+import * as notificationCenter from "./notification-center";
 import * as desk from "./desk";
 import * as dock from "./dock";
 import * as dockbar from "./dockbar";
@@ -27,6 +31,7 @@ import { githubIssue } from "./github-issues-model";
 import * as mcp from "./mcp";
 import * as plugins from "./plugins";
 import { PrScanPolicy } from "./pr-refresh";
+import * as quit from "./quit";
 import { fileDropTarget as launcherDropTarget, openLauncher, type Draft, type Open } from "./launcher";
 import * as menu from "./menu";
 import * as news from "./news";
@@ -35,16 +40,20 @@ import * as session from "./session";
 import * as settings from "./settings";
 import * as statusbar from "./statusbar";
 import * as team from "./team";
+import * as terminals from "./terminals";
 import * as trust from "./trust";
 import "./style.css";
-import type { Board, Issue, Project, Tab, Workspace } from "./types";
+import type { Board, Issue, Project, Tab, TerminalSession, Workspace } from "./types";
 import * as update from "./update";
 import { $ } from "./util";
 import { mac } from "./platform";
+import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import * as viewer from "./viewer";
 import * as ws from "./workspace";
 import { announceWorkspaceUsage } from "./workspace-usage";
 
+// Capture explicit control identities and surface metadata, independent of visible text.
+trackClicks();
 // Use the backend mock when running outside Tauri.
 if (!("__TAURI_INTERNALS__" in window)) await import("./mock");
 await background.start().catch(() => {});
@@ -96,15 +105,10 @@ const hooks: sidebar.Hooks = {
   },
   finish: (id) => ws.finish(id),
   cleanup: () => openCleanup(say),
-  inbox: () =>
-    openInbox((workspace, note, tab) => {
-      const target = view().workspaces.find((w) => w.id === workspace);
-      if (!target) return say(t("err.team.noShare"), true);
-      if (tab && !target.remote) invoke("focus_tab", { workspace: target.id, tab });
-      void openWorkspace(tab ? { ...target, active: tab } : target).then(() => ws.showNote(note));
-    }),
+  toNotifications: () => showNotifications(),
+  notifications: () => notificationCenter.count(),
   pin: (id, pinned) => invoke("pin_workspace", { id, pinned }),
-  unread: (id, unread) => invoke("set_unread", { id, unread }),
+  unread: (id, unread) => invoke("set_unread", { id, unread }).then(() => track({ name: "workspace_action_used", action: unread ? "mark_unread" : "mark_read" })),
   reveal: (id) => invoke("reveal_path", { id, rel: "" }).catch((e) => say(fromBack(e), true)),
   copyPath: async (w) => {
     try {
@@ -121,12 +125,25 @@ const hooks: sidebar.Hooks = {
   addProject: () => openProjects(say),
   removeProject: (id) => invoke("remove_project", { id }),
   reorderProjects: (ids) => invoke("reorder_projects", { ids }),
+  groupProjects: (ids, group) => invoke("group_projects", { ids, group }),
   projectTools: (id) => void trust.open(id, say),
   openProject: (id) => {
     const project = state.projects.find((p) => p.id === id);
     if (project) showProject(project);
   },
   newWorkspace: (projectId) => launch(projectId),
+  terminals: {
+    available: terminals.available,
+    live: terminals.isLive,
+    open: (id) => {
+      const session = state.terminals?.find((item) => item.id === id);
+      if (session) showTerminal(session);
+    },
+    create: () => void terminals.create(),
+    createIn: () => void terminals.createIn(),
+    rename: (id, name) => void terminals.rename(id, name),
+    close: (id) => void terminals.close(id),
+  },
 };
 
 /// Remember board redraws deferred by an open menu so its latest selection appears even if no later backend event arrives.
@@ -144,6 +161,7 @@ function draw() {
   archived.draw();
   desk.draw();
   if (ws.id()) ws.draw();
+  ws.drawTerminal(state.terminals ?? []);
   alert.looked();
 }
 
@@ -152,9 +170,10 @@ menu.onClose(() => missed && draw());
 /* Navigation history contains pages and workspaces with noncolliding IDs. */
 const SETTINGS = "@configurações";
 const ISSUES = sidebar.ISSUES;
+const NOTIFICATIONS = sidebar.NOTIFICATIONS;
 const ARCHIVED = sidebar.ARCHIVED;
 const DESK = sidebar.DESK;
-const pages = new Set([SETTINGS, ISSUES, ARCHIVED, DESK]);
+const pages = new Set([SETTINGS, ISSUES, NOTIFICATIONS, ARCHIVED, DESK]);
 const hist: string[] = [];
 let at = -1;
 let navigationVersion = 0;
@@ -177,6 +196,8 @@ function travel(dir: -1 | 1) {
     showSettings(false);
   } else if (hist[at] === ISSUES) {
     showIssues(false);
+  } else if (hist[at] === NOTIFICATIONS) {
+    showNotifications(false);
   } else if (hist[at] === ARCHIVED) {
     showArchived(false);
   } else if (hist[at] === DESK) {
@@ -184,8 +205,10 @@ function travel(dir: -1 | 1) {
   } else {
     const target = view().workspaces.find((w) => w.id === hist[at]);
     const project = state.projects.find((p) => p.id === hist[at]);
+    const session = state.terminals?.find((s) => s.id === hist[at]);
     if (target) openWorkspace(target, false);
     else if (project) showProject(project, false);
+    else if (session) showTerminal(session, false);
     else showDesk(false);
   }
   drawNav();
@@ -193,14 +216,22 @@ function travel(dir: -1 | 1) {
 $("back").addEventListener("click", () => travel(-1));
 $("fwd").addEventListener("click", () => travel(1));
 
-/// Show one non-workspace page at a time.
-function showOnly(view: "settingsView" | "issuesView" | "archivedView" | "deskView" | null) {
+const SCREENS = {
+  settingsView: "settings", issuesView: "issues", notificationsView: "notifications", archivedView: "archived", deskView: "desk",
+} as const;
+
+/// Show one non-workspace page at a time; a null view shows a workspace or project.
+function showOnly(view: keyof typeof SCREENS | null, screen: Screen = view ? SCREENS[view] : "workspace") {
   navigationVersion++;
+  viewScreen(screen);
   $("deskView").hidden = view !== "deskView";
   $("settingsView").hidden = view !== "settingsView";
   $("issuesView").hidden = view !== "issuesView";
+  $("notificationsView").hidden = view !== "notificationsView";
   $("archivedView").hidden = view !== "archivedView";
+  if (view !== "settingsView") settings.hide();
   if (view !== "issuesView") issues.hide();
+  if (view !== "notificationsView") notificationCenter.hide();
   if (view !== "archivedView") archived.hide();
   if (view !== "deskView") desk.hide();
 }
@@ -230,9 +261,18 @@ function showDesk(push = true) {
 /// Open clone files directly without creating a branch, worktree, or conversation.
 function showProject(project: Project, push = true) {
   if (push) visit(project.id);
-  showOnly(null);
+  showOnly(null, "project");
   ws.openProject(project);
   sidebar.setOpen(project.id);
+  draw();
+}
+
+/// A terminal session's shell fills the center with no workspace parts (ADR 0096).
+function showTerminal(session: TerminalSession, push = true) {
+  if (push) visit(session.id);
+  showOnly(null, "terminal");
+  ws.openTerminal(session);
+  sidebar.setOpen(session.id);
   draw();
 }
 
@@ -244,6 +284,17 @@ function showIssues(push = true) {
   showOnly("issuesView");
   $("crumb").replaceChildren(crumbLabel(t("crumb.issues")));
   issues.show();
+  draw();
+}
+
+/// GitHub activity and team mentions share one destination.
+function showNotifications(push = true) {
+  if (push) visit(NOTIFICATIONS);
+  ws.leave();
+  sidebar.setOpen(NOTIFICATIONS);
+  showOnly("notificationsView");
+  $("crumb").replaceChildren(crumbLabel(t("notifications.center")));
+  notificationCenter.show();
   draw();
 }
 
@@ -291,8 +342,12 @@ listen<Board>("board", ({ payload }) => {
 
 /// Reconcile local or remote workspace changes, remove vanished history entries, and redraw.
 function refresh() {
-  // Remove vanished workspaces/projects from history and merge adjacent duplicates. Projects also own file-view state.
-  const alive = new Set([...view().workspaces.map((w) => w.id), ...state.projects.map((p) => p.id)]);
+  // Remove vanished workspaces, projects and terminal sessions from history and merge adjacent duplicates. Projects also own file-view state.
+  const alive = new Set([
+    ...view().workspaces.map((w) => w.id),
+    ...state.projects.map((p) => p.id),
+    ...(state.terminals ?? []).map((s) => s.id),
+  ]);
   for (let i = hist.length - 1; i >= 0; i--) {
     const id = hist[i];
     if ((!pages.has(id) && !alive.has(id)) || (i > 0 && id === hist[i - 1])) {
@@ -304,6 +359,7 @@ function refresh() {
   session.forget(new Set(view().workspaces.flatMap((w) => w.tabs.map((t) => t.id))));
   // Only local agents keep this Mac awake; shared remote agents run on their owners' Macs.
   statusbar.boardChanged(state);
+  island.boardChanged(state);
   drawNav();
   draw();
 }
@@ -315,15 +371,22 @@ alert.init({ visible: (tab) =>
     const workspace = state.workspaces.find(item => item.tabs.some(item => item.id === tab));
     if (workspace) void notifications.deliver(kind, tab, workspace.title).catch(error => say(fromBack(error), true));
   },
+  changed: () => island.changed(),
 });
 listen<string>("notification-open", ({ payload: tab }) => {
   const workspace = state.workspaces.find(item => !item.archived && !item.cleaned && item.tabs.some(item => item.id === tab));
   if (workspace) void openWorkspace(workspace, true, tab).catch(error => say(fromBack(error), true));
 });
-listen<[string, string, number]>("chat", ({ payload: [tab, line] }) => alert.chatChanged(tab, line));
+listen<[string, string, number]>("chat", ({ payload: [tab, line] }) => {
+  alert.chatChanged(tab, line);
+  island.chatChanged(tab, line);
+});
 
-/// React to script exits instead of polling to restore the start action.
-listen<[string, number | null]>("pty-closed", ({ payload: [key] }) => dockbar.closed(key));
+/// React to script exits instead of polling to restore the start action. A terminal session ends with its shell.
+listen<[string, number | null]>("pty-closed", ({ payload: [key] }) => {
+  dockbar.closed(key);
+  terminals.closed(key);
+});
 
 /// The local MCP authorizes the exact delegated conversation before requesting desktop navigation.
 listen<{ workspace_id: string; conversation_id: string }>("workspace-preview", async ({ payload }) => {
@@ -342,14 +405,16 @@ listen<{ workspace_id: string; conversation_id: string }>("workspace-preview", a
 });
 
 /// Usage updates affect the whole account, so any tab's activity refreshes the status bar.
-listen<statusbar.Usage>("usage", ({ payload }) => statusbar.showUsage(payload));
-invoke("usage").then(statusbar.showUsage).catch(() => {});
+listen<statusbar.Usage>("usage", ({ payload }) => { statusbar.showUsage(payload); island.changed(); });
+invoke("usage").then(usage => { statusbar.showUsage(usage); island.changed(); }).catch(() => {});
 listen<statusbar.Accounts>("accounts", ({ payload }) => {
   if (statusbar.showAccounts(payload)) {
     void loadAgents().then(() => statusbar.showAgents(installed()));
   }
+  island.changed();
 });
-invoke("accounts").then(statusbar.showAccounts).catch((error) => say(fromBack(error), true));
+invoke("accounts").then(accounts => { statusbar.showAccounts(accounts); island.changed(); }).catch((error) => say(fromBack(error), true));
+island.init({ usage: statusbar.selectedUsage, unseen: alert.unseen });
 listen<string>("account-error", ({ payload }) => say(fromBack(payload), true));
 
 /// Machine resource updates arrive every three seconds only when values change.
@@ -486,10 +551,8 @@ function launch(projectId?: string, seed?: Issue, git?: Open["git"]) {
         // The command response and board event can arrive in either order. Insert the returned workspace locally until the next full board replaces state, avoiding premature navigation away.
         if (!state.workspaces.some((w) => w.id === created.id)) state.workspaces.push(created);
         openWorkspace(created);
-        return true;
       } catch (err) {
         say(fromBack(err), true);
-        return false;
       }
     },
   });
@@ -539,6 +602,11 @@ grip.addEventListener("dblclick", () => {
 
 /// Dispatch actions from document shortcuts and native Mac menu accelerators. Return whether the shortcut was handled so its key event can be consumed.
 function act(a: appmenu.Action): boolean {
+  // Quitting works over any dialog, as the system's Quit did; it asks first while work would be cut off.
+  if (a === "quit") {
+    void quit.request();
+    return true;
+  }
   if (document.querySelector("dialog[open], .ui-feedback-panel:not([hidden])")) return true;
   const open = ws.id();
   // Local workspace shortcuts do nothing for remote shares instead of sending unknown IDs to the backend.
@@ -550,6 +618,11 @@ function act(a: appmenu.Action): boolean {
     case "novaConversa":
       if (!own) return false;
       ws.newTab();
+      return true;
+    // Shift-Command-T opens a terminal session in the home folder, with no workspace or project.
+    case "novoTerminal":
+      if (!terminals.available()) return false;
+      void terminals.create();
       return true;
     case "arquivar":
       if (!own) return false;
@@ -581,7 +654,8 @@ function act(a: appmenu.Action): boolean {
       return true;
     // Command-W closes the focused dock terminal first. When a native browser view owns focus, ignore stale dock focus and close the active center tab.
     case "fechar":
-      return (document.hasFocus() && dockbar.closeFocused()) || ws.closeActive();
+      return (document.hasFocus() && (dockbar.closeFocused() || terminals.closeFocused($("termview").contains(document.activeElement))))
+        || ws.closeActive();
     case "voltar":
       travel(-1);
       return true;
@@ -598,6 +672,7 @@ function shortcut(e: KeyboardEvent): appmenu.Action | null {
     if (k === "a") return "arquivar";
     if (k === "d") return "concluir";
     if (k === "m") return "nota";
+    if (k === "t") return "novoTerminal";
     return null;
   }
   if (k === "n") return "novoWorkspace";
@@ -659,14 +734,15 @@ links.init(say);
 initCodeCopy(() => {
   const version = messageVersion;
   return (message, isError) => {
+    if (!isError) track({ name: "output_copied", kind: "code" });
     // A delayed copy confirmation must not replace a newer application status.
     if (isError || version === messageVersion) say(message, isError);
   };
 });
 feedback.init();
-void update.init(say);
+void update.init(say, (version) => quit.allow({ kind: "restart", version }));
 // Discover installations without waiting for their independently loaded model catalogs.
-void loadAgents().then(() => statusbar.showAgents(installed()));
+void loadAgents().then(() => { statusbar.showAgents(installed()); island.changed(); });
 // Initialize team state before Settings and sidebar render its data.
 team.onError((m) => say(m, true));
 await team.init();
@@ -689,6 +765,21 @@ issues.init({
   open: (w) => openWorkspace(w),
   create: (issue) => launch(state.workspaces.find((w) => w.id === ws.id())?.project, issue),
   createGitHub: (item, project, git) => launch(project, githubIssue(item), git),
+  toSettings: () => { settings.showLinear(); showSettings(); },
+  github: settings.github,
+});
+notificationCenter.init({
+  say,
+  board: () => state,
+  github: settings.github,
+  open: (w) => void openWorkspace(w),
+  openMention: (workspace, note, tab) => {
+    const target = view().workspaces.find((w) => w.id === workspace);
+    if (!target) return say(t("err.team.noShare"), true);
+    if (tab && !target.remote) invoke("focus_tab", { workspace: target.id, tab });
+    void openWorkspace(tab ? { ...target, active: tab } : target).then(() => ws.showNote(note));
+  },
+  changed: () => { draw(); alert.teamChanged(); },
   toSettings: () => { settings.showLinear(); showSettings(); },
 });
 archived.init({ board: () => state, hooks: () => hooks });
@@ -726,10 +817,12 @@ const infoOf = (w: Workspace | undefined, tab: Tab | undefined): Info => ({
   plugins: tab?.task ? null : (w?.plugins ?? null),
   skills: tab?.task ? null : (w?.skills ?? null),
   pending: tab?.pending_prompt ?? null,
+  interrupted: !!tab?.interrupted && !w?.remote,
   worktree: w?.worktree ?? null,
-  remote: w?.remote ? { name: team.nameOf(w.remote.owner), online: w.remote.online } : null,
+  remote: w?.remote ? { name: team.nameOf(w.remote.owner), online: w.remote.online, ...team.rightsIn(w.id) } : null,
   team: !!team.status().config && !!w && (team.sharedHere(w) || !!w.remote),
   remoteControl: w?.remote_control ?? false,
+  rightsNotice: !!w && team.rightsNoticeDue(w),
   // Tab choice presence controls inheritance. An explicitly empty model still selects the CLI default rather than workspace defaults.
   agent: tab?.choice ? tab.choice.agent : (w?.agent ?? "claude"),
   model: tab?.choice ? tab.choice.model : (w?.model ?? ""),
@@ -781,14 +874,35 @@ desk.init({
 });
 viewer.init((m) => say(m, true), ws.fileSaved);
 dock.init($("dockterm"), $("shellterm"));
+terminals.init({
+  sessions: () => state.terminals ?? [],
+  current: ws.terminalSession,
+  show: (session) => showTerminal(session),
+  // The shell is about to stop; detach its view before going to the desk.
+  left: () => {
+    dock.detach();
+    showDesk();
+  },
+  changed: () => draw(),
+  say,
+  pick: async () => {
+    const folder = await pickFolder({ directory: true, title: t("terminal.pick") });
+    return typeof folder === "string" ? folder : null;
+  },
+});
+quit.init({ board: () => state });
 state = await invoke("load_board");
+void terminals.sync();
 actions.update(state);
 team.boardChanged(state);
 alert.boardChanged(state);
+island.boardChanged(state);
 showDesk();
-
-// Show release notes after the initial page renders so the dialog overlays the application.
-void news.init();
+void askAnalyticsConsent().then(async () => {
+  await announceBoardRecovery();
+  // Release notes must not cover the privacy choice on first launch or upgrade.
+  void news.init();
+});
 
 // General discovery is advisory.
 const prScan = new PrScanPolicy();

@@ -14,6 +14,10 @@ import type { TeamConfig, Organization } from "./team";
 
 /** The frontend and browser mock share this contract. Rust remains the wire authority. */
 export type Commands = {
+  analytics_track: { args: { event: import("./analytics").AnalyticsEvent }; result: void };
+  analytics_enabled: { args: undefined; result: boolean };
+  analytics_needs_consent: { args: undefined; result: boolean };
+  analytics_set_enabled: { args: { enabled: boolean }; result: boolean };
   background_context: { args: undefined; result: import("./background").BackgroundContext };
   notification_permission: { args: { request: boolean }; result: import("./notifications").NoticePermission };
   notification_show: { args: { notice: import("./notifications").Notice }; result: void };
@@ -21,6 +25,11 @@ export type Commands = {
   notification_dismiss: { args: undefined; result: void };
   notification_open: { args: undefined; result: void };
   notification_sound: { args: { tone: import("./notifications").NoticeTone }; result: void };
+  island_enable: { args: { enabled: boolean }; result: void };
+  island_update: { args: { snapshot: import("./island").IslandSnapshot }; result: void };
+  island_current: { args: undefined; result: { snapshot: import("./island").IslandSnapshot | null; layout: import("./island-view").IslandLayout; notice: import("./notifications").Notice | null } };
+  island_resize: { args: { height: number }; result: void };
+  island_open: { args: { tab: string }; result: void };
   account_login: { args: { provider: T.ProviderId; id?: string | null; method?: string }; result: Accounts };
   account_login_cancel: { args: { id: string }; result: void };
   account_remove: { args: { id: string }; result: Accounts };
@@ -29,6 +38,7 @@ export type Commands = {
   action_start: { args: { workspace: string; name: string; context: string }; result: T.Tab };
   actions_save: { args: { catalog: Catalog }; result: void };
   add_project: { args: { path: string }; result: T.Project };
+  create_project: { args: { directory: string; name: string }; result: T.Project };
   agents: { args: undefined; result: { providers: AgentDescriptor[] } };
   archive_workspace: { args: { id: string; archived: boolean }; result: void };
   browser_back: { args: { id: string }; result: void };
@@ -67,11 +77,6 @@ export type Commands = {
   cloud_relay_ticket: { args: { organization: string; user: string; expectedOrigin: string }; result: string };
   cloud_status: { args: { refresh: boolean }; result: CloudStatus };
   context_evaluate: { args: { request: import("./evaluation").EvaluationRequest }; result: import("./evaluation").EvaluationResult };
-  review_calibration_status: { args: undefined; result: import("./review-calibration").CalibrationStatus };
-  review_calibration_set_enabled: { args: { enabled: boolean }; result: import("./review-calibration").CalibrationStatus };
-  review_calibration_append: { args: { generation: number; record: import("./review-calibration").CalibrationRecord }; result: null };
-  review_calibration_clear: { args: undefined; result: import("./review-calibration").CalibrationStatus };
-  review_calibration_export: { args: { path: string }; result: null };
   create_path: { args: { id: string; rel: string; dir: boolean }; result: void };
   create_scripts_file: { args: { id: string }; result: string };
   create_workspace: { args: { draft: Draft; cols: number; rows: number }; result: T.Workspace };
@@ -90,15 +95,22 @@ export type Commands = {
   linear_issues: { args: { force: boolean }; result: T.Issues };
   linear_open: { args: { url: string }; result: void };
   linear_status: { args: undefined; result: T.LinearStatus };
-  github_identity: { args: undefined; result: string };
+  github_status: { args: undefined; result: T.GitHubStatus };
+  github_connect: { args: undefined; result: T.GitHubStatus };
+  github_disconnect: { args: undefined; result: T.GitHubStatus };
   github_issues: { args: { scope: T.GitHubScope; force: boolean }; result: T.GitHubIssues };
-  github_repositories: { args: { selected: string[]; login: string }; result: string[] };
+  github_claim: { args: { url: string }; result: T.GitHubItem };
+  github_feed: { args: { after: string | null }; result: T.GitHubFeed | null };
+  github_subjects: { args: { keys: { repository: string; number: number }[] }; result: T.GitHubSubject[] };
+  github_detail: { args: { repository: string; number: number; target: string; id: string }; result: string };
   github_issue_open: { args: { url: string }; result: void };
   github_projects: { args: undefined; result: T.GitHubProject[] };
   github_prepare: { args: { project: string; url: string }; result: T.GitHubPrepared };
   list_branches: { args: { project: string }; result: { all: string[]; local: string[]; default: string; git: boolean } };
   list_dir: { args: { id: string; rel: string }; result: PathEntry[] };
   load_board: { args: undefined; result: T.Board };
+  board_recovery: { args: undefined; result: T.BoardRecovery | null };
+  board_recovery_open: { args: undefined; result: void };
   look_at: { args: { id?: string | null }; result: void };
   machine: { args: undefined; result: Machine };
   mcp_check: { args: { server: T.McpServer }; result: T.McpCheck };
@@ -139,16 +151,19 @@ export type Commands = {
   refresh_prs: { args: undefined; result: void };
   remove_project: { args: { id: string }; result: void };
   reorder_projects: { args: { ids: string[] }; result: void };
+  group_projects: { args: { ids: string[]; group: string | null }; result: void };
   remove_workspace: { args: { id: string }; result: void };
   rename_path: { args: { id: string; from: string; to: string }; result: void };
   rename_tab: { args: { workspace: string; tab: string; title: string }; result: void };
   rename_workspace: { args: { id: string; title: string }; result: void };
   reveal_path: { args: { id: string; rel: string }; result: void };
+  running_terminals: { args: undefined; result: number };
   scripts_prompt: { args: { id: string }; result: string };
   set_awake: { args: { mode: "off" | "system" | "display" }; result: void };
+  set_confirm_messages: { args: { id: string; confirm: boolean }; result: void };
   set_resource_detail: { args: { open: boolean }; result: void };
   set_lang: { args: { lang: Lang }; result: void };
-  set_shared: { args: { id: string; shared: boolean; audience?: string[] | null; remoteControl: boolean; team?: string | null }; result: void };
+  set_shared: { args: { id: string; shared: boolean; audience?: string[] | null; remoteControl: boolean; team?: string | null; rights?: T.ShareRights | null }; result: void };
   set_stage: { args: { id: string; stage: string }; result: void };
   set_tab_choice: { args: { id: string; tab: string; choice: T.Choice }; result: void };
   set_tools_global: { args: { mcp?: T.Selection | null; plugins?: T.Selection | null; skills?: T.Selection | null }; result: void };
@@ -167,6 +182,9 @@ export type Commands = {
   typesafe_remove_key: { args: undefined; result: import("./evaluation").EvaluationStatus };
   typesafe_save_key: { args: { key: string }; result: import("./evaluation").EvaluationStatus };
   typesafe_set_enabled: { args: { enabled: boolean }; result: import("./evaluation").EvaluationStatus };
+  terminal_close: { args: { id: string }; result: void };
+  terminal_create: { args: { folder: string | null }; result: T.TerminalSession };
+  terminal_rename: { args: { id: string; name: string | null }; result: void };
   telemetry_summary: { args: { filter: import("./telemetry").TelemetryFilter }; result: import("./telemetry").TelemetrySummary };
   telemetry_insights: { args: { filter: import("./telemetry").TelemetryFilter }; result: import("./telemetry").TelemetryInsights };
   telemetry_turns: { args: { conversation: string; messageIds: string[] }; result: import("./telemetry").TurnMeasurement[] };

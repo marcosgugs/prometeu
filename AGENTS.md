@@ -81,8 +81,10 @@ The complete dependency rules are in
 - `src/mobile/`: the browser shell over the same core, vendored in the Cloud as
   a bundle (ADR 0028).
 - `src-tauri/src/evaluation.rs` and `src-tauri/src/typesafe.rs`: optional
-  context-evaluation port and its TypeSafe adapter (ADR 0058);
-  `src/context-review.ts` holds the missing-context review rules.
+  context-evaluation port and its TypeSafe adapter (ADR 0058), currently
+  without a consumer; `src/typesafe-settings.ts` saves and tests the key.
+- `src-tauri/src/analytics.rs` and `src/analytics.ts`: content-free PostHog
+  feature-use events and explicit control identities (ADR 0093).
 - `relay/src/protocol.ts`: the network contract shared by the app and the
   Worker.
 - `relay/src/logic.ts`: the relay's pure rules.

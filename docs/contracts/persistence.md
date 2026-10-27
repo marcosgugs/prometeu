@@ -25,6 +25,7 @@ In release, the default root is `~/.prometeu`. In debug, `~/.prometeu-dev`.
 | external MCP clients | `<root>/mcp-clients/<uuid>.json` | `mcp_access.rs`; private versioned credentials and project scope; see [embedded MCP](embedded-mcp.md) |
 | MCP socket discovery | `<root>/mcp-socket` | `embedded_mcp.rs`; private ephemeral socket path, replaced on startup |
 | board backup | next to `board.json` | `board_store.rs` |
+| copies of unreadable state | `<root>/recovery/<label>-<millis>.json` | `recovery.rs`; see [Unreadable state](#unreadable-state) |
 | team and credential | `<root>/team.json` | `team.rs` |
 | E2EE identities, TOFU links and replay | `<root>/team-security.json` | `team.rs` (file), `team-security.ts` (internal schema) |
 | optional Prometeu account | `<root>/cloud.json` | `cloud.rs`; see the [contract](cloud-account.md) |
@@ -35,9 +36,11 @@ In release, the default root is `~/.prometeu`. In debug, `~/.prometeu-dev`.
 | last quota snapshot per account | `<root>/usage.json` | `usage.rs` |
 | Linear OAuth credential | `<root>/linear.json` | `linear.rs`; private access and refresh tokens, account identity and granted scopes; see [Linear issues](linear-issues.md) |
 | Linear issue cache | `<root>/linear-issues.json` | `linear.rs`; private assigned and available lists with fetch time; see [Linear issues](linear-issues.md) |
-| GitHub repository selection | `<root>/github-issues.json` | `github_issues.rs`; private per-account repository names, no tokens or issue bodies; see [GitHub issues](github-issues.md) |
+| GitHub App credential | `<root>/github.json` | `github_auth.rs`; private access and refresh tokens, expiry and login, never sent over IPC; see [GitHub issues](github-issues.md). The retired `<root>/github-issues.json` is ignored |
 | optional TypeSafe key and enablement | `<root>/typesafe.json` | `typesafe.rs`; private, disabled by default; see [context evaluation](context-evaluation.md) |
-| Codex and Antigravity V1 transcript | `<root>/chats/<tab>.jsonl` | `transcript_store.rs`, via the core conversation stream |
+| product analytics consent | `<root>/analytics-enabled.json` | `analytics.rs`; private JSON boolean, missing or invalid files disable capture and trigger the startup question; either saved boolean suppresses the question; see [product analytics](product-analytics.md) |
+| product analytics identity | `<root>/analytics-id` | `analytics.rs`; private random UUID, created only when consent and the build key allow capture; its presence does not imply consent |
+| Codex, Antigravity and Cursor V1 transcript | `<root>/chats/<tab>.jsonl` | `transcript_store.rs`, via the core conversation stream |
 | files received through a native promise | `<root>/attachments/<uuid>/<name>` | `file_drop.rs`; private `0700` directory, `0600` file |
 | image pasted from the clipboard | `<root>/attachments/<uuid>/pasted.png` | `file_drop.rs`; same folder and permissions, TIFF converted to PNG on macOS, GTK image converted to PNG on Linux |
 | plugin hub | `<root>/plugins.json` | `plugins.rs` |
@@ -48,6 +51,22 @@ in `catalog.json` installation links. No credentials or paths enter the Cloud
 document; see [Git projects](cloud-catalog.md#git-projects).
 
 Worktrees live in `~/prometeu/worktrees[-dev]/...`, outside the state root.
+
+Repository scripts, tool declarations and method settings load only from
+`.prometeu/settings.toml`. A worktree without this file inherits the original
+checkout's file; a worktree with its own file replaces it as a whole. Workspace
+scripts receive `PROMETEU_WORKSPACE_PATH`, `PROMETEU_ROOT_PATH`,
+`PROMETEU_WORKSPACE_NAME`, `PROMETEU_PORT` when a port is reserved, and the same
+port as `PORT`. No other configuration file or environment prefix is used as a
+fallback. See [project scripts](../operations/project-scripts.md).
+
+A Linux AppImage launch keeps a desktop entry for the running file outside the
+state root, in `$XDG_DATA_HOME` (`~/.local/share` by default):
+`applications/co.prometeu.desktop.desktop` and its icon
+`icons/hicolor/256x256/apps/co.prometeu.desktop.png`. They hold no app state.
+`desktop_entry.rs` replaces each through a rename only when its content differs,
+and removes the entry when AppImageLauncher or Gear Lever lists the same file;
+see [ADR 0055](../decisions/0055-linux-desktop.md).
 
 Transcript lookup uses the tab's resolved provider, including a frozen task
 profile, before falling back to the workspace provider. This is also the rule
@@ -89,9 +108,21 @@ sequence, the last owner/key/revision/ID per share, receipts for remote messages
 and the clock of the last consumption. Limits: 64 links, 4096 shares and 4096
 unexpired receipts per scope. Receipts expire within two minutes.
 
-Identity creation, a member link — first or replaced —, a revision and a receipt
-are written before the corresponding use. Corruption, an unknown version and a
-read/write failure block collaboration; they do not silently regenerate keys.
+Each scope also holds `approved`, the member → key pairs whose remote input the
+owner approved, and `paused`, the member → workspace IDs where input from an
+unapproved key was discarded until the owner answers its notice. `paused`
+holds identifiers only, never message content. Limits: 64 approvals and 64
+paused members with up to 64 workspaces each. A scope written before approvals
+existed has no `approved` field: on load, its links become approved, so an
+upgrade keeps teams working. A new scope starts with no approvals. A rollback
+to a version without these fields drops them at its next write; upgrading again
+approves the links present then. See
+[ADR 0090](../decisions/0090-approved-remote-input.md).
+
+Identity creation, a member link — first or replaced —, an approval, a revision
+and a receipt are written before the corresponding use. Corruption, an unknown
+version and a read/write failure block collaboration; they do not silently
+regenerate keys.
 Leaving the team, switching organizations, logging out and renewing a ticket do
 not remove the file. The webview's operations are serialized; the Rust write
 uses the same lock during read/validation/write.
@@ -116,6 +147,14 @@ and is reported in Settings without blocking work. The key never enters the
 board, transcripts, `team.json`, the relay or Cloud catalogs, and no IPC result
 returns it. Tests: `src-tauri/src/typesafe.rs`. See the
 [contract](context-evaluation.md).
+
+## GitHub notification read state
+
+`prometeu:github-notifications:read:<origin>#<user id>` in desktop webview
+localStorage stores `{ "before": "<id>", "ids": ["<id>"] }` for one Prometeu
+account on this Mac only. Notification rows are
+not persisted; they come back from the Cloud feed. See
+[GitHub notifications](github-notifications.md).
 
 ## Settings navigation preference
 
@@ -196,7 +235,11 @@ changes. Tests: `src/model-choice.test.ts`, `src/agents.test.ts`, and
 
 `Board` contains projects, stages, workspaces and the optional `actions`
 catalog. The order of `projects` is the sidebar order the person chose by
-dragging; older boards keep their registration order. `Tab.task` stores the resolved configuration and the tasks' cursors.
+dragging; older boards keep their registration order. `Project.group` is the
+optional sidebar folder; it is written only when set, so older boards load
+unchanged and older versions ignore it. Folders exist only as that name on their
+members. The sidebar shows folders first, alphabetically, then loose projects,
+and a drag reorders only within one folder or among loose projects. `Tab.task` stores the resolved configuration and the tasks' cursors.
 The absence of those fields keeps previous sessions working. The catalog
 receives Code review exactly once, recorded in `actions.defaults_initialized`;
 see [actions](actions.md). `Workspace` contains repositories, branch, worktree,
@@ -212,7 +255,14 @@ growth is added. When the context drops after compaction, the new value starts
 another segment and adds to the total. Old boards without `context_tokens` treat
 `tokens` as the total and the initial cursor, without duplicating the value. The
 tab also contains identity, status, pending message, model override and the
-external identity used for resume when needed. An empty `Tab.title` is an
+external identity used for resume when needed. `Tab.interrupted` is set on
+revival for a tab that was `rodando` or `querendo` when the app ended, and the
+next accepted message clears it; it is written only while true. When such a tab
+starts a process again, its transcript ends at the cut, so `Tab.cuts` records
+that line count; replay places `session.state: stopped` there, and continuing
+never makes the cut reply look finished. Transcripts only grow at the end, so
+the position holds for native and app-owned logs alike. `cuts` is written only
+when not empty, so older boards load and save unchanged. An empty `Tab.title` is an
 unnamed tab: the interface shows the model it talks to. Old boards with the
 invented name `conversa` or `conversa N` are normalized to empty on load.
 
@@ -236,6 +286,34 @@ On load:
 
 A change that removes, renames or alters the semantics of a persisted field
 requires a test with JSON from the previous version.
+
+### Unreadable state
+
+Prometeu never replaces bytes it could not read. When `board.json` does not
+deserialize, the board comes from `board.json.bak`; when the backup does not
+either, it starts empty. Before anything replaces an unreadable file, its bytes
+are copied into the private `<root>/recovery/` folder as `board-<millis>.json`
+or `board-backup-<millis>.json`. A copy identical to one already there is not
+written again, a new copy never takes an existing name, and only the newest five
+distinct copies of each file remain.
+
+An unreadable `board.json` is copied at load, so the original stays in place
+until a save replaces it. While that copy fails, or when the file could not be
+read at all, every save returns an error and the files on disk stay untouched.
+An unreadable backup is copied at load when the board falls back, and otherwise
+before the first save of the session refreshes it. While that copy fails, saves
+still write `board.json` but leave the backup as it is.
+
+At startup the interface asks `board_recovery` and, when the board came from
+the backup or started empty, shows a dialog with the recovery folder and any
+copy error; see [IPC](ipc.md#board-recovery). `team.json` follows the same
+rule: a file that does not parse still reads as no team, but joining or leaving
+first copies it to `recovery/team-<millis>.json`, and a file that cannot be read
+blocks both.
+
+Neither the board nor `team.json` changes format. Coverage lives in
+`board_store.rs`, `recovery.rs` and `team.rs`. See
+[ADR 0091](../decisions/0091-keep-unreadable-state.md).
 
 ## Ordered board publication
 
@@ -330,7 +408,8 @@ axis; the hub keeps them as packages, so only the state and the interface change
 `Workspace.skills` is absent, therefore inherited, in old boards.
 
 The migration is one-way: a previous version cannot deserialize the object form
-and falls back to the board backup, then to a default board. The resolved set is
+and falls back to the board backup, then to a default board. Versions that keep
+[unreadable state](#unreadable-state) copy the unreadable files before saving. The resolved set is
 captured at spawn, so a change in any layer takes effect at the next spawn or
 resume
 ([`agent-runtime.md`](agent-runtime.md)).
@@ -405,7 +484,43 @@ replacing a legacy configuration, `team.rs` writes a private
 `Workspace.remote_control`, false by default, records consent for the owner's
 companion devices. It is independent of `audience`: an empty list represents
 remote control without a team audience. Turning off the last kind of access also
-clears `shared`, `share_team` and `audience`.
+clears `shared`, `share_team`, `audience` and `rights`.
+
+`Workspace.rights` is `{ send, control }`, two lists of person IDs: who may send
+messages (prompts and interrupts) and who may control (answer the agent's
+requests) beyond viewing and commenting. Both lists only name people who can view;
+the audience `null` never grants them by itself. Changing a right drops the people
+no longer in the organization's directory, so each list stays within the
+`MEMBERS_MAX` people that peers read from the announcement. Every share saved from
+[ADR 0090](../decisions/0090-approved-remote-input.md) on writes the field, even
+empty. Shares saved before it load with `rights` null and let people only view
+and comment. The owner sees that change once on each Mac, which records the
+dismissal in `localStorage` under `prometeu:share-rights-notice`. Tests:
+`share_tests` in `crates/core/src/workspace_lifecycle.rs` and
+`fixtures/backend-contract.json`.
+
+`Workspace.confirm_messages`, true when absent, records whether teammates'
+messages wait in the owner's composer until the owner sends, edits or discards
+them ([ADR 0090](../decisions/0090-approved-remote-input.md)). Only
+`set_confirm_messages` changes it; stopping sharing keeps the choice. The board
+keeps only this choice: waiting messages live in the frontend's memory and are
+never persisted. Tests: `share_tests` and `fixtures/backend-contract.json`,
+which carries a workspace saved with the option off and one from before it.
+
+## Terminal sessions
+
+`Board.terminals` lists the terminal sessions in sidebar order
+([ADR 0096](../decisions/0096-terminal-sessions.md)) as `{ id, folder, name? }`:
+`id` is `terminal-<uuid>`, `folder` is the absolute folder the shell starts in and
+`name` is the name the person set. The field is written only when a session
+exists, and `name` only when set, so a board from v0.29.0 or earlier loads and
+saves back unchanged; an older version ignores the field and drops it on its next
+save. Only the record persists: scrollback stays in memory and no process
+survives the app, so after a restart a session is listed stopped, and opening it
+starts a new shell in the same folder. The WSL runtime carries the field through
+its catalog unchanged. Test: `boards_from_v0_29_0_load_unchanged` in
+`crates/core/src/terminal_sessions/tests.rs`, against the board v0.29.0 wrote in
+its contract fixture.
 
 ## Delegations
 
@@ -460,3 +575,15 @@ reuses these board, transcript, account and tool formats and never adopts a
 desktop root. Its layout, the `workspaces.json` catalog and recovery limits are
 in the [WSL runtime protocol](wsl-runtime.md#storage-and-ownership). Worktree
 cleanup deletes the checkout, not its conversation store.
+
+### Cursor sessions
+
+The additive provider ID `cursor` is explicit in boards, saved model choices and
+accounts. `Tab.agent_session` holds the opaque ACP session ID; Prometeu stores
+canonical V1 presentation in its existing chat log. Native Cursor history stays
+owned by the CLI. Loading it never duplicates presentation history, and a failed
+load does not replace the session. The external account is attached and selected
+explicitly; removal survives restart. Account readers without Cursor support
+preserve its account and active selection opaquely. Older board readers may map
+an unknown provider to Claude, so downgrading a Cursor board is unsupported.
+See the [Cursor contract](cursor.md).

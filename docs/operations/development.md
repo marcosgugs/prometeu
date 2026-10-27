@@ -345,7 +345,7 @@ rejects the build. `npm run build:wsl` builds only the frontend. Packaging is in
 [release](release.md#windows-installer).
 
 `npm run check:windows` is the validation available on Windows: documentation,
-the `scripts/app.mjs` launch plan (`test:scripts`),
+analytics controls, the `scripts/app.mjs` launch plan (`test:scripts`),
 architecture, Rust formatting, the WSL frontend build, contract and web tests,
 and the Windows CI job's Rust tests (`test:windows`) and Clippy
 (`lint:windows`). Git for Windows runs the `commit-msg` hook with its own `sh`.

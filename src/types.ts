@@ -7,7 +7,7 @@ export type { Member } from "../relay/src/protocol";
 export type Status = "rodando" | "querendo" | "pronta" | "desligada";
 
 /// Carry stable provider identity explicitly alongside the model; only the catalog resolves their association.
-export type ProviderId = "claude" | "codex" | "antigravity" | "gemini";
+export type ProviderId = "claude" | "codex" | "antigravity" | "cursor" | "gemini";
 
 /// Share localized status labels across views while preserving protocol/CSS status values.
 export const label = (status: Status) => t(`status.${status}`);
@@ -37,12 +37,18 @@ export type Tab = {
   choice?: Choice | null;
   /// The "Start with" skill (`<package>/<skill>`) this conversation began from; absent otherwise.
   kickoff?: string | null;
+  /// The app ended while this conversation was working or waiting; cleared by the next accepted message.
+  interrupted?: boolean;
 };
 
 /// Provider, model, and effort form one choice because each model belongs to a provider and has supported effort levels.
 export type Choice = { agent: ProviderId; model: string; effort: string };
 
-export type Project = { id: string; name: string; path: string };
+/// `group` is the sidebar folder the person chose; absent means the project is not in a folder.
+export type Project = { id: string; name: string; path: string; group?: string };
+
+/// A local shell owned by the app, not by a workspace or project (ADR 0096). `name` is the one the person set; without it the folder's name shows.
+export type TerminalSession = { id: string; folder: string; name?: string };
 
 /// A repository's source clone, workspace path, base branch, and PR. Each repository retains independent Git history.
 export type Repo = { path: string; name: string; worktree: string; base: string; pr: Pr | null };
@@ -226,6 +232,12 @@ export type Workspace = {
   audience: string[] | null;
   /// Allow companion devices belonging to the owner to view and control this workspace.
   remote_control: boolean;
+  /// People allowed to act beyond viewing and commenting (ADR 0090). Absent or null on shares made before rights
+  /// existed, which grant viewing and commenting only.
+  rights?: ShareRights | null;
+  /// Teammates' messages wait in the owner's composer until the owner sends, edits or discards them (ADR 0090). Rust
+  /// loads boards saved before the option as true.
+  confirm_messages: boolean;
   /// Publish the workspace card before its worktree finishes preparing. No tabs exist during preparation.
   preparing: boolean;
   /// Structured backend preparation error, translated by fromBack.
@@ -238,8 +250,16 @@ export type Workspace = {
 
 export type Remote = { owner: string; online: boolean };
 
-/// GitHub CLI PR data; state is OPEN, MERGED, or CLOSED.
-export type Pr = { number: number; title: string; isDraft: boolean; state: string };
+/// Send messages covers prompts and interrupts; Control covers answering the agent's requests. Lists name people.
+export type ShareRights = { send: string[]; control: string[] };
+
+/// GitHub PR data; state is OPEN, MERGED, or CLOSED. `checks` is GitHub's CI rollup for an open
+/// PR's head commit, absent when unknown.
+export type Pr = { number: number; title: string; isDraft: boolean; state: string; checks?: string };
+
+/// Collapse GitHub's CI rollup into what the person acts on.
+export const ci = (pr: Pr): "running" | "passed" | "failed" | null =>
+  !pr.checks ? null : pr.checks === "SUCCESS" ? "passed" : pr.checks === "PENDING" || pr.checks === "EXPECTED" ? "running" : "failed";
 
 /// PRs in workspace repository order.
 export const prs = (ws: Workspace) => ws.repos.flatMap((r) => (r.pr ? [{ repo: r.name, pr: r.pr }] : []));
@@ -292,6 +312,14 @@ export type Cleanable = {
   blocked: string | null;
 };
 
+/// Saved workspaces came from board.json.bak or started empty because board.json could not be read.
+/// `folder` holds untouched copies of the unreadable files; while `error` is set, nothing is saved.
+export type BoardRecovery = {
+  source: "backup" | "reset";
+  folder: string | null;
+  error: string | null;
+};
+
 /// Dock PTYs are separate from agent sessions. Setup/run are fixed repository scripts; terminal, terminal-2, and later shells exist only after explicit creation.
 export type DockKind = "setup" | "run" | `terminal${string}`;
 
@@ -302,10 +330,18 @@ export const isTerm = (kind: DockKind) => kind.startsWith("terminal");
 export const termNumber = (kind: DockKind) => Number(kind.slice("terminal-".length)) || 1;
 export const termKind = (n: number): DockKind => (n === 1 ? "terminal" : `terminal-${n}`);
 
+/// The dock's own tab label, also used where processes are listed by kind.
+export const dockLabel = (kind: DockKind) => {
+  if (kind === "setup") return t("dock.setup");
+  if (kind === "run") return t("dock.run");
+  const n = termNumber(kind);
+  return n === 1 ? t("dock.terminal") : t("dock.terminalN", { n });
+};
+
 /// A dock may be running or retain output after exit.
 export type DockState = { kind: DockKind; alive: boolean };
 
-/// Repository script settings from .prometeu/settings.toml or legacy .conductor/settings.toml, plus the workspace port.
+/// Repository script settings from .prometeu/settings.toml, plus the workspace port.
 export type Scripts = {
   /// Null settings source means no declared scripts; show the setup invitation instead of an empty terminal.
   file: string | null;
@@ -325,7 +361,7 @@ export type DelegationExecution = { id: string; state: string; source: string; a
 // Owner identifies an MCP client; legacy conversation IDs remain valid.
 export type Delegation = { id: string; owner: string; workspace: string; task: string; request_key: string; request_hash: string; repository_heads: Record<string, string>; permission?: "ask" | "auto" | null; executions: DelegationExecution[]; background: import("./conversation").BackgroundTask[] | null; requests: import("./conversation").ConversationEventV1[] };
 
-export type Board = { telemetry_ids?: Record<string, string>; delegations?: Delegation[]; actions?: import("./actions").Catalog; tools?: Tools; tool_trust?: ToolTrust[]; stages: string[]; projects: Project[]; workspaces: Workspace[] };
+export type Board = { telemetry_ids?: Record<string, string>; delegations?: Delegation[]; actions?: import("./actions").Catalog; tools?: Tools; tool_trust?: ToolTrust[]; stages: string[]; projects: Project[]; terminals?: TerminalSession[]; workspaces: Workspace[] };
 
 /// The authenticated Linear user and organization.
 export type LinearWho = { id: string; name: string; email: string; org: string; org_key: string };
@@ -346,7 +382,7 @@ export type Issue = IssueRef & {
 };
 export type Issues = { issues: Issue[]; available: Issue[]; available_error?: string; fetched_at: number };
 
-export type GitHubScope = "mine" | "repositories" | "authored" | "reviews";
+export type GitHubScope = "mine" | "available" | "authored" | "reviews";
 export type GitHubItem = IssueRef & {
   description: string | null;
   repository: string;
@@ -360,6 +396,17 @@ export type GitHubItem = IssueRef & {
 export type GitHubIssues = { login: string; repositories: string[]; items: GitHubItem[]; fetched_at: number; truncated: boolean };
 export type GitHubProject = { project: string; repository: string };
 export type GitHubPrepared = { base: string; branch: string; source: string };
+/// Busy carries the code typed on github.com while the device flow waits for approval.
+export type GitHubStatus = { connected: boolean; login: string | null; busy: boolean; code: string | null; url: string | null; install_url: string };
+export type GitHubNotificationKind = "review_approved" | "changes_requested" | "review_requested" | "commented" | "mentioned" | "assigned" | "merged" | "closed" | "ci_failed";
+/// Metadata from the Cloud feed; titles and text are fetched from GitHub on demand.
+export type GitHubNotification = {
+  id: string; kind: GitHubNotificationKind; repository: string; number: number; subject: "pr" | "issue"; actor: string;
+  target: "issue_comment" | "review" | "review_comment" | "workflow_run" | null; target_id: string | null; url: string; created_at: string;
+};
+/// `account` names the Prometeu account (`origin#user id`); read state and the cursor follow it.
+export type GitHubFeed = { account: string; github: { login: string | null } | null; notifications: GitHubNotification[]; more: boolean };
+export type GitHubSubject = { repository: string; number: number; title: string; state: string };
 
 /// Busy identifies browser-based authentication, which remains visible across navigation.
 export type LinearStatus = { connected: boolean; can_assign: boolean; who: LinearWho | null; busy: boolean };
@@ -394,6 +441,20 @@ const RANK: Record<Status, number> = { querendo: 3, rodando: 2, pronta: 1, desli
 /// The most urgent tab determines workspace status, matching Rust rank ordering.
 export function worst(ws: Workspace): Tab | undefined {
   return [...ws.tabs].sort((a, b) => RANK[b.status] - RANK[a.status])[0];
+}
+
+/// A drag reorders one sidebar list (a folder or the loose projects). Refill only that list's slots
+/// in the board order so every other project keeps its place.
+export function refillOrder(order: string[], moved: string[]): string[] {
+  const slots = new Set(moved);
+  let i = 0;
+  return order.map((id) => (slots.has(id) ? moved[i++] : id));
+}
+
+/// The sidebar filter matches project names and the titles and branches of their workspaces.
+export function projectMatches(project: Project, workspaces: Workspace[], query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return !q || [project.name, ...workspaces.flatMap((w) => [w.title, w.branch])].some((s) => s.toLowerCase().includes(q));
 }
 
 export function statusOf(ws: Workspace): Status {

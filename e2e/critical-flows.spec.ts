@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "./fixtures";
 import type { Board, Status } from "../src/types";
 
 async function boot(page: Page) {
@@ -52,11 +52,13 @@ test("sharing adopts a new device key without requesting review", { tag: "@webki
 });
 
 test("comments stay beside the session until resolved", { tag: "@webkit" }, async ({ page }) => {
+  // Only the team mention counts here; GitHub activity shares the same destination.
+  await page.addInitScript(() => localStorage.setItem("mock:githubFeed", "none"));
   await bootTeam(page);
 
   // Opening the context does not resolve the pending comment.
-  await page.locator("#railbody .navitem.mentions").click();
-  await page.locator(".inboxrow").click();
+  await page.locator("#rail-notifications").click();
+  await page.locator("#nlist .notification-row").click();
   await expect(page.locator("#crumb")).toContainText("Archive completed todos");
   await expect(page.locator("#comments .commentthread")).toBeVisible();
   await expect(page.locator("#chatwrap .commentpin")).toHaveCount(1);
@@ -225,7 +227,7 @@ test("clicking a project opens clone files without a workspace", async ({ page }
 
   // The chevron still collapses the project list.
   await project.locator(".gc").click();
-  await expect(page.locator("#railbody .navitem.sub", { hasText: "Match the Conductor screen" })).toHaveCount(0);
+  await expect(page.locator("#railbody .navitem.sub", { hasText: "Polish the chat screen" })).toHaveCount(0);
 });
 
 test("project file viewer previews image bytes", { tag: "@webkit" }, async ({ page }) => {
@@ -388,7 +390,7 @@ test("the sidebar lists agents by workspace, tracks status and opens the selecte
   await expect(page.locator("#chatwrap")).toBeVisible();
   await expect(page.locator("#viewer")).toBeHidden();
   await second.click();
-  await openWorkspace(page, "Match the Conductor screen");
+  await openWorkspace(page, "Polish the chat screen");
   await openWorkspace(page, "Hello");
   await expect(second).toHaveAttribute("aria-current", "true");
   await expect(page.locator("#tabbar .tab.on")).toHaveAttribute("data-tab", "t2");
@@ -601,7 +603,7 @@ test("the issue list fits the launcher and keeps titles readable", async ({ page
   // The fixture must exceed the available viewport height.
   expect(total).toBeGreaterThanOrEqual(20);
 
-  await expect(page.locator("#railbody .navitem", { hasText: "Issues" }).locator(".n")).toHaveText(String(total));
+  await expect(page.locator("#railbody .navitem", { hasText: "Tasks" }).locator(".n")).toHaveText(String(total));
 
   await page.locator("#railbody").getByRole("button", { name: "Create", exact: true }).click();
   await page.locator("#d-issuebtn").click();
@@ -1254,7 +1256,7 @@ test("the desk ignores a delayed snapshot of the same conversation", async ({ pa
 
   await page.locator("#railbody .navitem", { hasText: "Desk" }).click();
   await expect.poll(() => page.evaluate(() => !!(window as Window & { deskSnapshotCaptured?: boolean }).deskSnapshotCaptured)).toBe(true);
-  await page.locator("#railbody .navitem", { hasText: "Issues" }).click();
+  await page.locator("#railbody .navitem", { hasText: "Tasks" }).click();
   await page.evaluate(() => {
     const mock = (window as unknown as { mock: { line: (tab: string, line: unknown) => void } }).mock;
     mock.line("t1", { type: "user", message: { role: "user", content: "NEW_SNAPSHOT" } });

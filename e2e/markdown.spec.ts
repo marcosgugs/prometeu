@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("conversation copies complete unformatted code blocks and allows retry", { tag: "@webkit" }, async ({ page }) => {
   await page.goto("/");

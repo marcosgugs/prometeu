@@ -19,6 +19,9 @@ presentation. Arch Linux users asked for support.
 - Linux D-Bus bindings (zbus) for notifications and logind. More precise, but a
   new async dependency for a handful of calls.
 - Freedesktop command-line programs behind the existing command boundaries.
+- For the AppImage's dock icon, leaving desktop integration to AppImageLauncher
+  or Gear Lever. Without them, the dock shows a generic icon and the app cannot
+  be pinned.
 
 ## Decision
 
@@ -59,6 +62,19 @@ preserves package-manager ownership without adding a custom IPC command.
 The [release contract](../contracts/releases.md) preserves the macOS download
 names, updater entry, endpoint and signing key.
 
+Docks pair a window with the desktop entry whose `StartupWMClass` or file name
+matches the window class; without one, GNOME draws a generic icon. Packages
+install `Prometeu.desktop`, but a downloaded AppImage installs nothing, and
+AppImageLauncher or Gear Lever are optional. Each launch from a mounted AppImage
+therefore keeps a user entry, `co.prometeu.desktop.desktop`, and its 256 px
+icon under `$XDG_DATA_HOME`. The entry starts that file, claims the window class
+GTK derives from the program name, and is rewritten when the file moves. Its
+`TryExec` hides it once the file is gone, and its distinct name never masks a
+package's `Prometeu.desktop`. When another entry there already starts the same
+file, Prometeu removes its own instead of listing the app twice.
+`--appimage-extract-and-run` launches register nothing, since a menu could not
+start the file again without FUSE.
+
 ## Trade-offs
 
 Behavior depends on the desktop: notification daemons may ignore actions,
@@ -72,6 +88,9 @@ cache keys; a newer Linux baseline needs separate validation and caches.
 AppImage distribution starts with x86_64 only, and its Ubuntu baseline does not
 prove compatibility with
 every distribution. Native installation and update checks remain manual.
+The AppImage writes outside Prometeu's data root without asking: a deleted
+AppImage leaves a hidden entry and its icon behind, and with several copies the
+entry starts whichever ran last.
 
 ## Evidence
 
@@ -79,6 +98,7 @@ every distribution. Native installation and update checks remain manual.
 - [Platform helpers](../../src-tauri/src/platform.rs).
 - [Sleep inhibitor test](../../src-tauri/src/awake.rs).
 - [Freedesktop notifications](../../src-tauri/src/notifications/freedesktop.rs).
+- [AppImage desktop entry and its tests](../../src-tauri/src/desktop_entry.rs).
 - [Shortcut label tests](../../src/platform.test.ts).
 - [Updater installation tests](../../src/update-init.test.ts).
 - [Release gate tests](../../scripts/test_release.py) and

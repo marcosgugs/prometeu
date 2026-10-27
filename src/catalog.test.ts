@@ -96,4 +96,6 @@ it.each(["cancel", "success", "retry"])("holds the plugin row lock through dialo
   }
   dialog.closed!();
   await vi.waitFor(() => expect(row().busy).toBe(false));
+  const events = mocks.invoke.mock.calls.filter(([command]) => command === "analytics_track").map(([, args]) => args.event);
+  expect(events).toEqual(outcome === "cancel" ? [] : [{ name: "resource_action_used", kind: "plugin", action: "install" }]);
 });

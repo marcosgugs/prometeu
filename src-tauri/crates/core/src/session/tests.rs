@@ -354,3 +354,86 @@ fn canonical_reactions_preserve_request_notes_identity_and_account_usage_ports()
     );
     assert_eq!(lock(&f.effects).last().unwrap(), "usage");
 }
+
+#[test]
+fn answering_a_request_runs_the_tab_again_unless_another_still_waits() {
+    let f = Fixture::new();
+    let sessions = f.service();
+    let work = Mutex::new(HashMap::new());
+    let reactions = SessionReactions {
+        sessions: &sessions,
+        work: &work,
+        context: &f,
+        actions: &f,
+        usage: &f,
+    };
+    let ready = AtomicBool::new(true);
+    let react = |event: Value| reactions.react("s", &event, &ready);
+    let status = || serde_json::to_value(lock(&f.board).tab_mut("s").unwrap().status).unwrap();
+    let note = || lock(&f.board).tab_mut("s").unwrap().note.clone();
+    let tool = |command: &str| json!({"type":"assistant.block","block":{"kind":"tool","name":"Bash","input":{"command":command}}});
+
+    react(tool("npm test"));
+    react(json!({"type":"request.opened","requestId":"a","kind":"approval","tool":"Bash"}));
+    react(
+        json!({"type":"request.opened","requestId":"b","kind":"question",
+        "input":{"questions":[{"question":"Which suite?"}]}}),
+    );
+    assert_eq!(status(), "querendo");
+    react(json!({"type":"request.closed","requestId":"a","outcome":"allowed"}));
+    assert_eq!(status(), "querendo", "another request still waits");
+    // Output while a request is open keeps the tab waiting and the request's note.
+    react(json!({"type":"assistant.block","block":{"kind":"text","text":"Waiting"}}));
+    react(tool("ls"));
+    assert_eq!(status(), "querendo");
+    assert_eq!(note().as_deref(), Some("Which suite?"));
+
+    // The answer moves the tab on at once, before the long tool produces anything.
+    react(json!({"type":"request.closed","requestId":"b","outcome":"answered"}));
+    assert_eq!(status(), "rodando");
+    assert_eq!(note(), None);
+    react(tool("cargo test"));
+    assert_eq!(status(), "rodando");
+    react(json!({"type":"turn.completed","outcome":"ok"}));
+    assert_eq!(status(), "pronta");
+
+    // A late answer to a request the settled turn dropped does not start the tab again.
+    react(json!({"type":"request.opened","requestId":"c","kind":"plan"}));
+    react(json!({"type":"turn.completed","outcome":"interrupted"}));
+    assert_eq!(status(), "pronta");
+    react(json!({"type":"request.closed","requestId":"c","outcome":"cancelled"}));
+    assert_eq!(status(), "pronta");
+    // Nor does the dropped request keep the next turn waiting after its own answer.
+    react(tool("make"));
+    react(json!({"type":"request.opened","requestId":"d","kind":"approval","tool":"Bash"}));
+    react(json!({"type":"request.closed","requestId":"d","outcome":"allowed"}));
+    assert_eq!(status(), "rodando");
+}
+
+#[test]
+fn an_accepted_message_clears_the_interrupted_marker() {
+    let f = Fixture::new();
+    lock(&f.board).tab_mut("s").unwrap().interrupted = true;
+    let sessions = f.service();
+    let work = Mutex::new(HashMap::new());
+    let reactions = SessionReactions {
+        sessions: &sessions,
+        work: &work,
+        context: &f,
+        actions: &f,
+        usage: &f,
+    };
+    let ready = AtomicBool::new(true);
+    reactions.react(
+        "s",
+        &json!({"type":"assistant.block","block":{"kind":"text","text":"x"}}),
+        &ready,
+    );
+    assert!(lock(&f.board).tab_mut("s").unwrap().interrupted);
+    reactions.react(
+        "s",
+        &json!({"type":"user.message","content":[{"kind":"text","text":"Continue"}]}),
+        &ready,
+    );
+    assert!(!lock(&f.board).tab_mut("s").unwrap().interrupted);
+}

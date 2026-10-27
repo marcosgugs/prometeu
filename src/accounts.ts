@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { descriptor, descriptors, type AgentDescriptor, type AuthMethod } from "./agents";
 import { invoke, type IpcCall } from "./ipc";
 import { brand, icon } from "./icons";
@@ -44,7 +45,7 @@ export function selected(provider: ProviderId): Account | undefined {
 }
 
 export function openPicker(provider: ProviderId) {
-  const dialog = formDialog({
+  const dialog = formDialog({ track: "account.dialog", area: "accounts",
     title: t("account.use"), save: t("account.continue"), cancel: t("account.cancel"), error: fromBack,
     submit: async () => { if (!selected(provider)) throw new Error(t("launcher.account.required")); },
     closed: () => forget(),
@@ -76,10 +77,13 @@ async function call(...args: IpcCall<"account_select" | "account_login" | "accou
   busy = true; changed();
   try {
     const before = new Set(accounts?.accounts.map(a => a.id));
+    const provider = args[0] === "account_login" ? args[1].provider : accounts?.accounts.find(account => account.id === args[1].id)?.provider;
+    if (provider && args[0] === "account_login") track({ name: "provider_account_action_used", provider, action: "login_start" });
     const next = await invoke(...args);
+    if (provider && args[0] !== "account_login") track({ name: "provider_account_action_used", provider, action: args[0] === "account_select" ? "select" : "remove" });
     update(next);
     if (args[0] === "account_login") {
-      say(t(args[1].method === "external" ? "account.external.added" : "account.connected"));
+      say(t(args[1].method === "external" ? "account.external.added" : "account.connected", { provider: descriptor(args[1].provider).label }));
       const added = next.accounts.find(a => !before.has(a.id));
       const id = added?.id ?? args[1].id;
       if (id) focusAccount(id);
@@ -89,7 +93,7 @@ async function call(...args: IpcCall<"account_select" | "account_login" | "accou
 function run(work: Promise<unknown>) { void work.catch(error => say(fromBack(error), true)); }
 
 async function remove(account: Account) {
-  if (accounts?.active[account.provider] === account.id && !await confirmDialog({
+  if (accounts?.active[account.provider] === account.id && !await confirmDialog({ track: "account.remove", area: "accounts",
     title: t("account.removeActive"), message: t("account.removeActive.message"),
     accept: t("account.remove"), cancel: t("account.cancel"),
   })) return;
@@ -111,9 +115,9 @@ export function add(provider: ProviderId, id: string | null = null) {
   if (previous) return start(provider, previous, id);
   if (methods.length === 1) return start(provider, methods[0], id);
   if (!methods.length) return;
-  const method = select(methods[0].id, methods.map(m => [m.id, m.label]));
+  const method = select(methods[0].id, methods.map(m => [m.id, m.label]), { track: "account.method" });
   let selected: AuthMethod | undefined;
-  const dialog = formDialog({
+  const dialog = formDialog({ track: "account.dialog", area: "accounts",
     title: t("account.add"), save: t("account.continue"), cancel: t("account.cancel"), error: fromBack,
     submit: async () => { selected = methods.find(m => m.id === method.value); },
     closed: () => { if (selected) start(provider, selected, id); },
@@ -128,7 +132,7 @@ function card(account: Account, compact: boolean): HTMLElement {
   const loggingIn = accounts?.login?.id === account.id;
   const root = h("section", `uaccount${active ? " active" : ""}`);
   root.dataset.account = account.id;
-  const choose = button("", () => run(call("account_select", { id: account.id })));
+  const choose = button("", () => run(call("account_select", { id: account.id })), undefined, "account.select");
   choose.classList.add("account-select");
   choose.dataset.focus = `select-${account.id}`;
   choose.setAttribute("aria-label", accountName(account));
@@ -148,16 +152,17 @@ function card(account: Account, compact: boolean): HTMLElement {
   } else if (!loggingIn) meta.append(h("span", "", t("account.disconnected")));
   identity.append(meta);
   const actions = menuButton("…", () => [
-    ...(!external ? [{ label: t("account.reconnect"), run: () => add(account.provider, account.id) }] : []),
-    { label: t("account.remove"), danger: true, run: () => run(remove(account)) },
+    ...(!external ? [{ track: "account.reconnect", label: t("account.reconnect"), run: () => add(account.provider, account.id) }] : []),
+    { track: "account.remove", label: t("account.remove"), danger: true, run: () => run(remove(account)) },
   ]);
   actions.setAttribute("aria-label", t("account.actions"));
+  actions.dataset.track = "account.actions";
   actions.dataset.focus = `actions-${account.id}`;
   actions.disabled = busy || !!accounts?.login;
   heading.append(avatar(), identity, actions); content.append(heading);
   if (loggingIn) {
     const wait = h("div", "account-wait", t("account.browser")); wait.setAttribute("role", "status");
-    wait.append(button(t("account.cancel"), () => run(invoke("account_login_cancel", { id: account.id }))));
+    wait.append(button(t("account.cancel"), () => run(invoke("account_login_cancel", { id: account.id }).then(() => track({ name: "provider_account_action_used", provider: account.provider, action: "login_cancel" }))), undefined, "account.cancel"));
     content.append(wait);
   }
   const limits = h("div", "account-quotas"); limits.innerHTML = quota(account.id);
@@ -165,6 +170,7 @@ function card(account: Account, compact: boolean): HTMLElement {
     const usage = disclosure(t("status.usage"), limits);
     usage.classList.add("account-usage");
     usage.dataset.settingsDisclosure = `account-usage-${account.id}`;
+    usage.querySelector("summary")!.dataset.track = "account.usage";
     usage.querySelector("summary")!.dataset.focus = `usage-${account.id}`;
     content.append(usage);
   } else content.append(limits);
@@ -174,6 +180,7 @@ function card(account: Account, compact: boolean): HTMLElement {
 
 export function render(providers: readonly AgentDescriptor[] = descriptors(), manage?: () => void, compact = false): HTMLElement {
   const root = h("div", `accounts-view${compact ? " compact" : ""}`);
+  root.dataset.trackArea = "accounts";
   for (const provider of providers) {
     const group = h("section", "accounts-provider"); group.dataset.providerAccounts = provider.id; group.tabIndex = -1; group.setAttribute("aria-label", provider.label);
     const heading = h("div", "uhead");
@@ -189,17 +196,19 @@ export function render(providers: readonly AgentDescriptor[] = descriptors(), ma
     if (external && list.length) {
       const attached = h("span", "account-attached");
       attached.innerHTML = icon("check", 14);
-      attached.append(document.createTextNode(t("account.external.attached")));
+      attached.append(document.createTextNode(t("account.external.attached", { provider: provider.label })));
       footer.append(attached);
     } else {
-      const addButton = button(t(external ? "account.external.attach" : "account.add"), () => add(provider.id));
+      const addButton = button(t(external ? "account.external.attach" : "account.add", { provider: provider.label }), () => add(provider.id));
       addButton.insertAdjacentHTML("afterbegin", icon("plus", 14));
+      addButton.dataset.track = "account.add";
       addButton.dataset.focus = `add-${provider.id}`;
       addButton.disabled = !provider.installed || busy || !!accounts?.login || !provider.authMethods.length;
       footer.append(addButton);
     }
     if (manage) {
       const manageButton = button(t("account.manage"), manage, "ghost");
+      manageButton.dataset.track = "account.manage";
       manageButton.dataset.focus = `manage-${provider.id}`;
       footer.append(manageButton);
     }

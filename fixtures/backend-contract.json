@@ -20,6 +20,17 @@
       "Done"
     ],
     "telemetry_ids": {},
+    "terminals": [
+      {
+        "folder": "/contract/home",
+        "id": "terminal-contract",
+        "name": "Server"
+      },
+      {
+        "folder": "/contract/repo",
+        "id": "terminal-unnamed"
+      }
+    ],
     "tool_trust": [],
     "tools": {
       "mcp": null,
@@ -36,6 +47,7 @@
         ],
         "branch": "task",
         "cleaned": false,
+        "confirm_messages": false,
         "effort": "",
         "failed": null,
         "id": "workspace",
@@ -77,6 +89,12 @@
             "worktree": "/contract/worktree"
           }
         ],
+        "rights": {
+          "control": [],
+          "send": [
+            "member"
+          ]
+        },
         "share_team": "team",
         "shared": true,
         "skills": null,
@@ -159,6 +177,7 @@
         "audience": null,
         "branch": "empty",
         "cleaned": false,
+        "confirm_messages": true,
         "effort": "",
         "failed": null,
         "id": "empty",
@@ -175,6 +194,7 @@
         "repo": "/contract/repo",
         "repo_name": "Project",
         "repos": [],
+        "rights": null,
         "share_team": null,
         "shared": false,
         "skills": null,
@@ -228,6 +248,20 @@
       "userQuestions": true,
       "workspaceMcpSelection": true,
       "workspacePluginSelection": true
+    },
+    "cursor": {
+      "approvals": true,
+      "attachments": true,
+      "compact": false,
+      "contextReport": false,
+      "contextWindow": false,
+      "initialPlanMode": true,
+      "resume": true,
+      "usageCost": false,
+      "usageTokens": false,
+      "userQuestions": true,
+      "workspaceMcpSelection": false,
+      "workspacePluginSelection": false
     },
     "gemini": {
       "approvals": false,
@@ -474,6 +508,7 @@
     "claude",
     "codex",
     "antigravity",
+    "cursor",
     "gemini"
   ],
   "snapshot": {

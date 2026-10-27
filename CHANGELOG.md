@@ -4,6 +4,158 @@ What changes in Prometeu, version by version, for whoever uses the app.
 Versions come from `sh scripts/release.sh`; this file is generated from the
 commits by git-cliff, and each release's notes on GitHub are its section.
 
+## [0.36.0] - 2026-10-26
+
+### New
+
+- **tasks:** Organize issues and pull requests as tasks
+
+## [0.35.0] - 2026-10-25
+
+### New
+
+- **cursor:** Add cli sessions and account quotas
+- **analytics:** Ask before sharing usage data
+- **Breaking:** **scripts:** Require prometeu project settings
+
+### Fixes
+
+- **cursor:** Restore retries and correct tool and answer selections
+
+## [0.34.0] - 2026-10-25
+
+### New
+
+- **analytics:** Measure conversation activity
+- **analytics:** Track named controls and feature use
+- **privacy:** Make usage analytics opt-in
+
+### Fixes
+
+- **privacy:** Stop stale sends and preserve settings focus
+- **analytics:** Count plan and island responses
+
+## [0.33.0] - 2026-10-24
+
+### New
+
+- **projects:** Create local git projects
+
+### Fixes
+
+- **launcher:** Restore choices when switching projects
+- **launcher:** Preserve choices during branch discovery
+
+## [0.32.0] - 2026-10-24
+
+### New
+
+- **sidebar:** Group projects into collapsible folders and filter the list
+- **team:** Leave a shared workspace you no longer want to follow
+
+### Fixes
+
+- **analytics:** Identify clicks on workspaces, tabs and files
+- **sidebar:** Show filter matches inside collapsed projects and sets
+- **team:** Keep the conversation open when leaving a share fails
+
+## [0.31.0] - 2026-10-23
+
+### New
+
+- **analytics:** Send anonymous usage events to understand which features are used
+
+## [0.30.0] - 2026-10-23
+
+### New
+
+- **typesafe:** Replace the request review with a key test in settings
+
+### Fixes
+
+- **typesafe:** Keep a pending key test from starting a second request
+
+## [0.29.1] - 2026-10-15
+
+### Fixes
+
+- **cleanup:** Keep a worktree whose git status fails instead of removing it as clean
+- **conversation:** Show a tab running again as soon as its question or approval is answered
+- **conversation:** Show a turn cut off by quitting or updating as interrupted, with continue
+- **conversation:** Keep a cut-off turn marked after continuing and reopening
+- **notifications:** Quit when the main window closes while the notch island is on
+- **board:** Keep unreadable workspace files and say when the list was restored or reset
+- **board:** Keep an unreadable workspace backup when the main list still loads
+- **terminal:** Stop dock terminals from inheriting the launching terminal and agent session
+- **statusbar:** Number dock shells in the resource list as their tabs do
+- **linux:** Show the app icon in the dock instead of a gear when running the AppImage
+- **windows:** Open the installed app instead of failing to prepare WSL
+
+## [0.29.0] - 2026-10-10
+
+### New
+
+- **team:** Run remote messages and control only from devices you allow
+- **team:** Choose per person who may message or control a shared agent
+- **team:** Hold a teammate's message until you send, edit or discard it
+
+### Fixes
+
+- **notifications:** Keep the notch island in place when displays change
+- **team:** Never carry a device approval into another organization or lose it on reconnect
+- **ui:** Open submenus on the left when the window edge has no room
+- **team:** Keep a newly granted teammate's controls when people have left the organization
+- **team:** Send a waiting message once and keep it when editing during dictation
+- **notifications:** Move the notch island with the main window
+- **notifications:** Use the app mark with an execution sweep in the island
+- **notifications:** Scale the mark into the icon box and keep the sweep in phase
+
+## [0.28.1] - 2026-10-07
+
+### Fixes
+
+- **notifications:** Shrink the idle notch island to fit its flame and count
+
+## [0.28.0] - 2026-10-07
+
+### New
+
+- **notifications:** Open github notifications on github, with workspace and details actions
+- **notifications:** Follow agents, approve and answer from the notch island
+
+### Fixes
+
+- **notifications:** Keep github notification icons off the left edge
+- **notifications:** Find the workspace again when its notification action is clicked
+- **notifications:** Keep notch island answers and typing reliable
+- **windows:** Wait longer for a closing shell before reporting it stuck
+
+## [0.27.0] - 2026-10-06
+
+### New
+
+- **notifications:** Render github comments as formatted markdown
+- **notifications:** Group github notifications by pull request or issue
+- **github:** Show the CI status of open PRs
+
+### Fixes
+
+- **notifications:** Keep opened threads read and show failed event details
+- **notifications:** Keep encoded links and image labels intact in github comments
+- **notifications:** Scroll long html code blocks inside github comments
+
+## [0.26.0] - 2026-10-06
+
+### New
+
+- **github:** Connect github directly and get pr and issue notifications
+
+### Fixes
+
+- **actions:** Settle tasks left waiting by the removed pr monitor
+- **github:** Keep notifications and issue lists scoped to the connected account
+- **github:** Recheck notification titles after switching accounts
+
 ## [0.25.0] - 2026-10-04
 
 ### New
@@ -796,7 +948,7 @@ commits by git-cliff, and each release's notes on GitHub are its section.
 ### New
 
 - **Breaking:** **quadro:** Remove o Kanban e usa Issues como tela inicial
-- **conversa:** A conversa e o painel no desenho do Conductor
+- **conversa:** A conversa e o painel ganharam um novo desenho
 
 ### Fixes
 

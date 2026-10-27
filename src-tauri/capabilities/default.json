@@ -10,7 +10,11 @@
     "dialog:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-badge-count",
+    "core:window:allow-destroy",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-focus",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "process:allow-exit"
   ]
 }

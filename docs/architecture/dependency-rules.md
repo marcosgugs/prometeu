@@ -113,8 +113,7 @@ desktop shell; no `team-*.ts` imports `@tauri-apps`, `./ipc`, `./mock` or
 Varies per external service and its wire format. Features ask closed questions
 through the port in `evaluation.rs`/`evaluation.ts` and apply their own rules;
 the credential, transport, retries and vendor validation stay in `typesafe.rs`.
-`context-review.ts` imports only the port types and runs with a fake port in
-tests. See [ADR 0058](../decisions/0058-optional-context-evaluation.md).
+A consumer imports only the port types and runs with a fake port in tests. See [ADR 0058](../decisions/0058-optional-context-evaluation.md).
 
 ### Local system
 
@@ -211,7 +210,7 @@ it owns ([ADR 0085](../decisions/0085-portable-core.md),
 | --- | --- | --- |
 | `prometeu-core` | models, portable rules, sequencing and ports | `serde`, `serde_json`, `uuid` only |
 | `prometeu-oauth` | PKCE, loopback callback and `Consent` port | no workspace crate |
-| `prometeu-protocols` | shared Codex and model-catalog protocols | core |
+| `prometeu-protocols` | shared Codex, Cursor ACP and model-catalog protocols | core |
 | `prometeu-files`, `prometeu-git` | project files, search, scripts, account storage; native Git | core |
 | `prometeu-process`, `prometeu-profiles` (Unix) | processes, PTYs, pipes, bounded commands; account profiles | core |
 | `prometeu-tools` (Unix) | MCP, packages, skills, plugins, MCP credentials | core, profiles, oauth |

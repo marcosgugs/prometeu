@@ -76,7 +76,7 @@ export function init(ctx: {
     if ((e.target as HTMLElement).closest(".treerow, .treeedit")) return;
     e.preventDefault();
     if (!workspace()) return;
-    menu.openAt({ x: e.clientX, y: e.clientY }, rootMenu({ create: (parent, dir) => void create(parent, dir), reveal: host().reveal }));
+    menu.openAt({ area: "files", x: e.clientX, y: e.clientY }, rootMenu({ create: (parent, dir) => void create(parent, dir), reveal: host().reveal }));
   });
   $("collapse").addEventListener("click", () => {
     openDirs.clear();
@@ -222,6 +222,7 @@ async function fill(id: string, rel: string, into: HTMLElement | DocumentFragmen
     if (entry.path === target) row.classList.add("targeted");
     row.style.paddingLeft = `${14 + depth * 20}px`;
     row.dataset.dir = entry.dir ? "1" : "0";
+    row.dataset.track = entry.dir ? "tree.folder" : "tree.file";
     row.dataset.depth = String(depth);
     if (gone) row.dataset.gone = "1";
     row.innerHTML = `<span class="tw"></span><span class="tn"></span><span class="tg"></span><span class="tc"></span>`;
@@ -255,11 +256,12 @@ async function fill(id: string, rel: string, into: HTMLElement | DocumentFragmen
 
     // Replace the engine's page menu, which offers web actions over the file's name. Scope it to the
     // row so the viewer and the composer keep the native editing menu.
+    row.dataset.trackContextMenu = "tree.entry.menu";
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const at = host();
       menu.openAt(
-        { x: e.clientX, y: e.clientY },
+        { area: "files", x: e.clientX, y: e.clientY },
         treeMenu(entry, {
           root: at.root,
           expanded: openDirs.has(entry.path),
@@ -401,7 +403,7 @@ async function trash(entry: Entry) {
   if (!id) return;
   // Keep showing which entry the confirmation is about.
   aim(entry.path);
-  const sure = await confirmDialog({
+  const sure = await confirmDialog({ track: "tree.trash.title", area: "files",
     title: t("tree.trash.title", { name: entry.name }),
     message: t(entry.dir ? "tree.trash.folder" : "tree.trash.file"),
     accept: t("tree.trash.accept"),

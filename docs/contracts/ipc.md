@@ -61,6 +61,24 @@ Local Rust workspaces omit `remote`. The TypeScript presentation field is
 optional (or null for browser fixtures); collaboration supplies it only for
 remote workspaces. No backend field or persisted format is added.
 
+`create_project` receives `{ directory: string, name: string }` and returns the
+existing `Project` shape. The parent must be an existing absolute directory
+(desktop expands `~/`; Windows converts the selected parent to a WSL path).
+The trimmed name must be one directory component: empty names, `.`, `..`, `.git`
+(case-insensitive), slashes, backslashes and control characters are rejected.
+The native Git adapter canonicalizes the parent and exclusively creates the child,
+rejecting existing files, folders and symlinks without altering them. It runs
+`git init --template=` with repository-location environment overrides removed,
+then registers the result and publishes `board`. It creates no commit, remote,
+workspace or project files. No Git identity or Cloud account is required.
+On Git failure, registration does not occur; cleanup removes only an empty child,
+preserving any partial Git state or concurrently written files for inspection.
+If later registration fails, the initialized directory remains available for
+**Add local folder**. Existing `add_project` behavior and persisted formats stay
+unchanged. Native tests are in `crates/git/src/tests.rs`; runtime registration,
+failure and restart coverage is in `crates/runtime/tests/resident.rs`, and Windows
+argument conversion is in `crates/bridge/src/application.rs`.
+
 `reorder_projects` receives `{ ids: string[] }`, returns empty and reorders the
 board's `projects` to match. Projects absent from `ids` keep their relative
 order after the listed ones and unknown IDs are ignored, so a project registered
@@ -68,6 +86,15 @@ during a drag is not lost. The change reaches the frontend through the `board`
 event; the browser mock applies the same rule. Test:
 `project_order_follows_ids_and_keeps_unlisted_projects_last` in
 `src-tauri/src/session.rs`.
+
+`group_projects` receives `{ ids: string[], group: string | null }`, returns
+empty and sets `group` on the listed projects. The name is trimmed; an empty or
+null name takes the projects out of their folder. Moving a project, renaming a
+folder (all its members get the new name) and dissolving it are the same
+command, so there is no separate folder entity. Unknown IDs are ignored. The
+change reaches the frontend through the `board` event; the browser mock applies
+the same rule. Test: `project_folders_persist_trimmed_and_clear_on_empty_names`
+in `src-tauri/crates/core/src/workspaces.rs`.
 
 Local notification commands and the `notification-open` event are described in
 the [notification contract](notifications.md).
@@ -142,10 +169,10 @@ The `cloud_status`, `cloud_login_start`, `cloud_login_poll`,
 [account contract](cloud-account.md); `catalog_state` is in the
 [catalog contract](cloud-catalog.md). Catalog refresh runs through
 `cloud_status` with `refresh: true`. They do not return a Bearer or a
-password to the webview. `cloud_organizations`, `cloud_relay_ticket` and the
-`remoteControl` and `team` arguments of `set_shared` are in the
-[organizations contract](cloud-organizations.md); only the short ticket crosses
-IPC to authenticate the WebSocket.
+password to the webview. `cloud_organizations`, `cloud_relay_ticket`, the
+`remoteControl`, `team` and `rights` arguments of `set_shared` and
+`set_confirm_messages` are in the [organizations contract](cloud-organizations.md);
+only the short ticket crosses IPC to authenticate the WebSocket.
 
 | Event | Emitter | Emitted payload |
 | --- | --- | --- |
@@ -172,10 +199,13 @@ time and optional `available_error` when discovery fails after Mine succeeds.
 confirms its mutation. `linear_status` and `linear` include `can_assign` to
 identify credentials granted the `write` scope. See [Linear issues](linear-issues.md).
 
-`github_identity`, `github_issues`, `github_repositories`, `github_issue_open`,
-`github_projects` and `github_prepare` expose account validation, normalized discovery, private selections, validated
-source navigation and PR worktree preparation. See [GitHub issues](github-issues.md)
-for inputs, outputs, bounded execution and account/cache behavior.
+`github_status`, `github_connect`, `github_disconnect`, `github_issues`,
+`github_claim`, `github_issue_open`, `github_projects` and `github_prepare` expose
+the GitHub App connection, normalized discovery, claiming, validated source
+navigation and PR worktree preparation; the `github` event carries connection
+status. See [GitHub issues](github-issues.md). `github_feed`, `github_subjects`
+and `github_detail` read the Cloud notification feed and fetch titles and text on
+demand; see [GitHub notifications](github-notifications.md).
 
 `paste_files` completes that path for the clipboard: with no arguments, it reads
 the system clipboard and returns paths. On macOS it reads the general
@@ -298,8 +328,9 @@ suppresses late output and close events before a replacement uses its key.
 working directory: a dedicated worktree, the clone itself, or the common parent
 of multiple worktrees. A project resolves in the registered clone's folder, which is what
 supports reading and editing a repository with no workspace on it at all. The
-two id spaces do not collide, and `session.rs::cwd_of` is the only function that
-performs that resolution — `dock.rs` imports it instead of repeating the rule. A
+two id spaces do not collide, and `session.rs::cwd_in`, behind `cwd_of`, is the
+only function that performs that resolution — `dock.rs` imports it instead of
+repeating the rule. A
 path outside the root is still refused.
 
 `find_paths` returns at most 40 ranked entries, files and directories alike.
@@ -377,6 +408,62 @@ Run still require a workspace and answer `err.session.noWorkspace`.
 `workspace_scripts` and `dock_state` already tolerated an id without a workspace
 — they return an empty catalog and no port.
 
+`remove_project` stops the project's shells, as archiving, cleaning up or
+removing a workspace stops its docks, so adding the same folder again starts with
+none. `open_dock` resolves a shell's folder and inserts the new shell under the
+PTY lock that the removal takes to stop docks, so a shell starting during the
+removal is stopped too, and one asked for afterwards finds no folder. Dock keys
+are `<owner>:<kind>`, and a project owner is a folder path that may contain `:`;
+`prometeu_core::terminal::dock_kind` gives an owner only the keys whose remaining
+kind has no `:`. A shell that exits while its owner is off screen
+can still be reported by `dock_state` with `alive: false`, but it gets no tab;
+exited Setup and Run keep their output. Tests:
+`dock_keys_belong_only_to_their_exact_owner` in
+`crates/core/src/terminal/tests.rs`,
+`removing_a_project_stops_its_shells_and_keeps_other_docks` and
+`removing_a_project_while_its_shell_starts_stops_that_shell` in
+`src-tauri/src/session.rs`, and `src/dockbar.test.ts`.
+
+## Terminal sessions
+
+Terminal sessions are local shells owned by the app
+([ADR 0096](../decisions/0096-terminal-sessions.md)). The board lists them in
+`Board.terminals`, and the `board` event carries every change.
+
+| Command | Arguments | Effect |
+| --- | --- | --- |
+| `terminal_create` | `folder`: an absolute path or `null` | adds a session in that folder, or in the home folder for `null`, and returns it; starts no shell |
+| `terminal_rename` | `id`, `name`: `null` or blank clears it | sets the name shown instead of the folder's |
+| `terminal_close` | `id` | stops the session's shell and removes the session; an id that is no session changes nothing |
+
+`terminal_create` answers `err.dock.noFolder` with `path` for anything but an
+existing absolute folder, and registers nothing as a project. The shell is an
+ordinary dock: `open_dock` with the session id and `kind: "terminal"` starts it
+in the session's folder or reattaches to the running one, and `pty_*`,
+`close_dock` and `dock_state` work by its `<id>:terminal` key. A session is not a
+file root; the file commands still accept only workspaces and projects. For every
+owner, `open_dock` answers `err.dock.noFolder` when a shell's folder no longer
+exists, instead of letting the native PTY start in the home folder.
+
+The frontend ends a session when `pty-closed` arrives for its key, so `exit`
+closes it as × does. The desktop emits no `pty-closed` for a shell it killed, and
+quitting emits nothing, so sessions outlive a quit. The browser mock keeps the
+same rules in memory; the Windows runtime rejects the commands and its entry
+point hides every way to reach them. Tests: `src-tauri/src/terminal_sessions.rs`,
+`src/terminals.test.ts` and `fixtures/backend-contract.json`.
+
+## Ending the app
+
+`running_terminals` takes no arguments and returns how many terminals quitting
+or restarting would cut off: Setup and Run while their script runs, and a shell
+or terminal session while it runs a command, as a foreground job or in place of
+the shell through `exec`. A shell waiting at its prompt does not count. The interface adds the board's working and waiting
+conversations and the workspaces being prepared before asking
+([ADR 0097](../decisions/0097-ask-before-ending-the-app.md)). The browser mock
+counts live Setup and Run docks; the Windows runtime does not implement the
+command, and its entry point never asks. Tests: `src-tauri/src/dock.rs`,
+`crates/process/src/terminal/tests.rs` and `src/quit.test.ts`.
+
 ## Tool selection
 
 The global, project and workspace layers of MCP, plugin and skill selection
@@ -445,6 +532,17 @@ optional `draft.newBranch` and `draft.source`; omitted `newBranch` keeps branch
 creation behavior for older callers. With a worktree and `newBranch: false`,
 `source` must identify an existing local branch or remote ref. The backend
 refuses missing refs before publishing a workspace card.
+
+When reference discovery finds a Git repository with no branches, the launcher
+starts in the project directory with `worktree: false` and `newBranch: false`.
+Branch, worktree and additional-repository controls remain disabled while that
+project is selected. Selecting a project with branches in the same launcher
+restores the worktree and new-branch choices from before the restriction, including
+choices edited during that launch. Explicit worktree or branch choices, or adding
+another repository while references are loading, supersede the saved choices so
+a late response cannot turn off worktrees required by the selected repositories.
+Prometeu does not create an initial commit or change the saved worktree
+preference. Reopening the launcher after the first commit also restores those options.
 
 ## Starting from a skill
 
@@ -531,6 +629,20 @@ on 401, `feedback.rateLimit` at the limit, `feedback.uncertain` with `{id}` on
 uncertain delivery and `feedback.sendError` for the rest. The mock records the
 report and nothing leaves the machine.
 
+## Board recovery
+
+`board_recovery` takes no arguments and returns `null`, or
+`{source, folder, error}` when the last load did not come from a readable
+`board.json`: `source` is `backup` or `reset`, `folder` is the absolute path of
+the private recovery folder once it holds copies of the unreadable files, and
+`error` is the cause while copying fails and saves stay blocked.
+`board_recovery_open` opens that fixed folder in the system file manager and
+returns an `err.session.openFailed` error when it cannot. Both are local-only;
+the WSL runtime does not implement them, and the interface treats its
+`application_command_unsupported` answer as nothing to report. The browser mock
+returns the value stored in `localStorage["mock:boardRecovery"]`. See
+[unreadable state](persistence.md#unreadable-state).
+
 ## Built-in MCP catalog entry
 
 `mcp_hub`, `mcp_save` and `mcp_remove` return the virtual `prometeu` entry with
@@ -590,7 +702,7 @@ optional `pty_buffer` snapshot) and limits are in the
   through unchanged.
 - `pty_write` calls are serialized per terminal; a failed write rejects its
   queued suffix without replay. Both are covered in `src/windows/transport.test.ts`.
-- Folder selections are converted to Linux paths before `add_project`; other
+- Folder selections are converted to Linux paths before `add_project` or `create_project`; other
   distributions reject before registration.
 - Host-only commands typed in `src/windows/host.ts`, outside this registry and
   the mock: `application_open({ previous })` discovers the default WSL, installs

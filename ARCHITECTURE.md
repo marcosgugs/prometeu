@@ -22,8 +22,8 @@ flowchart LR
     back <--> claude[Claude Code CLI]
     back <--> codex[Codex app-server]
     back <--> agy[Antigravity CLI NDJSON]
+    back <--> cursor[Cursor CLI ACP]
     back <--> local[Git, files and local processes]
-    back -. optional, explicit review .-> typesafe[TypeSafe API]
     ui <--> relay[Relay — Cloudflare Worker + Durable Object]
     relay <--> peer[Another member's Prometeu]
 ```
@@ -32,7 +32,11 @@ The agent process and the workspace files have the local user's permissions.
 The worktree separates Git changes, but it is not a sandbox. Shared content
 uses E2EE v4; the relay receives ciphertext and routing metadata. The initial
 identity is accepted by the server directory (TOFU). See
-[limits](docs/decisions/0022-end-to-end-encryption.md).
+[limits](docs/decisions/0022-end-to-end-encryption.md). Remote messages and
+control run only for people the owner granted them in that workspace and only
+from member and key pairs approved on the owner's Mac; viewing and commenting
+need neither. By default a teammate's message also waits, only in memory, until
+the owner sends it ([ADR 0090](docs/decisions/0090-approved-remote-input.md)).
 
 ## Containers and responsibilities
 
@@ -43,6 +47,7 @@ identity is accepted by the server directory (TOFU). See
 | Claude adapter | `claude.rs` | convert V1 commands to stream-json and stream-json to V1 events | DOM, board state or relay |
 | Antigravity adapter | `antigravity.rs` | convert native NDJSON to V1; resume native history | DOM, board state or relay |
 | Codex adapter | `crates/protocols/src/codex.rs`, desktop `codex.rs` composition | convert V1 commands to JSON-RPC and JSON-RPC to V1 events | DOM, board state or relay |
+| Cursor adapter | `crates/protocols/src/cursor.rs`, desktop `cursor.rs` composition | convert ACP to V1; preserve native session identity | DOM, board state or relay |
 | Relay | Worker + Durable Object | enrollment, presence, audience, comments and forwarding | agent execution or worktree access |
 | Web mock | `src/mock.ts` | answer the same IPC for UI development and E2E | replace the Rust backend tests |
 | Prometeu Cloud (separate project) | Rails 8.1 + SQLite + ERB | optional account, organizations, invitations and tool catalogs | agent execution, general files, secrets or transcripts |
@@ -55,7 +60,8 @@ The conversation uses a contract owned by Prometeu:
 Claude stream-json ─> claude.rs ───────────┐
                                            ├─> ConversationEventV1 ─> Pump/relay ─> timeline.ts ─> chat.ts
 Codex JSON-RPC ─> protocols::codex ────────────────┤
-Antigravity ────> antigravity.rs ───────────────┘
+Antigravity ────> antigravity.rs ───────────────┤
+Cursor ACP ────> protocols::cursor ────────────┘
 ```
 
 `prometeu-core` retains and numbers V1 lines, coordinates input, account
@@ -112,14 +118,22 @@ stay in their existing owners. See the
 
 The optional Linear connection is owned by `src-tauri/src/linear.rs`. It
 queries assigned and unassigned issues in the user's teams and assigns a chosen
-issue after explicit action; `src/issues.ts` owns the screen. See the
+issue after explicit action; `src/issues.ts` owns the Tasks screen. See the
 [Linear issue contract](docs/contracts/linear-issues.md).
 
-The same Issues destination has a GitHub tab owned by `src/github-issues.ts`.
-`src-tauri/src/github_issues.rs` uses the installed `gh` credential for assigned
-issues, selected repositories, authored PRs and requested reviews. It prepares
-isolated PR branches while the existing launcher owns workspace creation. See
-the [GitHub issue contract](docs/contracts/github-issues.md).
+The same Tasks destination has a GitHub tab owned by `src/github-issues.ts`.
+`src-tauri/src/github_auth.rs` holds the GitHub App credential from the device
+flow; `github_issues.rs` lists assigned and available issues, authored PRs and
+requested reviews, claims issues and prepares isolated PR branches while the
+existing launcher owns workspace creation; `github.rs` reads workspace PR state.
+See the [GitHub issue contract](docs/contracts/github-issues.md).
+
+The Notifications destination (`src/notification-center.ts`) merges relay
+mentions with GitHub activity that the Cloud derives from GitHub App webhooks.
+`github_notifications.rs` reads that metadata feed with the account Bearer and
+fetches titles and comment text from GitHub on demand. See the
+[GitHub notifications contract](docs/contracts/github-notifications.md) and
+[ADR 0088](docs/decisions/0088-github-app.md).
 
 The optional account appears at the top of the sidebar. The `cloud.rs` backend
 connects the Mac through the browser and stores the credential privately. The
@@ -134,11 +148,9 @@ Publication is a separate operational step. See the
 
 `evaluation.rs` defines an application-owned port for bounded, closed-question
 classification; `typesafe.rs` is its only adapter and keeps the person's own
-API key in a private file. The integration starts disabled and runs only on an
-explicit **Review request** in the launcher, whose rules live in
-`src/context-review.ts`. `src/review-policy.ts` binds model identity and draft
-language to conservative thresholds; `review_calibration.rs` owns independent,
-opt-in, content-free local records and export. It is independent of the agent provider, the Cloud
+API key in a private file. No feature uses it since the launcher's request
+review was removed; Settings only saves the key and tests it with a fixed
+synthetic request. It is independent of the agent provider, the Cloud
 account, the timeline and the relay. See the
 [contract](docs/contracts/context-evaluation.md) and
 [ADR 0058](docs/decisions/0058-optional-context-evaluation.md).
@@ -171,7 +183,7 @@ resumes the session when there is news. See the
   [core contract](docs/contracts/application-core.md).
 - The logical session is the transcript. The process is disposable and can be
   resumed.
-- Claude writes its own transcript; Prometeu writes the translated Codex and Antigravity lines
+- Claude writes its own transcript; Prometeu writes the translated Codex, Antigravity and Cursor lines
   in `~/.prometeu/chats/`.
 - Agent accounts and the global selection live in `<root>/accounts.json`.
   Registry and login rules live in `prometeu-core::accounts`; `accounts.rs`
@@ -202,6 +214,24 @@ attribution remain incomplete; telemetry failure never rejects agent commands.
 The first version has no Cloud synchronization or analytics upload. See the
 [contract](docs/contracts/telemetry.md) and
 [ADR 0059](docs/decisions/0059-local-telemetry-foundation.md).
+
+## Product analytics
+
+`analytics.rs` sends content-free product events to PostHog, separate from local
+telemetry. A closed Rust vocabulary accepts named control activations and
+explicit feature-use facts from the desktop application paths. `src/analytics.ts`
+captures authored control and surface identities; translated text is never used
+to infer an identity. Shared controls propagate metadata without importing the
+analytics service. A generated catalog and runtime checks expose missing coverage.
+Counts are per installation. A background thread batches deliveries with timing
+offsets and an analytics version. Tracking defaults to off, including upgrades.
+The desktop asks on startup when no saved choice exists, including upgrades.
+Settings / General / Privacy can change that choice; both capture
+and pending delivery respect it. Only builds compiled with the key and explicit
+consent send events.
+See the [contract](docs/contracts/product-analytics.md),
+[coverage map](docs/quality/product-analytics-coverage.md) and
+[ADR 0093](docs/decisions/0093-anonymous-product-analytics.md).
 
 ## Internal public boundaries
 
@@ -236,7 +266,9 @@ depend on the canonical primitives in `conversation.rs`.
 - The frontend does not access the filesystem or processes directly; it uses IPC.
 - The relay validates every input and enforces the audience on the server; the
   client also authenticates content and enforces the audience, without trusting
-  `watch` as authorization.
+  `watch` as authorization. The owner runs remote input only for granted people
+  and approved identities, holding teammates' messages for confirmation; the
+  relay knows none of these rules.
 - Transcript and board compatibility take precedence over cosmetic cleanup.
 - Support differences visible in the UI use `AgentCapabilities`; dispatch by
   `ProviderId` stays in the catalog or in the adapters.
@@ -269,11 +301,13 @@ The detailed rules and the current state of each one are in
 | Local diff review | `src/review-comments.ts` (rules), `src/review-store.ts` (local storage), `src/workspace-review.ts` (coordination), `src/review-context.ts` (text contract); see [review notes](docs/contracts/diff-review.md) |
 | Git and files | `src/workspace-changes.ts`, `src/changes-menu.ts`, `src/file-menu.ts`, `src/diff.ts`, `src/viewer.ts`, `src/find.ts`, `src/quick-open.ts`, `src/csv.ts`, `src-tauri/src/session/find.rs`, `src-tauri/src/session/git.rs`, `src-tauri/src/session/diff.rs`, `src-tauri/src/session/files.rs` |
 | MCP and plugins | `src/mcp.ts`, `src/plugins.ts`, `src-tauri/src/mcp.rs`, `src-tauri/src/plugins.rs`, `docs/contracts/plugin-marketplace.md` |
-| collaboration | shells `src/team.ts` (desktop) and `src/mobile/` (browser, bundle for the Cloud); core `src/team-member.ts`, `src/team-ports.ts`, features `src/team-owner.ts`, `src/team-viewer.ts`, `src/team-comments.ts`; `src/team-transport.ts`, `src/team-control.ts`, `relay/src/` |
-| optional context evaluation | `src-tauri/src/evaluation.rs` (port), `src-tauri/src/typesafe.rs` (adapter, key), `src/context-review.ts`, `src/context-review-view.ts`, `src/typesafe.ts`, `src/typesafe-settings.ts` |
+| collaboration | shells `src/team.ts` (desktop) and `src/mobile/` (browser, bundle for the Cloud); core `src/team-member.ts`, `src/team-ports.ts`, features `src/team-owner.ts`, `src/team-viewer.ts`, `src/team-comments.ts`; `src/team-transport.ts`, `src/team-control.ts`, `src/team-rights.ts`, `relay/src/` |
+| optional context evaluation | `src-tauri/src/evaluation.rs` (port), `src-tauri/src/typesafe.rs` (adapter, key), `src/evaluation.ts` (IPC types), `src/typesafe-settings.ts` (key and test) |
 | bounded command execution | `src-tauri/crates/core/src/command.rs` (ports), `src-tauri/crates/process/src/command.rs` and `query.rs` (Unix implementations) |
 | terminal execution | `src-tauri/crates/core/src/terminal.rs` (ports and output), `src-tauri/crates/process/src/terminal.rs` (Unix PTYs), `src-tauri/src/pty.rs` (desktop composition) |
 | terminal and preview | `src/dock*.ts`, `src/term.ts`, `src/browser.ts`, `src-tauri/src/dock.rs`, `src-tauri/src/pty.rs` |
+| terminal sessions | `src-tauri/crates/core/src/terminal_sessions.rs` (board records), `src-tauri/src/terminal_sessions.rs` (commands and shell folders), `src/terminals.ts` (live state and lifetime), the sidebar group in `src/sidebar.ts` and the view in `src/workspace.ts`; see [ADR 0096](docs/decisions/0096-terminal-sessions.md) |
+| ending the app | `src/quit.ts` (what would be cut off and the question), `src/appmenu.ts` (the Mac's Quit item), `src/update.ts` (restart), `running_terminals` in `src-tauri/src/dock.rs`; see [ADR 0097](docs/decisions/0097-ask-before-ending-the-app.md) |
 
 The preview shares the center with the conversation. Inspection and capture
 stay at the edge of the native webview, with validated return values and an
@@ -316,3 +350,7 @@ It references the account already connected in agy; no isolated Google profile
 or API-key entry is offered. Native sessions and V1 presentation logs have
 separate responsibilities. Retired Gemini boards remain readable but cannot
 run; see [ADR 0052](docs/decisions/0052-antigravity-runtime.md).
+
+Cursor uses the same conversation boundary through ACP and its existing CLI login.
+See the [contract](docs/contracts/cursor.md) and
+[ADR 0095](docs/decisions/0095-cursor-acp.md) for capability and verification limits.

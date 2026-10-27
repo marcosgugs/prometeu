@@ -104,4 +104,12 @@ Status: Proposed
 | [0082](0082-resident-wsl-attachments.md) | Resident WSL execution and disposable attachments |
 | [0084](0084-shared-windows-desktop.md) | Shared desktop interface over an injected WSL runtime |
 | [0085](0085-portable-core.md) | Portable core with injected effects |
-| [0086](0086-github-inbox.md) | GitHub inbox through the local CLI credential |
+| [0088](0088-github-app.md) | GitHub App for issues, PRs and notifications |
+| [0089](0089-notch-island.md) | Notch island over the main window's state |
+| [0090](0090-approved-remote-input.md) | Remote input only from approved identities, with separate rights |
+| [0091](0091-keep-unreadable-state.md) | Keep unreadable state before replacing it |
+| [0093](0093-anonymous-product-analytics.md) | Anonymous product analytics in PostHog |
+| [0094](0094-leaving-a-share.md) | Leaving a share, enforced by the relay |
+| [0095](0095-cursor-acp.md) | Cursor CLI through ACP and an explicit external account |
+| [0096](0096-terminal-sessions.md) | Terminal sessions owned by the app |
+| [0097](0097-ask-before-ending-the-app.md) | Ask before ending the app while local work runs |

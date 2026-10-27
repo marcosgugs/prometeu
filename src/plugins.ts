@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import * as ui from "./ui";
 import type { ResourceItem } from "./resources/model";
 import { listen } from "@tauri-apps/api/event";
@@ -136,7 +137,7 @@ export function flatLabel(ids: string[] | null): string {
 export function openDefaultPicker(p: {
   chosen: () => string[] | null;
   set: (ids: string[] | null) => void;
-  at: () => { x: number; y: number };
+  at: () => menu.Where;
 }) {
   const rows = hub.filter((pl) => !isSkillPackage(pl.id)).map((pl) => ({ id: pl.id, label: pl.id, hint: pl.note.trim() }));
   const asSel = (): Selection | null => {
@@ -155,7 +156,7 @@ export function openDefaultPicker(p: {
 type GlobalPick = {
   current: () => Selection | null;
   set: (sel: Selection | null) => void;
-  at: () => { x: number; y: number };
+  at: () => menu.Where;
 };
 
 /// Picker for the board's global plugin layer (ADR 0045), the base every project and workspace inherits.
@@ -187,35 +188,35 @@ export function resourceItems(): ResourceItem[] {
 
 export function settingsActions(): menu.Item[] {
   return [
-    { label: t("plugin.install"), run: () => installer() },
-    { label: t("plugin.make"), run: () => maker() },
-    { label: t("plugin.add"), run: () => editor(null) },
+    { track: "plugin.install", label: t("plugin.install"), run: () => installer() },
+    { track: "plugin.make", label: t("plugin.make"), run: () => maker() },
+    { track: "plugin.add", label: t("plugin.add"), run: () => editor(null) },
   ];
 }
 
 function installCatalogPlugin(p: catalog.CatalogPlugin, replacing = false) {
-  const dialog = ui.formDialog({ title: t(replacing ? "catalog.replaceSource" : "catalog.install"), save: t("catalog.install"), cancel: t("plugin.cancel"), error: fromBack,
-    submit: async () => { await invoke("catalog_install_plugin", { id: p.id }); await catalog.refresh(); } });
+  const dialog = ui.formDialog({ track: "plugin.install", area: "resources", title: t(replacing ? "catalog.replaceSource" : "catalog.install"), save: t("catalog.install"), cancel: t("plugin.cancel"), error: fromBack,
+    submit: async () => { await invoke("catalog_install_plugin", { id: p.id }); track({ name: "resource_action_used", kind: "plugin", action: "install" }); await catalog.refresh(); } });
   dialog.body.append(h("p", "ui-hint", p.source), h("p", "ui-hint", t("catalog.installHint"))); dialog.open();
 }
 
 function pluginResource(plugin: Plugin): ResourceItem {
   const actions = catalog.resourceActions("plugins", plugin.id, ctx.say);
   const cloud = catalog.current().plugins.find(p => p.local_id === plugin.id);
-  if (cloud?.source_changed) actions.push({ label: t("catalog.replaceSource"), run: () => installCatalogPlugin(cloud, true) });
-  if (plugin.from) actions.push({ label: t("plugin.update"), run: () => {
+  if (cloud?.source_changed) actions.push({ track: "catalog.replaceSource", label: t("catalog.replaceSource"), run: () => installCatalogPlugin(cloud, true) });
+  if (plugin.from) actions.push({ track: "plugin.update", label: t("plugin.update"), run: () => {
     if (updating.has(plugin.id)) return;
     updating.add(plugin.id); announce();
     ctx.say(t("plugin.updating", { name: plugin.id }));
     void invoke("plugin_update", { id: plugin.id })
-      .then(fresh => { hub = fresh; ctx.say(t("plugin.updated", { name: plugin.id })); })
+      .then(fresh => { track({ name: "resource_action_used", kind: "plugin", action: "update" }); hub = fresh; ctx.say(t("plugin.updated", { name: plugin.id })); })
       .catch(error => ctx.say(fromBack(error), true))
       .finally(() => { updating.delete(plugin.id); announce(); });
   } });
-  actions.push({ label: t("plugin.edit"), run: () => editor(plugin) }, {
-    label: t(catalog.shared("plugins", plugin.id) ? "catalog.delete" : "plugin.remove"), danger: true,
+  actions.push({ track: "plugin.edit", label: t("plugin.edit"), run: () => editor(plugin) }, {
+    track: "plugin.remove", label: t(catalog.shared("plugins", plugin.id) ? "catalog.delete" : "plugin.remove"), danger: true,
     run: async () => {
-      if (plugin.made && !await ui.confirmDialog({
+      if (plugin.made && !await ui.confirmDialog({ track: "plugin.remove", area: "resources",
         title: t("plugin.remove"), message: t("plugin.remove.made"),
         accept: t("plugin.remove.made"), cancel: t("plugin.cancel"),
       })) return;
@@ -241,6 +242,7 @@ async function remove(plugin: Plugin) {
   if (!await catalog.confirmRemoval("plugins", plugin.id)) return;
   try {
     hub = await invoke("plugin_remove", { id: plugin.id });
+    track({ name: "resource_action_used", kind: "plugin", action: "remove" });
     await catalog.load();
     announce();
   } catch (e) {
@@ -254,8 +256,9 @@ export async function refresh() {
   announce();
 }
 
-async function save(plugin: Plugin, revision = catalog.current().revision) {
+async function save(plugin: Plugin, revision = catalog.current().revision, action: "save" | "install" = "save") {
   hub = await invoke("plugin_save", { plugin, revision });
+  track({ name: "resource_action_used", kind: "plugin", action });
   announce();
 }
 
@@ -270,6 +273,7 @@ function editor(plugin: Plugin | null) {
     "sheet hubedit",
     `<div class="sheettop"><b class="mt"></b></div><div class="mbody"></div><div class="sheetbar"></div>`,
   );
+  sheet.dataset.trackArea = "resources";
   const at = <T extends HTMLElement>(sel: string) => sheet.querySelector(sel) as T;
   const draft: Plugin = {
     id: plugin?.id ?? "",
@@ -336,8 +340,10 @@ function editor(plugin: Plugin | null) {
     if (plugin && nameField) nameField.readOnly = true;
     if (plugin && catalog.shared("plugins", plugin.id)) at(".mbody").querySelector<HTMLInputElement>("input")!.readOnly = true;
     const back = h("button", "ghost", t("plugin.cancel"));
+    back.dataset.track = "plugin.cancel";
     back.addEventListener("click", hide);
     const go = h("button", "pri", t("plugin.save"));
+    go.dataset.track = "plugin.save";
     go.addEventListener("click", store);
     at(".sheetbar").replaceChildren(back, hint, go);
   }
@@ -364,7 +370,7 @@ function field(o: {
   /// Inspect changed fields when they lose focus.
   done?: () => void;
 }): HTMLElement {
-  const input = ui.input(o.value);
+  const input = ui.input(o.value, false, o.label);
   input.spellcheck = false;
   const box = ui.field(t(o.label), input, t(o.hint));
   input.addEventListener("input", () => o.on(input.value));
@@ -385,6 +391,7 @@ function installer(prefill = "") {
     "sheet hubedit",
     `<div class="sheettop"><b class="mt"></b></div><div class="mbody"></div><div class="sheetbar"></div>`,
   );
+  sheet.dataset.trackArea = "resources";
   const at = <T extends HTMLElement>(sel: string) => sheet.querySelector(sel) as T;
   let source = prefill;
   let busy = false;
@@ -414,6 +421,7 @@ function installer(prefill = "") {
       const got = await invoke("plugin_install", { source });
       busy = false;
       if (got.saved) {
+        track({ name: "resource_action_used", kind: "plugin", action: "install" });
         await refresh();
         found = null;
         hide();
@@ -435,7 +443,7 @@ function installer(prefill = "") {
     const picked = found?.plugins.filter((p) => chosen.has(p.id)) ?? [];
     if (!picked.length) return hide();
     try {
-      for (const plugin of picked) await save(plugin);
+      for (const plugin of picked) await save(plugin, undefined, "install");
       if (found) found.saved = true;
       hide();
     } catch (e) {
@@ -472,6 +480,7 @@ function installer(prefill = "") {
         `<input type="checkbox" /><div class="txt"><b></b><span></span></div>`,
       );
       const box = line.querySelector("input")!;
+      box.dataset.track = "plugin.install.select";
       box.checked = chosen.has(plugin.id);
       box.addEventListener("change", () => {
         if (box.checked) chosen.add(plugin.id);
@@ -486,8 +495,10 @@ function installer(prefill = "") {
 
   function bar(): HTMLElement[] {
     const back = h("button", "ghost", t("plugin.cancel"));
+    back.dataset.track = "plugin.cancel";
     back.addEventListener("click", hide);
     const go2 = h("button", "pri", t(found ? "plugin.install.add" : "plugin.install.go"));
+    go2.dataset.track = "plugin.install.confirm";
     go2.addEventListener("click", () => void (found ? keep() : go()));
     (go2 as HTMLButtonElement).disabled = busy;
     return [back, hint, go2];
@@ -515,6 +526,7 @@ function maker() {
     "sheet hubedit",
     `<div class="sheettop"><b class="mt"></b></div><div class="mbody"></div><div class="sheetbar"></div>`,
   );
+  sheet.dataset.trackArea = "resources";
   const at = <T extends HTMLElement>(sel: string) => sheet.querySelector(sel) as T;
   const draft = { name: "", ask: "" };
   /// Null run identity means the request form, initially or after failure.
@@ -570,6 +582,7 @@ function maker() {
         ask: draft.ask,
       });
       run = made.run;
+      track({ name: "resource_action_used", kind: "plugin", action: "generate" });
       paint();
     } catch (e) {
       say(fromBack(e), true);
@@ -617,13 +630,16 @@ function maker() {
     at(".mbody").replaceChildren(...(run === null ? ask() : working()));
     if (run === null) {
       const back = h("button", "ghost", t("plugin.cancel"));
+      back.dataset.track = "plugin.cancel";
       back.addEventListener("click", hide);
       const go = h("button", "pri", t("plugin.make.go"));
+      go.dataset.track = "plugin.make.start";
       go.addEventListener("click", () => void start());
       at(".sheetbar").replaceChildren(back, hint, go);
       return;
     }
     const halt = h("button", "ghost", t("plugin.make.stop"));
+    halt.dataset.track = "plugin.make.stop";
     halt.addEventListener("click", stop);
     say(t("plugin.make.working"));
     at(".sheetbar").replaceChildren(halt, hint);
@@ -637,7 +653,7 @@ function maker() {
 
 /// Use a multiline field so the request can describe a complete workflow.
 function area(o: { label: Key; hint: Key; value: string; on: (v: string) => void }): HTMLElement {
-  const input = ui.input(o.value, true);
+  const input = ui.input(o.value, true, o.label);
   if (input instanceof HTMLTextAreaElement) input.rows = 6;
   input.spellcheck = true;
   const box = ui.field(t(o.label), input, t(o.hint));

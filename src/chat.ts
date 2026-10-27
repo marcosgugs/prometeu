@@ -1,3 +1,4 @@
+import { track, trackRequestResponse } from "./analytics";
 import { reviewContextChip } from "./components/chat/review-context";
 import { mergeReviewDraft, type ReviewDraft } from "./review-comments";
 import { encodeReviewContext, reviewContext } from "./review-context";
@@ -9,6 +10,7 @@ import { contextBand, contextForGauge, replayIsCurrent, turnUsageText } from "./
 import { onTelemetryCleared } from "./telemetry";
 import { conversationBlock, errorCard, noticeCard, workCard, paintWorkHead } from "./components/chat/blocks";
 import { requestCard } from "./components/chat/requests";
+import { pendingCard } from "./components/chat/pending";
 import * as actions from "./actions";
 import * as background from "./background";
 import { invoke } from "./ipc";
@@ -43,6 +45,7 @@ import * as paths from "./paths";
 import { pasteFiles } from "./paste";
 import * as voice from "./voice";
 import * as team from "./team";
+import * as ui from "./ui";
 import { pieces, Timeline, touched, turnMetadata, type Ask, type Block, type Command, type Item, type Piece } from "./timeline";
 import type { Choice, ProviderId, Selection, Status } from "./types";
 import { h, template } from "./util";
@@ -57,14 +60,18 @@ export type Info = {
   status: Status | null;
   /// A prompt waiting for worktree setup.
   pending: string | null;
-  /// Remote owner name and online state.
-  remote: { name: string; online: boolean } | null;
+  /// Remote owner name and online state, and what the owner's announcement lets this member do (ADR 0090).
+  remote: { name: string; online: boolean; send: boolean; control: boolean } | null;
+  /// The app ended while this local conversation was working, so its last turn was cut off.
+  interrupted?: boolean;
   /// Agent working directory and default file-picker location; internal attachments use relative paths.
   worktree: string | null;
   /// Comments require an active local or remote share, not merely configured team membership.
   team: boolean;
   /// Owner companion devices may view and control this workspace.
   remoteControl: boolean;
+  /// The local share predates rights; its owner hears once that it now only lets people view and comment.
+  rightsNotice?: boolean;
   /// Resolved tab or workspace model/effort; empty values mean CLI defaults.
   agent: ProviderId;
   model: string;
@@ -107,10 +114,15 @@ export function attachReview(tab: string, draft: ReviewDraft) {
   const merged = mergeReviewDraft(drafts.reviews.get(tab), draft);
   encodeReviewContext(reviewContext(merged));
   drafts.reviews.set(tab, merged); draftChanged(tab);
+  track({ name: "context_attached" });
 }
 
 export class ChatView {
   private feed!: HTMLElement;
+  /// Owner notices above the composer, such as input paused from a changed device.
+  private notices!: HTMLElement;
+  /// Request cards were last drawn without answers because this member lacks Control.
+  private observing = false;
   private box!: HTMLElement;
   private area!: HTMLTextAreaElement;
   private ctx!: Ctx;
@@ -146,10 +158,13 @@ export class ChatView {
 
   open(host: HTMLElement, ctx: Ctx) {
     this.ctx = ctx;
+    if (!host.closest("[data-track-area]")) host.dataset.trackArea = "conversation";
     this.disposed = false;
     this.feed = h("div", "feed");
+    this.notices = h("div", "chat-notices");
+    this.notices.hidden = true;
     this.box = h("div", "composer");
-    host.append(this.feed, this.box);
+    host.append(this.feed, this.notices, this.box);
     this.buildComposer();
     const draftChangedHere = (key: string) => {
       if (this.key !== key) return;
@@ -356,6 +371,7 @@ export class ChatView {
     const key = this.key;
     return context => {
       drafts.contexts.set(key, [...(drafts.contexts.get(key) ?? []), context]);
+      track({ name: "context_attached" });
       draftChanged(key);
       if (!this.disposed && this.key === key) this.area.focus();
     };
@@ -368,8 +384,10 @@ export class ChatView {
     return {
       put: (paths) => {
         const files = (drafts.files.get(key) ?? []).slice();
+        const before = files.length;
         for (const path of paths) if (path && !files.includes(path)) files.push(path);
         drafts.files.set(key, files);
+        if (files.length > before) track({ name: "attachment_added" });
         draftChanged(key);
         if (!this.disposed && this.key === key && this.box.getClientRects().length) this.area.focus();
       },
@@ -550,17 +568,19 @@ export class ChatView {
       this.paintCommentAction(old, piece);
       return;
     }
-    const meta = template("div", "meta", `<span class="took"></span><button class="ico sm cp"></button><button class="ghost sm cm"></button>`);
+    const meta = template("div", "meta", `<span class="took"></span><button class="ico sm cp"></button><button class="ghost sm cm" data-track="notes.comment.turn"></button>`);
     paint(meta);
     const cp = meta.querySelector<HTMLButtonElement>(".cp")!;
     cp.innerHTML = icon("copy", 13);
     cp.title = t("chat.copy");
+    cp.dataset.track = "chat.copy";
     cp.addEventListener("click", async () => {
       const at = this.blockAt(piece);
       if (at?.block.kind !== "text") return;
       cp.disabled = true;
       try {
         await navigator.clipboard.writeText(at.block.text);
+        track({ name: "output_copied", kind: "message" });
         cp.innerHTML = icon("check", 13);
         setTimeout(() => (cp.innerHTML = icon("copy", 13)), 1200);
       } catch {
@@ -581,6 +601,7 @@ export class ChatView {
     button.innerHTML = `${icon("message-square", 12)}<span></span>`;
     button.querySelector("span")!.textContent = t("notes.comment");
     button.title = t("notes.comment.turn");
+    button.dataset.track = "notes.comment.turn";
     button.onclick = () => {
       const at = this.blockAt(piece);
       const quote = at?.block.kind === "text" ? at.block.text : null;
@@ -618,6 +639,11 @@ export class ChatView {
           const el = template("details", "think summary", `<summary></summary><div class="md"></div>`);
           el.querySelector("summary")!.textContent = t("chat.summary");
           (el.lastElementChild as HTMLElement).innerHTML = md(item.text);
+          return el;
+        }
+        if (item.what === "interrupted") {
+          const el = template("div", "sys cut", `${icon("square", 12)}<span></span>`);
+          el.querySelector("span")!.textContent = t("chat.interrupted");
           return el;
         }
         if (item.error) return errorCard(item.text);
@@ -706,7 +732,10 @@ export class ChatView {
   /* Response requests. */
 
   private askCard(ask: Ask, _i: number): HTMLElement {
+    const info = this.ctx.info();
+    this.observing = !!info.remote && !info.remote.control;
     return requestCard(ask, {
+      observer: this.observing,
       respond: response => this.respond(ask, response),
       allowAlways: () => {
         void this.control({ v: 1, type: "permission.mode.set", mode: "bypass" })
@@ -718,7 +747,9 @@ export class ChatView {
   }
 
   private respond(ask: Ask, response: RequestResponse) {
-    this.control({ v: 1, type: "request.respond", requestId: ask.id, response });
+    void this.control({ v: 1, type: "request.respond", requestId: ask.id, response }).then(sent => {
+      if (sent) trackRequestResponse(response.outcome);
+    });
     this.sync(new Set(this.tl.answer(ask.id)));
     this.paintComposer();
   }
@@ -791,6 +822,7 @@ export class ChatView {
     const paint = (on: boolean) => {
       mic.classList.toggle("on", on);
       mic.title = t(on ? "chat.voice.stop" : "chat.voice");
+      mic.dataset.track = on ? "chat.voice.stop" : "chat.voice";
       mic.setAttribute("aria-label", mic.title);
       mic.setAttribute("aria-pressed", String(on));
     };
@@ -900,7 +932,7 @@ export class ChatView {
     const key = this.key;
     if (review) {
       // Submission is a local user action; backend failures may still leave a persisted queue.
-      void reviews.submit(review, key).catch(e => this.ctx.say(reviewError(e), true));
+      void reviews.submit(review, key).then(() => track({ name: "review_notes_sent" })).catch(e => this.ctx.say(reviewError(e), true));
       drafts.reviews.delete(key);
     }
     if (this.remote) team.write(said);
@@ -930,8 +962,8 @@ export class ChatView {
     if (this.remote || !this.ctx.info().workspace) return;
     const button = this.box.querySelector<HTMLElement>(".actionsbtn")!;
     const box = button.getBoundingClientRect();
-    menu.openAt({ x: box.left, y: box.top - 4, above: true }, actions.catalog().commands.length
-      ? actions.catalog().commands.map(action => ({ label: `/${action.name}`, hint: t(action.kind === "prompt" ? "actions.prompt" : "actions.agent"), run: () => this.useAction(action, this.area.value) }))
+    menu.openAt({ x: box.left, y: box.top - 4, above: true, anchor: button }, actions.catalog().commands.length
+      ? actions.catalog().commands.map(action => ({ label: `/${action.name}`, track: "action.select", hint: t(action.kind === "prompt" ? "actions.prompt" : "actions.agent"), run: () => this.useAction(action, this.area.value) }))
       : [{ label: t("actions.empty"), disabled: true }]);
   }
 
@@ -949,6 +981,7 @@ export class ChatView {
     commands.dismiss();
     if (action.kind === "prompt") {
       this.area.value = actions.expand(action.prompt, rest);
+      track({ name: "action_used", kind: "prompt" });
       this.keep(); this.grow(); this.area.focus();
       return;
     }
@@ -963,7 +996,7 @@ export class ChatView {
     // Preserve the draft if the backend rejects execution.
     void actions.start(workspace, action, context).then(tab => {
       if (review) {
-        void reviews.submit(review, tab.id).catch(e => this.ctx.say(reviewError(e), true));
+        void reviews.submit(review, tab.id).then(() => track({ name: "review_notes_sent" })).catch(e => this.ctx.say(reviewError(e), true));
         if (key && drafts.reviews.get(key) === review) drafts.reviews.delete(key);
       }
       if (key && drafts.says.get(key) === draft) drafts.says.delete(key);
@@ -1017,7 +1050,10 @@ export class ChatView {
 
     const q = (sel: string) => this.box.querySelector<HTMLElement>(sel)!;
     const hasKey = !!this.key;
-    this.box.hidden = !hasKey;
+    // A viewer without Send messages gets no composer: the owner would discard what it sends (ADR 0090).
+    this.box.hidden = !hasKey || (!!info.remote && !info.remote.send);
+    this.paintNotices(info);
+    this.paintObserver(info);
     if (!hasKey) { this.gauge.update(null); return; }
     this.paintContext(info);
     // Local file attachment is unavailable for agents running on another Mac.
@@ -1061,11 +1097,11 @@ export class ChatView {
     }
     const key = this.key;
     const actions = [];
-    if (capabilities.compact) actions.push({ label: t("usage.compact"), disabled: this.tl.working, run: () => this.contextCommand("compact", key) });
-    if (capabilities.contextReport) actions.push({ label: t("usage.contextReport"), disabled: this.tl.working, run: () => this.contextCommand("context", key) });
+    if (capabilities.compact) actions.push({ label: t("usage.compact"), track: "usage.compact", disabled: this.tl.working, run: () => this.contextCommand("compact", key) });
+    if (capabilities.contextReport) actions.push({ label: t("usage.contextReport"), track: "usage.contextReport", disabled: this.tl.working, run: () => this.contextCommand("context", key) });
     const workspace = info.workspace;
     if (workspace && this.ctx.newConversation && info.canCreateConversation !== false) {
-      actions.push({ label: t("usage.newConversation"), disabled: false, run: () => this.ctx.newConversation?.(workspace) });
+      actions.push({ label: t("usage.newConversation"), track: "usage.newConversation", disabled: false, run: () => this.ctx.newConversation?.(workspace) });
     }
     this.gauge.update({
       label: t("usage.context", { used: kilo(context.used), window: kilo(context.window) }),
@@ -1208,7 +1244,7 @@ export class ChatView {
           invoke("set_workspace_mcp", { id: workspace, mcp: sel }).catch((e) =>
             this.ctx.say(fromBack(e), true),
           ),
-        at: () => ({ x: at.left, y: at.top - 4, above: true }),
+        at: () => ({ x: at.left, y: at.top - 4, above: true, anchor: btn }),
         trust: () => void trust.open(workspace, this.ctx.say),
       });
     };
@@ -1240,7 +1276,7 @@ export class ChatView {
           invoke("set_workspace_plugins", { id: workspace, plugins: sel }).catch((e) =>
             this.ctx.say(fromBack(e), true),
           ),
-        at: () => ({ x: at.left, y: at.top - 4, above: true }),
+        at: () => ({ x: at.left, y: at.top - 4, above: true, anchor: btn }),
         trust: () => void trust.open(workspace, this.ctx.say),
       });
     };
@@ -1273,7 +1309,7 @@ export class ChatView {
           invoke("set_workspace_skills", { id: workspace, skills: sel }).catch((e) =>
             this.ctx.say(fromBack(e), true),
           ),
-        at: () => ({ x: at.left, y: at.top - 4, above: true }),
+        at: () => ({ x: at.left, y: at.top - 4, above: true, anchor: btn }),
         trust: () => void trust.open(workspace, this.ctx.say),
       });
     };
@@ -1288,12 +1324,86 @@ export class ChatView {
     btn.title = `${t("remoteControl.label")} — ${t(info.remoteControl ? "remoteControl.on" : "remoteControl.off")}\n${t("remoteControl.title")}`;
     btn.classList.toggle("on", info.remoteControl);
     btn.setAttribute("aria-pressed", String(info.remoteControl));
+    btn.dataset.track = info.remoteControl ? "remoteControl.disable" : "remoteControl.enable";
     btn.onclick = () => {
       btn.disabled = true;
       void team.remoteControl(info.workspace!, !info.remoteControl)
+        .then(count => { if (count) this.ctx.say(tn(count, "team.input.approvedOwn")); })
         .catch(error => this.ctx.say(fromBack(error), true))
         .finally(() => { btn.disabled = false; });
     };
+  }
+
+  /// Notices above the composer (ADR 0090): input from a changed or new device waits for the owner, who names the
+  /// person and answers; a share from before rights now only lets people view and comment, said once; a viewer
+  /// without Send messages learns why there is no composer; teammates' messages wait closest to the composer for the
+  /// owner to send, edit or discard. They repaint only when their content changes, so typing keeps focus.
+  private paintNotices(info: Info) {
+    const local = !!this.key && !info.remote && !!info.workspace;
+    const paused = local ? team.pausedIn(info.workspace!) : [];
+    const rights = local && !!info.rightsNotice;
+    const viewOnly = this.key && info.remote && !info.remote.send ? info.remote.name : null;
+    const waiting = local ? team.pendingIn(this.key!) : [];
+    const cut = local && !!info.interrupted;
+    const signature = JSON.stringify([paused, rights, viewOnly, waiting.map(message => message.id), cut]);
+    if (this.notices.dataset.shown === signature) return;
+    this.notices.dataset.shown = signature;
+    this.notices.hidden = !paused.length && !rights && viewOnly === null && !waiting.length && !cut;
+    const fail = (error: unknown) => this.ctx.say(fromBack(error), true);
+    const rows = paused.map(({ person, name, own }) => {
+      const row = h("div", "chat-notice");
+      const allow = ui.button(t("team.input.allow"), () => void team.allowInput(person)
+        .then(count => { if (count) this.ctx.say(own ? tn(count, "team.input.approvedOwn") : tn(count, "team.input.approved", { name })); })
+        .catch(fail), undefined, "team.input.allow");
+      const later = ui.button(t("team.input.later"), () => void team.dismissInput(person).catch(fail), "ghost", "team.input.later");
+      row.append(ui.notice(own ? t("team.input.pausedOwn") : t("team.input.paused", { name }), "warning"), allow, later);
+      return row;
+    });
+    if (rights) {
+      const row = h("div", "chat-notice");
+      row.append(ui.notice(t("team.rights.notice"), "warning"), ui.button(t("team.rights.gotIt"), team.dismissRightsNotice, "ghost", "team.rights.gotIt"));
+      rows.push(row);
+    }
+    if (viewOnly !== null) rows.push(h("p", "ui-hint chat-viewonly", t("chat.viewOnly", { name: viewOnly })));
+    if (cut) {
+      // Continue is an ordinary message, so sending it, or anything else, clears the marker.
+      const key = this.key!;
+      const row = h("div", "chat-notice");
+      const resume = ui.button(t("chat.interrupted.continue"), () =>
+        void invoke("chat_send", { session: key, text: t("chat.interrupted.prompt") }).then(() => track({ name: "conversation_resumed" })).catch(fail), "pri", "chat.interrupted.continue");
+      row.append(ui.notice(t("chat.interrupted.notice"), "warning"), resume);
+      rows.push(row);
+    }
+    for (const message of waiting) rows.push(pendingCard(message, {
+      send: () => void team.sendPending(message.id).catch(fail),
+      edit: () => this.adopt(message.id),
+      discard: () => team.discardPending(message.id),
+    }));
+    this.notices.replaceChildren(...rows);
+  }
+
+  /// Editing moves a teammate's waiting message into this conversation's draft, after anything already typed; from
+  /// there it is the owner's own message. Drafts stay in memory, so the text still never reaches disk. Dictation ends
+  /// first, as when sending, so a late transcript cannot overwrite the moved text.
+  private adopt(id: string) {
+    this.stopVoice?.(true);
+    const key = this.key;
+    const text = key ? team.editPending(id) : null;
+    if (!key || text === null) return;
+    const draft = drafts.says.get(key)?.trimEnd() ?? "";
+    drafts.says.set(key, draft ? `${draft}\n\n${text}` : text);
+    draftChanged(key);
+    this.area.focus();
+    this.area.setSelectionRange(this.area.value.length, this.area.value.length);
+  }
+
+  /// Request cards follow the Control right; redraw them when the owner's announcement changes it.
+  private paintObserver(info: Info) {
+    const observing = !!info.remote && !info.remote.control;
+    if (observing === this.observing) return;
+    this.observing = observing;
+    const asks = new Set(this.tl.items.flatMap((item, at) => item.kind === "ask" ? [at] : []));
+    if (asks.size && this.sync(asks)) this.paintCommentPins();
   }
 
   /// Offer selection comments only when collaboration and selected text are available.
@@ -1321,6 +1431,7 @@ export class ChatView {
       if (!node) continue;
       const pin = h("button", "commentpin", `${list.length}`);
       pin.title = tn(list.length, "notes.onTurn");
+      pin.dataset.track = "notes.thread.open";
       pin.onclick = () => this.ctx.thread?.(list[0].id);
       node.append(pin);
     }

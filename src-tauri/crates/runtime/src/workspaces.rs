@@ -74,6 +74,7 @@ impl WorkspaceFolders for LinuxFolders {
             id: text.clone(),
             path: text,
             name,
+            group: None,
         })
     }
 }

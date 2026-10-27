@@ -62,11 +62,11 @@ export function changesMenu(change: Change, ctx: Context): menu.Item[] {
   const deleted = change.status === "D";
   const items: menu.Item[] = [
     ctx.scope === "conflict"
-      ? { label: t("git.menu.resolve"), glyph: icon("git-merge"), run: hooks.review }
-      : { label: t("git.menu.diff"), glyph: icon("diff"), run: hooks.review },
+      ? { track: "git.menu.resolve", label: t("git.menu.resolve"), glyph: icon("git-merge"), run: hooks.review }
+      : { track: "git.menu.diff", label: t("git.menu.diff"), glyph: icon("diff"), run: hooks.review },
     deleted
-      ? { label: t("git.openFile"), glyph: icon("file"), disabled: true, hint: t("git.menu.open.deleted") }
-      : { label: t("git.openFile"), glyph: icon("file"), run: hooks.open },
+      ? { track: "git.openFile", label: t("git.openFile"), glyph: icon("file"), disabled: true, hint: t("git.menu.open.deleted") }
+      : { track: "git.openFile", label: t("git.openFile"), glyph: icon("file"), run: hooks.open },
     "sep",
   ];
 
@@ -80,11 +80,11 @@ export function changesMenu(change: Change, ctx: Context): menu.Item[] {
         : { ...item, run: item.run && guarded(ctx.availability, item.run, hooks.refused) };
   // Conflicts are settled in their editor, which stages the result; the menu only leads there.
   if (ctx.scope === "staged") {
-    items.push(gate({ label: t("git.unstage"), glyph: icon("x"), run: hooks.unstage }), "sep");
+    items.push(gate({ track: "git.unstage", label: t("git.unstage"), glyph: icon("x"), run: hooks.unstage }), "sep");
   } else if (ctx.scope === "changes") {
     items.push(
-      gate({ label: t("git.stage"), glyph: icon("plus"), run: hooks.stage }),
-      gate({ label: t("git.menu.discard"), glyph: icon("trash"), danger: true, run: hooks.discard }),
+      gate({ track: "git.stage", label: t("git.stage"), glyph: icon("plus"), run: hooks.stage }),
+      gate({ track: "git.menu.discard", label: t("git.menu.discard"), glyph: icon("trash"), danger: true, run: hooks.discard }),
       "sep",
     );
   }

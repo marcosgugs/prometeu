@@ -4,9 +4,17 @@ import { TeamSecurity } from "./team-security";
 import { TeamChannel } from "./team-channel";
 import { verifyIdentity } from "./team-crypto";
 import type { SocketLike } from "./team-transport";
+import type { ShareRights } from "./types";
 
-/** Browser demo uses real encrypted endpoints and the production relay reducer. */
-export function simulatedSocket(url: string, sample: string, share: Share, online: () => boolean): SocketLike & { presence(): void } {
+/** Browser demo uses real encrypted endpoints and the production relay reducer. Unless told otherwise, the demo owner
+ *  lets the local member send messages and answer requests, as a teammate granted both rights (ADR 0090). */
+export type SimulatedSocket = SocketLike & {
+  presence(): void;
+  /// Marcus sends a message to a conversation the local member shares, as his own encrypted channel would.
+  message(ws: string, tab: string, text: string): void;
+};
+
+export function simulatedSocket(url: string, sample: string, share: Share, online: () => boolean, rights?: ShareRights): SimulatedSocket {
   const endpoint = new URL(url);
   const self = endpoint.searchParams.get("m") ?? "eu_mock";
   const name = endpoint.searchParams.get("n") ?? "You";
@@ -44,12 +52,14 @@ export function simulatedSocket(url: string, sample: string, share: Share, onlin
       }
     }
   }
-  const socket: SocketLike & { presence(): void } = {
+  const socket: SimulatedSocket = {
     binaryType: "arraybuffer", onopen: null, onmessage: null, onclose: null, onerror: null,
     presence() { enqueue(async () => {
       if (online()) await deliver(reduce(state, { k: "open", sock: "marcus", member: "marcus", name: "Marcus Hale", now: Date.now() }));
       else await deliver(reduce(state, { k: "close", sock: "marcus", now: Date.now() }));
     }); },
+    // The relay accepts input only from a member attached to that conversation.
+    message(ws, tab, text) { enqueue(async () => { await peerSend({ t: "attach", ws, tab }); await peerSend({ t: "write", ws, tab, data: text }); }); },
     send(data) { enqueue(async () => {
       if (data === "ping") { socket.onmessage?.({ data: "pong" }); return; }
       if (typeof data !== "string") { await deliver(reduce(state, { k: "binary", sock: self, data: new Uint8Array(data as ArrayBuffer) })); return; }
@@ -58,6 +68,7 @@ export function simulatedSocket(url: string, sample: string, share: Share, onlin
       await deliver(run(frame, self));
       if (frame.t === "identity" && !seeded) {
         seeded = true;
+        peer.own(share, false, rights ?? { send: [self], control: [self] });
         await peerSend({ t: "share", share });
         await peerSend({ t: "note", ws: share.id, tab: "mt1", anchor: "w3.0",
           text: `Completing a todo now sets completed_at instead of deleting the row. @${name}, the remaining call is yours.`,

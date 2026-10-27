@@ -146,7 +146,7 @@ fn accepted_input_precedes_concurrent_output_and_snapshot() {
             );
             let mut lines = lock(lines);
             lines.record(&frame.to_string(), &frame, store, events);
-            lines.snapshot(true, &FixedClock)
+            lines.snapshot(Presence::Busy, &[], &FixedClock)
         });
         lock(lines)
             .command(
@@ -235,7 +235,7 @@ fn failed_storage_and_delivery_still_advance_memory_without_retry() {
     assert_eq!(*lock(&store.0), 1);
     assert_eq!(*lock(&sent), [(text.clone(), 1)]);
     assert_eq!(lines.text, text + "\n");
-    assert_eq!(lines.snapshot(false, &FixedClock).seq, 1);
+    assert_eq!(lines.snapshot(Presence::Ready, &[], &FixedClock).seq, 1);
 }
 
 #[test]
@@ -282,7 +282,7 @@ fn restored_mixed_history_preserves_bytes_and_resets_transport_sequence() {
     let lines = Lines::seeded(&store).unwrap();
     assert_eq!(lines.text, original.to_string() + "\n");
     assert_eq!(store.load().unwrap(), original);
-    let snapshot = lines.snapshot(false, &FixedClock);
+    let snapshot = lines.snapshot(Presence::Ready, &[], &FixedClock);
     assert_eq!(snapshot.seq, 0);
     assert_eq!(
         serde_json::to_value(&snapshot).unwrap(),
@@ -379,4 +379,105 @@ fn disconnected_delivery_does_not_resend_accepted_input_or_lose_its_history() {
         serde_json::from_str::<Value>(lines.text.trim()).unwrap()["content"][0]["text"],
         "accepted once"
     );
+}
+
+#[test]
+fn a_snapshot_names_the_process_presence_last() {
+    let mut lines = Lines::default();
+    lines.absorb(r#"{"v":1,"type":"user.message","at":1,"content":[]}"#);
+    for (presence, state) in [
+        (Presence::Busy, "busy"),
+        (Presence::Ready, "ready"),
+        (Presence::Stopped, "stopped"),
+    ] {
+        let snapshot = lines.snapshot(presence, &[], &FixedClock);
+        let last: Value = serde_json::from_str(snapshot.text.lines().last().unwrap()).unwrap();
+        assert_eq!(last["type"], "session.state");
+        assert_eq!(last["state"], state);
+        assert_eq!(
+            snapshot.seq, 1,
+            "synthetic state does not consume a sequence"
+        );
+    }
+}
+
+/// Stop, continue and reload: the place where the app cut a turn off survives both the
+/// continuation in memory and a later replay from the transcript.
+#[test]
+fn a_recorded_cut_stays_in_replay_after_continuing_and_reloading() {
+    let store = Memory::default();
+    for line in [
+        r#"{"v":1,"type":"user.message","at":1,"content":[]}"#,
+        r#"{"v":1,"type":"assistant.block","at":2,"messageId":"m","index":0,"block":{"kind":"text","text":"half"}}"#,
+        r#"{"v":1,"type":"request.opened","at":3,"requestId":"q","kind":"question","toolId":null,"tool":null,"input":{}}"#,
+    ] {
+        store.append(line).unwrap();
+    }
+    // Starting again after the restart: the history ends at the cut.
+    let mut lines = Lines::seeded(&store).unwrap();
+    let cut = lines.end();
+    assert_eq!(cut, 3);
+    for line in [
+        r#"{"v":1,"type":"user.message","at":4,"content":[]}"#,
+        r#"{"v":1,"type":"turn.completed","at":5,"outcome":"ok","message":"","durationMs":1,"costUsd":null}"#,
+    ] {
+        store.append(line).unwrap();
+        lines.absorb(line);
+    }
+    let states = |snapshot: Snapshot| -> Vec<String> {
+        snapshot
+            .text
+            .lines()
+            .map(|line| {
+                let event: Value = serde_json::from_str(line).unwrap();
+                match event["type"].as_str().unwrap() {
+                    "session.state" => event["state"].as_str().unwrap().to_owned(),
+                    other => other.to_owned(),
+                }
+            })
+            .collect()
+    };
+    let expected = |last: &'static str| -> Vec<&'static str> {
+        let mut events = vec![
+            "user.message",
+            "assistant.block",
+            "request.opened",
+            "stopped",
+        ];
+        events.extend(["user.message", "turn.completed", last]);
+        events
+    };
+    assert_eq!(
+        states(lines.snapshot(Presence::Ready, &[cut], &FixedClock)),
+        expected("ready")
+    );
+    let reloaded = Lines::seeded(&store).unwrap();
+    assert_eq!(reloaded.end(), 5);
+    assert_eq!(
+        states(reloaded.snapshot(Presence::Stopped, &[cut], &FixedClock)),
+        expected("stopped")
+    );
+}
+
+#[test]
+fn trimmed_history_keeps_line_positions_absolute() {
+    let store = Memory::default();
+    let filler = format!(
+        r#"{{"v":1,"type":"system.notice","at":1,"detail":"{}"}}"#,
+        "x".repeat(1023)
+    );
+    let lines_written = KEEP / filler.len() + 10;
+    for _ in 0..lines_written {
+        store.append(&filler).unwrap();
+    }
+    let mut lines = Lines::seeded(&store).unwrap();
+    assert!(lines.first > 0, "the seed is trimmed to the memory ceiling");
+    assert_eq!(lines.end(), lines_written as u64);
+    let before = lines.first;
+    lines.absorb(&filler);
+    assert_eq!(lines.end(), lines_written as u64 + 1);
+    assert!(lines.first > before, "live trimming advances the head");
+    // A cut before the kept window cannot be placed and is skipped.
+    let snapshot = lines.snapshot(Presence::Ready, &[1], &FixedClock);
+    assert_eq!(snapshot.text.matches(r#""state":"stopped""#).count(), 0);
 }

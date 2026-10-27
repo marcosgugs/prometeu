@@ -89,9 +89,7 @@ pub fn report(notes: &[Copied], pick: impl Fn(&str, &str) -> String) -> Option<S
     Some(out)
 }
 
-/// Expose both Prometeu and Conductor environment names for compatible scripts. Also set
-/// conventional PORT so common development servers started directly from the dock use the workspace
-/// port.
+/// Set the conventional PORT so development servers started from the dock use the workspace port.
 pub fn env(worktree: &Path, repo: &Path, name: &str, port: Option<u16>) -> Vec<(String, String)> {
     let mut pairs = vec![
         ("WORKSPACE_PATH", worktree.display().to_string()),
@@ -103,12 +101,7 @@ pub fn env(worktree: &Path, repo: &Path, name: &str, port: Option<u16>) -> Vec<(
     }
     let mut out: Vec<(String, String)> = pairs
         .into_iter()
-        .flat_map(|(key, value)| {
-            [
-                (format!("PROMETEU_{key}"), value.clone()),
-                (format!("CONDUCTOR_{key}"), value),
-            ]
-        })
+        .map(|(key, value)| (format!("PROMETEU_{key}"), value))
         .collect();
     if let Some(port) = port {
         out.push(("PORT".into(), port.to_string()));

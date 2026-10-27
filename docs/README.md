@@ -3,6 +3,9 @@
 This directory is the project's technical source of truth. `AGENTS.md` works
 as a short index for agents and `README.md` presents the product.
 
+- [Repository presentation](operations/repository-presentation.md): demo provenance, social preview and GitHub verification.
+- [Project scripts](operations/project-scripts.md): setup, run and archive.
+
 ## Architecture
 
 - [Design System](architecture/design-system.md): tokens, components, gallery and incremental adoption.
@@ -16,17 +19,22 @@ as a short index for agents and `README.md` presents the product.
 
 ## Contracts
 
+- [Cursor CLI](contracts/cursor.md): ACP transport, external account, conversation lifecycle and capability limits.
+
 - [Portable application core](contracts/application-core.md): core ports, their desktop and WSL adapters and implementation obligations.
 - [Native Windows application](contracts/windows-application.md): shared interface over WSL, command coverage, deadlines and paths.
 - [WSL runtime protocol](contracts/wsl-runtime.md): framing, capabilities, resident attachment, storage and compatibility.
 - [Linear issue discovery and assignment](contracts/linear-issues.md): available team issues, OAuth write scope, claim flow and cache compatibility.
-- [GitHub issues and pull requests](contracts/github-issues.md): assigned and repository issues, authored PRs, requested reviews and isolated workspaces.
+- [GitHub issues and pull requests](contracts/github-issues.md): GitHub App device flow, assigned and available issues with claim, authored PRs, requested reviews, PR status and isolated workspaces.
+- [GitHub notifications](contracts/github-notifications.md): GitHub App webhooks turned into metadata-only notifications in the Cloud and the desktop Notifications destination.
 
 - [Desktop presentation](contracts/desktop-presentation.md): typed snapshots, callbacks, focus and resource view lifetime.
 
 - [Local notifications](contracts/notifications.md): event selection, native delivery and silent defaults.
 
-- [Optional context evaluation](contracts/context-evaluation.md): bring-your-own-key TypeSafe integration, evaluation port and missing-context review.
+- [Anonymous product analytics](contracts/product-analytics.md): PostHog event vocabulary, payload, installation identity and rules for new events.
+
+- [Optional context evaluation](contracts/context-evaluation.md): bring-your-own-key TypeSafe adapter, evaluation port and key test in Settings.
 
 - [Embedded MCP and delegation](contracts/embedded-mcp.md): local, opt-in orchestration infrastructure with client-owned agents and optional conversation context.
 
@@ -59,7 +67,12 @@ as a short index for agents and `README.md` presents the product.
 
 ## Decisions
 
-- [ADR 0086](decisions/0086-github-inbox.md): GitHub discovery inside Issues using the existing CLI credential.
+- [ADR 0088](decisions/0088-github-app.md): GitHub App for issues, PRs and notifications through the Cloud.
+- [ADR 0089](decisions/0089-notch-island.md): persistent notch island that follows agents, answers requests and reopens conversations.
+- [ADR 0090](decisions/0090-approved-remote-input.md): remote input only from member and key pairs approved on the owner's Mac, with separate view, message and control rights.
+- [ADR 0091](decisions/0091-keep-unreadable-state.md): unreadable board and team files are copied to a recovery folder before anything replaces them, and saves wait while copying fails.
+- [ADR 0093](decisions/0093-anonymous-product-analytics.md): anonymous feature and click events sent to PostHog from Rust, identified only by i18n keys and static IDs.
+- [ADR 0094](decisions/0094-leaving-a-share.md): a viewer leaves a share for all of their devices; the relay keeps them out until the owner readmits them.
 
 [Lifecycle and current index](decisions/README.md). Only implemented decisions
 appear below. Retired documents and previous versions remain in Git history;
@@ -125,12 +138,18 @@ compatibility still in use stays documented in the current contracts.
 - [ADR 0084](decisions/0084-shared-windows-desktop.md): shared desktop interface over an injected WSL runtime.
 - [ADR 0085](decisions/0085-portable-core.md): portable core with injected effects.
 
+- [ADR 0095](decisions/0095-cursor-acp.md): Cursor CLI through ACP and an explicit external account.
+- [ADR 0096](decisions/0096-terminal-sessions.md): terminal sessions owned by the app, persisted as records on the board.
+- [ADR 0097](decisions/0097-ask-before-ending-the-app.md): quitting, closing the main window or restarting for an update asks first while local work would be cut off.
+
 ## Local telemetry
 
 - [Local telemetry contract](contracts/telemetry.md): canonical content-free
   events, usage semantics, SQLite persistence, coverage, queries and verification.
 
 ## Quality and operations
+
+- [Product analytics coverage](quality/product-analytics-coverage.md): feature inventory, named interactions, observation boundaries and verification.
 
 - [Desktop Design System audit](quality/desktop-design-system-audit.md):
   baseline evidence, preserved identity and the implemented Settings pilot.
@@ -177,5 +196,3 @@ current system until the corresponding implementation is accepted.
 - [Diff review implementation plan](superpowers/plans/2026-09-26-diff-review.md).
 
 - [Local usage and context insights implementation plan](superpowers/plans/2026-10-01-issue-131-usage-insights.md).
-
-- [Review calibration implementation plan](superpowers/plans/2026-09-27-review-calibration.md).

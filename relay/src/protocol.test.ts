@@ -129,6 +129,12 @@ describe("control frames", () => {
     expect(parseDown({ t: "notes", ws: "ws1", items: [{ id: "n1", ws: "other", author: "alice", text: "hello", mentions: [], quote: null, ts: 1 }] })).toBeNull();
     expect(parseDown({ t: "presence", members: Array.from({ length: 65 }, (_, i) => ({ id: `m${i}`, name: "x", online: true })) })).toBeNull();
     expect(parseDown({ ...welcome, comments: 2 })).toBeNull();
+    expect(parseDown({ t: "share", share: { ...shared, left: ["carol", "carol"] } })).toMatchObject({ share: { left: ["carol"] } });
+    expect(parseDown({ t: "share", share: { ...shared, left: [] } })).not.toHaveProperty("share.left");
+    expect(parseDown({ t: "share", share: { ...shared, left: ["__proto__"] } })).toBeNull();
+    expect(parseUp({ t: "leave", ws: "ws1" })).toEqual({ t: "leave", ws: "ws1" });
+    expect(parseUp({ t: "readmit", ws: "ws1", person: "bob" })).toEqual({ t: "readmit", ws: "ws1", person: "bob" });
+    expect(parseUp({ t: "readmit", ws: "ws1" })).toBeNull();
     expect(parseDown({ t: "note", note: { id: "n1", ws: "ws1", author: "alice", text: "hello", mentions: [], quote: null, ts: 1, tab: "t1", anchor: "s4.0", parent: null, resolved: false } })).toMatchObject({
       note: { tab: "t1", anchor: "s4.0", parent: null, resolved: false },
     });

@@ -208,6 +208,8 @@
 .ask .row .spacer { flex: 1; }
 .ask .fb { display: flex; flex-direction: column; gap: 6px; }
 .ask .fb textarea { width: 100%; resize: vertical; }
+/* A teammate's message waiting for the owner keeps its text as typed and scrolls when long. */
+.ask.pending .pending-text { margin: 0; max-height: 8.5em; overflow: auto; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ask .qtabs { display: flex; gap: 2px; border-bottom: 1px solid rgb(224 160 48 / 0.35); }
 .ask .qtab {
   height: 28px; padding: 0 10px; gap: 6px; border: none; border-radius: 0; background: none;
@@ -237,7 +239,7 @@
 /* System lines. */
 .sys { font-size: 12px; color: var(--fg-3); text-align: center; }
 .sys.err { color: var(--err); text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
-.sys.done { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.sys.done, .sys.waiting, .sys.closed, .sys.cut { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .sys { overflow-wrap: anywhere; }
 .sysnote { font-size: 12px; color: var(--fg-2); }
 .sysnote > summary { list-style: none; display: flex; align-items: center; gap: 7px; cursor: default; }
@@ -261,6 +263,13 @@
   border-left: 1px solid var(--line); color: var(--fg-2); font: 11.5px/1.5 var(--mono);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
+
+/* Owner notices share the composer's width and sit right above it. */
+.chat-notices { flex: none; align-self: center; width: calc(100% - 48px); max-width: 860px; display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+.chat-notices[hidden] { display: none; }
+.chat-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.chat-notice > .ui-notice { flex: 1 1 240px; }
+.chat-viewonly { margin: 0 0 var(--space-3); text-align: center; }
 
 /* The composer uses a raised background. */
 .composer {

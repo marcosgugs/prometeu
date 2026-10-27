@@ -1,0 +1,192 @@
+[
+  {
+    "name": "settings_section_viewed",
+    "section": "general"
+  },
+  {
+    "name": "settings_search_used"
+  },
+  {
+    "name": "preference_changed",
+    "setting": "language"
+  },
+  {
+    "name": "resource_action_used",
+    "kind": "mcp",
+    "action": "save"
+  },
+  {
+    "name": "resource_selection_changed",
+    "kind": "mcp",
+    "scope": "defaults"
+  },
+  {
+    "name": "integration_action_used",
+    "integration": "linear",
+    "action": "connect"
+  },
+  {
+    "name": "provider_account_action_used",
+    "provider": "codex",
+    "action": "login_start"
+  },
+  {
+    "name": "action_configuration_changed",
+    "kind": "command",
+    "action": "save"
+  },
+  {
+    "name": "issue_action_used",
+    "integration": "linear",
+    "action": "claim"
+  },
+  {
+    "name": "notification_action_used",
+    "source": "github",
+    "action": "open"
+  },
+  {
+    "name": "collaboration_action_used",
+    "action": "select_organization"
+  },
+  {
+    "name": "usage_history_action_used",
+    "action": "view"
+  },
+  {
+    "name": "update_action_used",
+    "action": "check"
+  },
+  {
+    "name": "release_notes_viewed"
+  },
+  {
+    "name": "feedback_action_used",
+    "channel": "private",
+    "action": "open",
+    "has_attachment": false
+  },
+  {
+    "name": "trust_decision_made",
+    "approved": false
+  },
+  {
+    "name": "desk_layout_changed",
+    "change": "visibility"
+  },
+  {
+    "name": "conversation_opened",
+    "surface": "desk"
+  },
+  {
+    "name": "conversation_resumed"
+  },
+  {
+    "name": "attachment_added"
+  },
+  {
+    "name": "context_attached"
+  },
+  {
+    "name": "output_copied",
+    "kind": "message"
+  },
+  {
+    "name": "request_answered"
+  },
+  {
+    "name": "approval_submitted",
+    "approved": false
+  },
+  {
+    "name": "model_selection_changed",
+    "provider": "codex"
+  },
+  {
+    "name": "model_favorite_changed",
+    "is_favorite": false
+  },
+  {
+    "name": "effort_changed",
+    "provider": "codex"
+  },
+  {
+    "name": "usage_summary_viewed"
+  },
+  {
+    "name": "file_opened",
+    "kind": "text"
+  },
+  {
+    "name": "file_search_used"
+  },
+  {
+    "name": "diff_viewed"
+  },
+  {
+    "name": "git_comparison_opened"
+  },
+  {
+    "name": "review_note_created"
+  },
+  {
+    "name": "review_notes_sent"
+  },
+  {
+    "name": "preview_opened"
+  },
+  {
+    "name": "browser_context_attached"
+  },
+  {
+    "name": "preview_capture_created"
+  },
+  {
+    "name": "dictation_started"
+  },
+  {
+    "name": "dictation_text_inserted"
+  },
+  {
+    "name": "action_used",
+    "kind": "prompt"
+  },
+  {
+    "name": "machine_panel_opened"
+  },
+  {
+    "name": "quota_viewed"
+  },
+  {
+    "name": "project_action_used",
+    "action": "add"
+  },
+  {
+    "name": "workspace_action_used",
+    "action": "rename"
+  },
+  {
+    "name": "file_operation_completed",
+    "operation": "save"
+  },
+  {
+    "name": "git_operation_completed",
+    "operation": "stage"
+  },
+  {
+    "name": "terminal_opened"
+  },
+  {
+    "name": "project_script_started",
+    "kind": "setup"
+  },
+  {
+    "name": "project_script_stopped",
+    "kind": "setup"
+  },
+  {
+    "name": "delegation_action_used",
+    "action": "create",
+    "client": "internal"
+  }
+]

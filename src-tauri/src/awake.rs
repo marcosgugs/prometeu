@@ -123,13 +123,56 @@ const EXPECTED: &str = "systemd-inhibit --what=idle:sleep";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    /// spawn() returns once exec begins, before the kernel publishes the new argv, so ps can
+    /// briefly print only `[name]`. Retry until the arguments appear.
+    fn command_line(pid: u32) -> String {
+        let mut command = String::new();
+        for _ in 0..50 {
+            let output = Command::new("/bin/ps")
+                .args(["-p", &pid.to_string(), "-o", "command="])
+                .output()
+                .expect("could not read inhibitor");
+            command = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !command.starts_with('[') {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        command
+    }
 
     /// Start and stop the real inhibitor. The test PID it waits on ensures failures cannot leave
     /// the machine permanently awake.
     #[test]
     fn enables_display_and_system_awake_once_then_disables_them() {
+        #[cfg(not(target_os = "macos"))]
+        {
+            let command = inhibitor(Mode::Display);
+            assert_eq!(
+                command.get_program(),
+                std::ffi::OsStr::new("systemd-inhibit")
+            );
+            assert!(command
+                .get_args()
+                .any(|arg| arg == std::ffi::OsStr::new("--what=idle:sleep")));
+            assert!(command
+                .get_args()
+                .any(|arg| arg == std::ffi::OsStr::new("--mode=block")));
+        }
         if !supported() {
             eprintln!("skipped: no systemd session to inhibit");
+            return;
+        }
+        // Hosted runners can have systemd but deny the lock after spawn succeeds.
+        #[cfg(not(target_os = "macos"))]
+        if !Command::new("systemd-inhibit")
+            .args(["--what=idle:sleep", "--mode=block", "true"])
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            eprintln!("skipped: cannot acquire sleep inhibition");
             return;
         }
         set_awake(Mode::Display).expect("inhibitor did not start");
@@ -138,11 +181,7 @@ mod tests {
 
         // Verify the flags as well as the child: caffeinate with only -i allowed the display to
         // sleep.
-        let command = Command::new("/bin/ps")
-            .args(["-p", &first.unwrap().to_string(), "-o", "command="])
-            .output()
-            .expect("could not read inhibitor");
-        let command = String::from_utf8_lossy(&command.stdout);
+        let command = command_line(first.unwrap());
         assert!(command.contains(EXPECTED), "{command}");
 
         set_awake(Mode::Display).expect("second request");
@@ -153,11 +192,7 @@ mod tests {
             set_awake(Mode::System).expect("system-only inhibitor");
             let second = lock(running()).as_ref().map(|(_, child)| child.id());
             assert_ne!(second, first);
-            let output = Command::new("/bin/ps")
-                .args(["-p", &second.unwrap().to_string(), "-o", "command="])
-                .output()
-                .unwrap();
-            let command = String::from_utf8_lossy(&output.stdout);
+            let command = command_line(second.unwrap());
             assert!(command.contains("caffeinate -i -s -w"), "{command}");
             assert!(!command.contains(" -d "), "{command}");
         }

@@ -6,6 +6,7 @@ use crate::{
 use prometeu_core::{
     board::Workspace,
     error::{code, with_args},
+    terminal::dock_kind,
 };
 use prometeu_files::{scripts, settings::FILES};
 use serde_json::json;
@@ -210,6 +211,23 @@ impl Host {
         terminal.attached(false);
         self.docks.insert(key.clone(), terminal);
         Ok(key)
+    }
+    /// Stop and forget every dock the owner holds. A shell whose cleanup times out keeps its
+    /// handle, and the error reaches the caller.
+    pub(crate) fn drop_docks(&mut self, owner: &str) -> Result<(), String> {
+        let keys: Vec<String> = self
+            .docks
+            .keys()
+            .filter(|key| dock_kind(key, owner).is_some())
+            .cloned()
+            .collect();
+        for key in keys {
+            if let Some(dock) = self.docks.get_mut(&key) {
+                dock.shutdown()?;
+            }
+            self.docks.remove(&key);
+        }
+        Ok(())
     }
     pub(crate) fn setup_running(&self, workspace: &str) -> Result<bool, String> {
         self.docks
