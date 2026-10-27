@@ -56,6 +56,14 @@ macOS and Linux AppImage installations check at startup and hourly. Download
 and restart remain explicit user actions, and Tauri verifies the signature
 before installation. AppImage files must be writable by the user.
 
+The installed version takes effect at the next start, so restarting is never
+required to finish an update. **Restart to update** asks first while local work
+would be cut off: conversations working or waiting, workspaces being prepared
+and terminals running a command. The question names their counts and says the
+version also applies at the next start; cancelling keeps the update ready and
+nothing restarts by itself. With nothing to cut off it restarts at once. See
+[ADR 0097](../decisions/0097-ask-before-ending-the-app.md).
+
 On Linux, Tauri's built-in `plugin:app|bundle_type` command selects this behavior;
 no application IPC payload changes. An `appimage` result enables the updater.
 Debian, RPM, Arch and unpackaged builds keep updates external; unknown or failed
@@ -72,5 +80,6 @@ and minisign signatures against the embedded key.
 installer, wrong versions/URLs, signature failures, draft assembly, refusal to
 overwrite published assets and refusal to publish incomplete or failed builds.
 `src/update-init.test.ts` preserves package-manager ownership and macOS behavior;
-`src/update.test.ts` covers download and restart. CI cannot prove native desktop
-integration or real replacement/relaunch; those require the release smoke test.
+`src/update.test.ts` covers download, the question before restarting and restart.
+CI cannot prove native desktop integration or real replacement/relaunch; those
+require the release smoke test.

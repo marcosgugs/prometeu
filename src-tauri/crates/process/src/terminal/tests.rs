@@ -118,6 +118,31 @@ fn abandoning_the_terminal_waiter_kills_and_reaps() {
     assert!(!terminal.control.running());
     assert!(!running(pid));
 }
+#[test]
+fn a_command_holding_the_foreground_is_told_apart_from_the_shell_itself() {
+    // Without job control the terminal's own process keeps the foreground for its whole life.
+    let mut script = open("exec sleep 30");
+    let script_output = drain(script.output);
+    // With job control, as in an interactive shell, the command gets its own group and the
+    // terminal; `true` keeps the shell from replacing itself with the command.
+    let mut shell = open("set -m; sleep 30; true");
+    let shell_output = drain(shell.output);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !shell.control.foreground_job() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(shell.control.foreground_job());
+    assert!(!script.control.foreground_job());
+    for (control, output) in [
+        (&script.control, script_output),
+        (&shell.control, shell_output),
+    ] {
+        control.close();
+        output.recv_timeout(Duration::from_secs(5)).unwrap();
+    }
+    script.waiter.wait().unwrap();
+    shell.waiter.wait().unwrap();
+}
 
 #[test]
 fn dock_terminals_drop_the_launching_terminal_and_agent_and_present_prometeu() {

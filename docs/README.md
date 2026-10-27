@@ -140,6 +140,7 @@ compatibility still in use stays documented in the current contracts.
 
 - [ADR 0095](decisions/0095-cursor-acp.md): Cursor CLI through ACP and an explicit external account.
 - [ADR 0096](decisions/0096-terminal-sessions.md): terminal sessions owned by the app, persisted as records on the board.
+- [ADR 0097](decisions/0097-ask-before-ending-the-app.md): quitting, closing the main window or restarting for an update asks first while local work would be cut off.
 
 ## Local telemetry
 

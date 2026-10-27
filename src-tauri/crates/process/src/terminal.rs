@@ -285,6 +285,13 @@ impl TerminalControl for Control {
     fn running(&self) -> bool {
         self.group.running()
     }
+    /// An interactive shell moves each job into its own process group and hands it the terminal,
+    /// so a foreground group other than the shell's own is a command still running.
+    fn foreground_job(&self) -> bool {
+        lock(&self.master)
+            .process_group_leader()
+            .is_some_and(|leader| u32::try_from(leader).ok() != Some(self.group.pid))
+    }
     fn system_id(&self) -> u32 {
         self.group.pid
     }

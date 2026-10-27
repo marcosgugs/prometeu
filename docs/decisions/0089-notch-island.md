@@ -57,7 +57,9 @@ second local window can now send `chat_control`; it is app-owned content with
 no remote input, and the command keeps its existing session checks.
 
 The hidden overlay would keep the process alive after the main window closed,
-with no way back to it, so closing the main window quits the app explicitly.
+with no way back to it, so closing the main window quits the app explicitly,
+after asking while local work would be cut off
+([ADR 0097](0097-ask-before-ending-the-app.md)).
 Keeping the app running and reopening the main window from the Dock is a
 separate window policy, not part of this decision.
 

@@ -34,6 +34,7 @@ function world(update: Found | null) {
   const said: string[] = [];
   const io: Io = {
     check: vi.fn(async () => update),
+    allow: vi.fn(async () => true),
     relaunch: vi.fn(async () => {}),
     clock: () => "13:48",
     show: (f) => faces.push(f),
@@ -141,6 +142,48 @@ describe("updater", () => {
     await first;
     expect(w.last()?.text).toBe("Update to 0.2.0");
     expect(w.said[0]).toMatch(/could not update.*offline/);
+  });
+
+  it("restarts only once restarting may cut off local work", async () => {
+    const update = found();
+    const w = world(update);
+    let answer!: (allowed: boolean) => void;
+    w.io.allow = vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve)));
+    const up = updater(w.io);
+    await up.look();
+    const first = up.click();
+    await tick();
+    update.finish();
+    await first;
+
+    const second = up.click();
+    await tick();
+    expect(w.io.allow).toHaveBeenCalledWith("0.2.0");
+    expect(w.io.relaunch).not.toHaveBeenCalled();
+    expect(w.last()).toMatchObject({ text: "Restart to update", disabled: false });
+    answer(true);
+    await tick();
+    expect(w.io.relaunch).toHaveBeenCalledTimes(1);
+    expect(w.last()).toMatchObject({ text: "Restarting…", disabled: true });
+    await vi.advanceTimersByTimeAsync(9_000);
+    await second;
+  });
+
+  it("stays ready to restart when the person keeps their work running", async () => {
+    const update = found();
+    const w = world(update);
+    w.io.allow = vi.fn(async () => false);
+    const up = updater(w.io);
+    await up.look();
+    const first = up.click();
+    await tick();
+    update.finish();
+    await first;
+
+    await up.click();
+    expect(w.io.relaunch).not.toHaveBeenCalled();
+    expect(w.last()).toMatchObject({ text: "Restart to update", ready: true, disabled: false });
+    expect(w.said).toEqual([]);
   });
 
   it("asks the user to reopen when restarting does not complete", async () => {
