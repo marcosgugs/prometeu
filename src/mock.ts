@@ -1509,8 +1509,10 @@ const mockCommands: IpcHandlers = {
   },
   remove_project(args) {
     board.projects = board.projects.filter((project) => project.id !== args.id);
-    // As in the backend, the project's shells stop with its registration.
-    for (const key of [...docks.keys()]) if (key.startsWith(`${args.id}:`)) docks.delete(key);
+    // As in the backend, the project's shells stop with its registration. A folder path may contain ':', but a dock kind
+    // never does, so `/repo` leaves the shells of `/repo:v2` alone.
+    const owned = (key: string) => key.startsWith(`${args.id}:`) && !key.slice(args.id.length + 1).includes(":");
+    for (const key of [...docks.keys()]) if (owned(key)) docks.delete(key);
     emit("board", board);
     return;
   },
